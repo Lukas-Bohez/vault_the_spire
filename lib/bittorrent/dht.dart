@@ -94,7 +94,7 @@ class DhtEngine {
       'a': {
         'id': DhtEngine.hexToBytes(routingTable.localNodeId),
         'target': DhtEngine.hexToBytes(targetId),
-      }
+      },
     };
     return _encode(message);
   }
@@ -107,7 +107,7 @@ class DhtEngine {
       'a': {
         'id': DhtEngine.hexToBytes(routingTable.localNodeId),
         'target': DhtEngine.hexToBytes(targetId),
-      }
+      },
     };
     return _encode(message);
   }
@@ -125,11 +125,16 @@ class DhtEngine {
       final portBytes = packed.sublist(i + 24, i + 26);
       final ip = '${ipBytes[0]}.${ipBytes[1]}.${ipBytes[2]}.${ipBytes[3]}';
       final port = (portBytes[0] << 8) | portBytes[1];
-      nodeInfos.add(DhtNodeInfo(id: idBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join(), address: ip, port: port));
+      nodeInfos.add(
+        DhtNodeInfo(
+          id: idBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join(),
+          address: ip,
+          port: port,
+        ),
+      );
     }
     return nodeInfos;
   }
 
   // This class uses raw bytes for bencoded node IDs, so no conversion to UTF-8 string is required.
 }
-
