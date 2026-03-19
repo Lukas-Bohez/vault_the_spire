@@ -320,7 +320,7 @@ This is the core new addition. VaultTheSpire implements a full BitTorrent client
 - [x] `lib/bittorrent/bencode.dart`
 - [x] `lib/bittorrent/torrent_file.dart`
 - [x] `lib/bittorrent/magnet_link.dart`
-- [ ] `lib/bittorrent/dht.dart` (pending)
+- [x] `lib/bittorrent/dht.dart`
 - [ ] `lib/bittorrent/peer_wire.dart` (pending)
 - [ ] `lib/bittorrent/piece_manager.dart` (pending)
 - [ ] `lib/bittorrent/torrent_session.dart` (pending)
