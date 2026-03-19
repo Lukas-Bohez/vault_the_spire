@@ -1,0 +1,61 @@
+import 'dart:convert';
+
+import 'package:cryptography/cryptography.dart';
+import 'package:crypto/crypto.dart' as crypto;
+
+class Identity {
+  final String publicKeyBase64;
+  final String privateKeyBase64;
+  final String nodeId;
+
+  Identity({
+    required this.publicKeyBase64,
+    required this.privateKeyBase64,
+    required this.nodeId,
+  });
+
+  static Future<Identity> generate() async {
+    final algorithm = X25519();
+    final keyPair = await algorithm.newKeyPair();
+    final keyPairData = await keyPair.extract();
+
+    final publicKey = keyPairData.publicKey;
+    if (publicKey == null) {
+      throw StateError('Generated key pair has no public key');
+    }
+
+    final publicKeyBytes = publicKey.bytes;
+    final privateKeyBytes = keyPairData.bytes;
+
+    final publicKeyBase64 = base64UrlEncode(publicKeyBytes);
+    final privateKeyBase64 = base64UrlEncode(privateKeyBytes);
+
+    final nodeId = _deriveNodeId(publicKeyBytes);
+
+    return Identity(
+      publicKeyBase64: publicKeyBase64,
+      privateKeyBase64: privateKeyBase64,
+      nodeId: nodeId,
+    );
+  }
+
+  static String _deriveNodeId(List<int> publicKeyBytes) {
+    final digest = crypto.sha256.convert(publicKeyBytes);
+    final nodeIdBytes = digest.bytes.sublist(0, 20);
+    return nodeIdBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+  }
+
+  Map<String, dynamic> toJson() => {
+        'publicKeyBase64': publicKeyBase64,
+        'privateKeyBase64': privateKeyBase64,
+        'nodeId': nodeId,
+      };
+
+  factory Identity.fromJson(Map<String, dynamic> json) {
+    return Identity(
+      publicKeyBase64: json['publicKeyBase64'] as String,
+      privateKeyBase64: json['privateKeyBase64'] as String,
+      nodeId: json['nodeId'] as String,
+    );
+  }
+}
