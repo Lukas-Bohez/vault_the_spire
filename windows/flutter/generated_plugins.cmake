@@ -3,8 +3,11 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
+  desktop_drop
   flutter_secure_storage_windows
+  screen_retriever
   sqlcipher_flutter_libs
+  window_manager
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST

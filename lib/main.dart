@@ -1,9 +1,20 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:vault_the_spire/platform/desktop_window.dart';
+import 'package:vault_the_spire/platform/hotkeys.dart';
+import 'package:vault_the_spire/platform/system_tray.dart';
 import 'package:vault_the_spire/screens/home_screen.dart';
 import 'package:vault_the_spire/services/identity_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+    await setupDesktopWindow();
+    await setupSystemTray();
+    await setupHotkeys();
+  }
 
   await IdentityService.instance.initialize();
 

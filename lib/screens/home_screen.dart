@@ -23,7 +23,9 @@ class HomeScreen extends StatelessWidget {
             ),
             const SizedBox(height: 20),
             ElevatedButton.icon(
-              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TorrentsScreen())),
+              onPressed: () => Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const TorrentsScreen())),
               icon: const Icon(Icons.storage),
               label: const Text('Open Torrents'),
             ),

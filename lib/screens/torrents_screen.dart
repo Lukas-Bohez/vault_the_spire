@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:vault_the_spire/models/torrent.dart';
+import 'package:vault_the_spire/platform/drag_drop.dart';
 import 'package:vault_the_spire/screens/torrent_detail_screen.dart';
 import 'package:vault_the_spire/services/torrent_service.dart';
 
@@ -44,9 +45,18 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  TorrentDragDrop(
+                    onTorrentFile: (path) {
+                      // TODO: parse and add torrent file by path
+                    },
+                  ),
+                  const SizedBox(height: 12),
                   const Text('No torrents yet'),
                   const SizedBox(height: 8),
-                  ElevatedButton(onPressed: _refresh, child: const Text('Refresh')),
+                  ElevatedButton(
+                    onPressed: _refresh,
+                    child: const Text('Refresh'),
+                  ),
                 ],
               ),
             );
@@ -57,18 +67,29 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
               itemCount: torrents.length,
               itemBuilder: (context, index) {
                 final torrent = torrents[index];
-                final progress = torrent.totalPieces != null && torrent.totalPieces! > 0
-                    ? (torrent.piecesHave?.split(',').where((x) => x == '1').length ?? 0) / torrent.totalPieces!
+                final progress =
+                    torrent.totalPieces != null && torrent.totalPieces! > 0
+                    ? (torrent.piecesHave
+                                  ?.split(',')
+                                  .where((x) => x == '1')
+                                  .length ??
+                              0) /
+                          torrent.totalPieces!
                     : 0.0;
                 return Card(
                   child: ListTile(
                     title: Text(torrent.name),
-                    subtitle: Text('Status: ${torrent.status ?? 'unknown'} • ${ (progress*100).toStringAsFixed(1)}%'),
+                    subtitle: Text(
+                      'Status: ${torrent.status ?? 'unknown'} • ${(progress * 100).toStringAsFixed(1)}%',
+                    ),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () {
-                      Navigator.of(context).push(MaterialPageRoute(
-                        builder: (context) => TorrentDetailScreen(torrent: torrent),
-                      ));
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) =>
+                              TorrentDetailScreen(torrent: torrent),
+                        ),
+                      );
                     },
                   ),
                 );

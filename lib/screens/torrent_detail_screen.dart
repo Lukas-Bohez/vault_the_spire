@@ -9,7 +9,8 @@ class TorrentDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final piecesCount = torrent.totalPieces ?? 0;
-    final haveCount = torrent.piecesHave?.split(',').where((e) => e == '1').length ?? 0;
+    final haveCount =
+        torrent.piecesHave?.split(',').where((e) => e == '1').length ?? 0;
     final progress = piecesCount > 0 ? (haveCount / piecesCount) : 0.0;
 
     return Scaffold(
@@ -19,7 +20,10 @@ class TorrentDetailScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('InfoHash: ${torrent.id}', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+            Text(
+              'InfoHash: ${torrent.id}',
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
             const SizedBox(height: 8),
             LinearProgressIndicator(value: progress),
             const SizedBox(height: 8),
@@ -35,7 +39,10 @@ class TorrentDetailScreen extends StatelessWidget {
             const SizedBox(height: 16),
             if (torrent.type == 'vault' && torrent.vaultLink != null) ...[
               const Text('Vault link:'),
-              SelectableText(torrent.vaultLink!, style: const TextStyle(color: Colors.blueAccent)),
+              SelectableText(
+                torrent.vaultLink!,
+                style: const TextStyle(color: Colors.blueAccent),
+              ),
             ],
           ],
         ),
