@@ -6,7 +6,9 @@ class SignalQrImport {
   static Contact? tryParse(String qrData) {
     final normalized = qrData.trim();
 
-    final signalMatch = RegExp(r'signal\.me/#p/([A-Za-z0-9_\-]+)').firstMatch(normalized);
+    final signalMatch = RegExp(
+      r'signal\.me/#p/([A-Za-z0-9_\-]+)',
+    ).firstMatch(normalized);
     if (signalMatch != null) {
       final keyB64 = signalMatch.group(1)!;
       return Contact(

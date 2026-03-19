@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:vault_the_spire/screens/torrents_screen.dart';
 import 'package:vault_the_spire/services/identity_service.dart';
 import 'package:vault_the_spire/services/torrent_service.dart';
 
@@ -20,6 +21,13 @@ class HomeScreen extends StatelessWidget {
               'Welcome to VaultTheSpire',
               style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
             ),
+            const SizedBox(height: 20),
+            ElevatedButton.icon(
+              onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TorrentsScreen())),
+              icon: const Icon(Icons.storage),
+              label: const Text('Open Torrents'),
+            ),
+            const SizedBox(height: 16),
             const SizedBox(height: 16),
             const Text('Core identity and peer state are initialized.'),
             const SizedBox(height: 16),
