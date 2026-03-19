@@ -324,6 +324,9 @@ This is the core new addition. VaultTheSpire implements a full BitTorrent client
 - [x] `lib/bittorrent/peer_wire.dart`
 - [x] `lib/bittorrent/piece_manager.dart`
 - [x] `lib/bittorrent/torrent_session.dart`
+- [x] `lib/vault_swarm/vault_link.dart`
+- [x] `lib/vault_swarm/vault_piece.dart`
+- [x] `lib/vault_swarm/vault_session.dart`
 
 ### `lib/bittorrent/bencode.dart`
 
