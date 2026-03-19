@@ -313,9 +313,17 @@ File pieces in vault swarm: encrypted with per-file AES key, stored pre-encrypte
 
 ---
 
-## PHASE 4 — BitTorrent engine
+## PHASE 4 — BitTorrent engine ✅ IN PROGRESS
 
 This is the core new addition. VaultTheSpire implements a full BitTorrent client in Dart.
+
+- [x] `lib/bittorrent/bencode.dart`
+- [x] `lib/bittorrent/torrent_file.dart`
+- [x] `lib/bittorrent/magnet_link.dart`
+- [ ] `lib/bittorrent/dht.dart` (pending)
+- [ ] `lib/bittorrent/peer_wire.dart` (pending)
+- [ ] `lib/bittorrent/piece_manager.dart` (pending)
+- [ ] `lib/bittorrent/torrent_session.dart` (pending)
 
 ### `lib/bittorrent/bencode.dart`
 
