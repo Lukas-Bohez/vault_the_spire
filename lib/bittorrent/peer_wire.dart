@@ -18,7 +18,8 @@ class PeerWireMessage {
     return PeerWireMessage._(4, p.buffer.asUint8List());
   }
 
-  factory PeerWireMessage.bitfield(Uint8List bitfield) => PeerWireMessage._(5, bitfield);
+  factory PeerWireMessage.bitfield(Uint8List bitfield) =>
+      PeerWireMessage._(5, bitfield);
 
   factory PeerWireMessage.request(int index, int begin, int length) {
     final p = ByteData(12);
@@ -86,12 +87,18 @@ class PeerWireMessage {
 
   static const String protocolString = 'BitTorrent protocol';
 
-  static Uint8List buildHandshake(Uint8List infoHash, Uint8List peerId, [Uint8List? reserved]) {
+  static Uint8List buildHandshake(
+    Uint8List infoHash,
+    Uint8List peerId, [
+    Uint8List? reserved,
+  ]) {
     if (infoHash.length != 20) throw ArgumentError('infoHash must be 20 bytes');
     if (peerId.length != 20) throw ArgumentError('peerId must be 20 bytes');
 
     final reservedBytes = reserved ?? Uint8List(8);
-    if (reservedBytes.length != 8) throw ArgumentError('reserved must be 8 bytes');
+    if (reservedBytes.length != 8) {
+      throw ArgumentError('reserved must be 8 bytes');
+    }
 
     final pstr = protocolString;
     final out = Uint8List(1 + pstr.length + 8 + 20 + 20);
@@ -132,5 +139,9 @@ class Handshake {
   final Uint8List infoHash;
   final Uint8List peerId;
 
-  Handshake({required this.reserved, required this.infoHash, required this.peerId});
+  Handshake({
+    required this.reserved,
+    required this.infoHash,
+    required this.peerId,
+  });
 }
