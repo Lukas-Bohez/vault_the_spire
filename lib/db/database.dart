@@ -1,0 +1,67 @@
+import 'dart:async';
+
+import 'package:path/path.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:sqflite/sqflite.dart';
+
+class AppDatabase {
+  AppDatabase._();
+
+  static final AppDatabase instance = AppDatabase._();
+
+  static Database? _database;
+
+  Future<Database> get database async {
+    if (_database != null) return _database!;
+
+    final dbPath = await _getDatabasePath();
+    _database = await openDatabase(
+      dbPath,
+      version: 1,
+      onCreate: _onCreate,
+      onConfigure: (db) async {
+        // Enable foreign keys
+        await db.execute('PRAGMA foreign_keys = ON');
+      },
+    );
+    return _database!;
+  }
+
+  Future<String> _getDatabasePath() async {
+    final documentsDirectory = await getApplicationDocumentsDirectory();
+    return join(documentsDirectory.path, 'vault_the_spire.db');
+  }
+
+  Future<void> _onCreate(Database db, int version) async {
+    await db.execute('''
+      CREATE TABLE torrents (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        total_size INTEGER,
+        total_pieces INTEGER,
+        piece_length INTEGER,
+        pieces_have TEXT,
+        status TEXT,
+        type TEXT NOT NULL,
+        vault_key TEXT,
+        file_path TEXT,
+        vault_link TEXT,
+        magnet_link TEXT,
+        bytes_down INTEGER DEFAULT 0,
+        bytes_up INTEGER DEFAULT 0,
+        added_at INTEGER,
+        completed_at INTEGER,
+        is_sequential INTEGER DEFAULT 0,
+        selected_files TEXT
+      );
+    ''');
+  }
+
+  Future<void> close() async {
+    final db = _database;
+    if (db != null) {
+      await db.close();
+      _database = null;
+    }
+  }
+}

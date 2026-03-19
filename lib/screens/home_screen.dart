@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:vault_the_spire/services/identity_service.dart';
+import 'package:vault_the_spire/services/torrent_service.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -9,9 +10,7 @@ class HomeScreen extends StatelessWidget {
     final identity = IdentityService.instance.identity;
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('VaultTheSpire'),
-      ),
+      appBar: AppBar(title: const Text('VaultTheSpire')),
       body: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
         child: Column(
@@ -29,12 +28,33 @@ class HomeScreen extends StatelessWidget {
             else ...[
               Text('Node ID: ${identity.nodeId}'),
               const SizedBox(height: 12),
-              Text('Public Key (short): ${identity.publicKeyBase64.substring(0, 16)}...'),
+              Text(
+                'Public Key (short): ${identity.publicKeyBase64.substring(0, 16)}...',
+              ),
               const SizedBox(height: 12),
-              Text('Private Key (short): ${identity.privateKeyBase64.substring(0, 16)}...'),
+              Text(
+                'Private Key (short): ${identity.privateKeyBase64.substring(0, 16)}...',
+              ),
             ],
             const SizedBox(height: 24),
-            const Text('Next work: implement DHT + peer wire + torrents engine.'),
+            const Text(
+              'Next work: implement DHT + peer wire + torrents engine.',
+            ),
+            const SizedBox(height: 24),
+            const Text('Local DB status:'),
+            FutureBuilder(
+              future: TorrentService.instance.allTorrents(),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Text('Loading torrents...');
+                }
+                if (snapshot.hasError) {
+                  return Text('DB error: ${snapshot.error}');
+                }
+                final torrents = snapshot.data as List?;
+                return Text('Torrents in DB: ${torrents?.length ?? 0}');
+              },
+            ),
           ],
         ),
       ),

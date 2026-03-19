@@ -29,6 +29,9 @@ class IdentityService {
 
     final identity = await Identity.generate();
     _identity = identity;
-    await _secureStorage.write(key: _kIdentityKey, value: jsonEncode(identity.toJson()));
+    await _secureStorage.write(
+      key: _kIdentityKey,
+      value: jsonEncode(identity.toJson()),
+    );
   }
 }

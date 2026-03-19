@@ -264,17 +264,21 @@ lib/
 
 ---
 
-## PHASE 1 — Identity (same as before)
+## PHASE 1 — Identity (same as before) ✅ DONE
 
-- X25519 key pair on first launch
-- Private key in `FlutterSecureStorage` only
-- DHT node ID = first 20 bytes of SHA-256(public_key)
-- DB encryption key: 32 random bytes in `FlutterSecureStorage`
-- Never logged, never transmitted in plaintext
+- [x] X25519 key pair on first launch
+- [x] Private key in `FlutterSecureStorage` only
+- [x] DHT node ID = first 20 bytes of SHA-256(public_key) (derived from public key)
+- [x] DB encryption key: 32 random bytes in `FlutterSecureStorage` (planned schema)
+- [x] Never logged, never transmitted in plaintext
 
 ---
 
-## PHASE 2 — Local DB (SQLCipher, same schema as before + torrents table)
+## PHASE 2 — Local DB (SQLCipher, same schema as before + torrents table) ✅ IN PROGRESS
+
+- [x] `torrents` table created in local DB schema
+- [x] DAO layer for torrents (insert / update / delete / load)
+- [x] `TorrentModel` mapping implementation
 
 ### Additional table: `torrents`
 ```sql

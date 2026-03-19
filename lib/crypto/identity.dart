@@ -20,10 +20,6 @@ class Identity {
     final keyPairData = await keyPair.extract();
 
     final publicKey = keyPairData.publicKey;
-    if (publicKey == null) {
-      throw StateError('Generated key pair has no public key');
-    }
-
     final publicKeyBytes = publicKey.bytes;
     final privateKeyBytes = keyPairData.bytes;
 
@@ -46,10 +42,10 @@ class Identity {
   }
 
   Map<String, dynamic> toJson() => {
-        'publicKeyBase64': publicKeyBase64,
-        'privateKeyBase64': privateKeyBase64,
-        'nodeId': nodeId,
-      };
+    'publicKeyBase64': publicKeyBase64,
+    'privateKeyBase64': privateKeyBase64,
+    'nodeId': nodeId,
+  };
 
   factory Identity.fromJson(Map<String, dynamic> json) {
     return Identity(
