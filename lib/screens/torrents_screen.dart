@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:vault_the_spire/models/torrent.dart';
 import 'package:vault_the_spire/platform/drag_drop.dart';
@@ -26,10 +28,56 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
     });
   }
 
+  Future<void> _importTorrent(String path) async {
+    try {
+      await TorrentService.instance.addTorrentFromTorrentFile(path);
+      await _refresh();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Torrent imported successfully.')),
+      );
+    } on FileSystemException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('File system error: ${e.message}')),
+      );
+    } on FormatException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Torrent parsing error: ${e.message}')),
+      );
+    } on StateError catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to import torrent: $e')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Torrents')),
+      appBar: AppBar(
+        title: const Text('Torrents'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.file_upload),
+            tooltip: 'Import .torrent file',
+            onPressed: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Drag and drop a .torrent file into the panel'),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
       body: FutureBuilder<List<TorrentModel>>(
         future: _futureTorrents,
         builder: (context, snapshot) {
@@ -47,7 +95,7 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
                 children: [
                   TorrentDragDrop(
                     onTorrentFile: (path) {
-                      // TODO: parse and add torrent file by path
+                      _importTorrent(path);
                     },
                   ),
                   const SizedBox(height: 12),
