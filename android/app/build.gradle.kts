@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace = "com.example.vault_the_spire"
-    compileSdk = 34  // enforce latest stable to resolve android:attr/lStar resource requirement
+    compileSdk = 36  // enforce latest SDK required by plugins (path_provider_android/sqflite_android)
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -25,7 +25,7 @@ android {
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
-        targetSdk = 34 // keep in sync with compileSdk to prevent lStar resource errors
+        targetSdk = 36 // keep in sync with compileSdk for current plugin requirements
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
