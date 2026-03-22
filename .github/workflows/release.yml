@@ -1,18 +1,19 @@
 # GitHub Actions release workflow for Vault The Spire
 # Manually triggered with workflow_dispatch.
-# Requires appropriate platform tooling (Windows/Mac/Linux) in runner.
 #
-# Action versions pinned for Node 24 compatibility (as of March 2026):
-#   actions/checkout@v4          – Node 20; @v5 does not exist, @v6 is in preview on flutter-action docs
-#   actions/upload-artifact@v6   – Node 24 native (upgraded from v5 which defaulted to Node 20)
-#   actions/download-artifact@v7 – Node 24 native (upgraded from v5)
-#   actions/setup-java@v4        – Node 24 (v5 not yet released)
-#   subosito/flutter-action@v2   – uses actions/cache@v5 internally; works on Node 24
-#   softprops/action-gh-release@v2 – Node 24 upgrade pending upstream; runs fine under
-#                                    FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true
+# WHY THE ANDROID SDK STEP WAS REMOVED:
+#   android-36 + build-tools;36.0.0 are preinstalled on ubuntu-latest (Ubuntu 24.04).
+#   Manually calling sdkmanager was crashing with exit code 1 because the runner image
+#   layout changed when ubuntu-latest moved to 24.04. Flutter/Gradle find the SDK
+#   automatically via ANDROID_HOME which the runner sets already.
 #
-# FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true opts into Node 24 for all actions today.
-# Node 24 becomes the forced default on June 2nd, 2026.
+# Action versions (Node 24 compatible, as of March 2026):
+#   actions/checkout@v4          – current stable
+#   actions/upload-artifact@v6   – Node 24 native
+#   actions/download-artifact@v4 – Node 24 native
+#   actions/setup-java@v4        – current stable
+#   subosito/flutter-action@v2   – current stable
+#   softprops/action-gh-release@v2 – current stable
 
 name: release
 
@@ -43,10 +44,7 @@ permissions:
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   FLUTTER_VERSION: '3.41.2'
-  APP_NAME: vault_the_spire
   OUTPUT_NAME: VaultTheSpire
-  ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
-  ANDROID_HOME: /usr/local/lib/android/sdk
 
 jobs:
   test-and-analyze:
@@ -66,7 +64,6 @@ jobs:
 
       - name: Analyze
         run: flutter analyze --no-fatal-infos
-        shell: bash
 
       - name: Run tests
         run: flutter test --coverage
@@ -83,21 +80,26 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
+
       - name: Install dependencies
         run: flutter pub get
+
       - name: Build Windows release
         run: flutter build windows --release --no-tree-shake-icons
+
       - name: Package Windows build
         shell: pwsh
         run: |
           $src = "build\windows\x64\runner\Release"
           if (!(Test-Path $src)) { Write-Error "Build output not found: $src"; exit 1 }
           Compress-Archive -Path "$src\*" -DestinationPath "${{ env.OUTPUT_NAME }}-windows-x64.zip" -Force
+
       - uses: actions/upload-artifact@v6
         with:
           name: windows-x64
@@ -109,22 +111,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Install Linux build dependencies
         run: |
           sudo apt-get update -y
           sudo apt-get install -y --no-install-recommends \
             clang cmake ninja-build pkg-config \
             libgtk-3-dev liblzma-dev libstdc++-12-dev \
-            fuse libfuse2 libsecret-1-dev
+            libsecret-1-dev
+
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
+
       - name: Install dependencies
         run: flutter pub get
+
       - name: Build Linux release
         run: flutter build linux --release --no-tree-shake-icons
+
       - name: Package Linux zip
         run: |
           set -euo pipefail
@@ -132,6 +139,7 @@ jobs:
           if [ ! -d "$BUNDLE" ]; then echo "ERROR: bundle not found: $BUNDLE"; exit 1; fi
           cd "$BUNDLE"
           zip -r "$GITHUB_WORKSPACE/${{ env.OUTPUT_NAME }}-linux-x64.zip" .
+
       - uses: actions/upload-artifact@v6
         with:
           name: linux-x64
@@ -143,21 +151,26 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
+
       - name: Install dependencies
         run: flutter pub get
+
       - name: Build macOS release
         run: flutter build macos --release --no-tree-shake-icons
+
       - name: Package macOS build
         run: |
           set -euo pipefail
           APP=$(find build/macos/Build/Products/Release -maxdepth 1 -name "*.app" | head -1)
           if [ -z "$APP" ]; then echo "ERROR: .app bundle not found"; exit 1; fi
           ditto -c -k --keepParent "$APP" "${{ env.OUTPUT_NAME }}-macOS.zip"
+
       - uses: actions/upload-artifact@v6
         with:
           name: macos-x64
@@ -169,15 +182,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: 17
+          java-version: '17'
+
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
+
+      # android-36 + build-tools;36.0.0 are already on the ubuntu-latest image.
+      # No sdkmanager calls needed — Flutter and Gradle find them via $ANDROID_HOME.
+      - name: Accept Android SDK licenses
+        run: yes | flutter doctor --android-licenses || true
+
       - name: Configure Android signing
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -186,7 +207,7 @@ jobs:
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "No Android signing secrets set, using debug keys"
+            echo "No Android signing secrets set, building with debug keys"
             exit 0
           fi
           set -euo pipefail
@@ -201,32 +222,9 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Ensure Android SDK 36 + build tools
-        run: |
-          set -euo pipefail
-          if [ -d "$ANDROID_SDK_ROOT" ]; then
-            SDKROOT="$ANDROID_SDK_ROOT"
-          elif [ -d "$ANDROID_HOME" ]; then
-            SDKROOT="$ANDROID_HOME"
-          elif [ -d "/usr/local/lib/android/sdk" ]; then
-            SDKROOT="/usr/local/lib/android/sdk"
-          else
-            echo "ERROR: Android SDK root not found. Set ANDROID_SDK_ROOT or ANDROID_HOME."
-            exit 1
-          fi
-          echo "Using Android SDK at $SDKROOT"
-          SDKMANAGER="$SDKROOT/cmdline-tools/latest/bin/sdkmanager"
-          yes | "$SDKMANAGER" --sdk_root="$SDKROOT" --licenses
-          "$SDKMANAGER" --sdk_root="$SDKROOT" \
-            "platforms;android-36" \
-            "build-tools;36.0.0" \
-            "platform-tools"
-        env:
-          ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
-          ANDROID_HOME: ${{ env.ANDROID_HOME }}
-
       - name: Build APK
         run: flutter build apk --release --no-tree-shake-icons
+
       - name: Build AAB
         run: flutter build appbundle --release --no-tree-shake-icons
 
@@ -250,11 +248,10 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v7
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
         with:
           path: artifacts
-          # Excludes the coverage-report artifact – download only build artifacts.
           pattern: '{windows-x64,linux-x64,macos-x64,android-builds}'
           merge-multiple: false
 
