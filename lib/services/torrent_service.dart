@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
+import 'package:vault_the_spire/bittorrent/magnet_link.dart';
 import 'package:vault_the_spire/bittorrent/torrent_file.dart';
 import 'package:vault_the_spire/db/torrents_dao.dart';
 import 'package:vault_the_spire/models/torrent.dart';
@@ -21,6 +22,34 @@ class TorrentService {
 
   Future<void> removeTorrent(String id) =>
       TorrentsDao.instance.deleteTorrent(id);
+
+  Future<void> updateTorrentStatus(String id, String status) async {
+    final existing = await TorrentsDao.instance.getTorrentById(id);
+    if (existing == null) {
+      throw StateError('Torrent not found: $id');
+    }
+    final updated = TorrentModel(
+      id: existing.id,
+      name: existing.name,
+      type: existing.type,
+      totalSize: existing.totalSize,
+      totalPieces: existing.totalPieces,
+      pieceLength: existing.pieceLength,
+      piecesHave: existing.piecesHave,
+      status: status,
+      vaultKey: existing.vaultKey,
+      filePath: existing.filePath,
+      vaultLink: existing.vaultLink,
+      magnetLink: existing.magnetLink,
+      bytesDown: existing.bytesDown,
+      bytesUp: existing.bytesUp,
+      addedAt: existing.addedAt,
+      completedAt: existing.completedAt,
+      isSequential: existing.isSequential,
+      selectedFiles: existing.selectedFiles,
+    );
+    await TorrentsDao.instance.updateTorrent(updated);
+  }
 
   Future<void> addTorrentFromTorrentFile(String path) async {
     final file = File(path);
@@ -59,6 +88,41 @@ class TorrentService {
       status: 'added',
       filePath: p.normalize(path),
       magnetLink: magnetLink,
+      bytesDown: 0,
+      bytesUp: 0,
+      addedAt: DateTime.now().millisecondsSinceEpoch,
+      isSequential: false,
+    );
+
+    await TorrentsDao.instance.insertTorrent(torrent);
+  }
+
+  Future<void> addTorrentFromMagnetLink(String uri) async {
+    final magnet = MagnetLink.parse(uri);
+    final infoHash = magnet.infoHashV1 ?? magnet.infoHashV2;
+    if (infoHash == null || infoHash.isEmpty) {
+      throw FormatException('Magnet link must contain btih or btmh infohash');
+    }
+
+    final existing = await TorrentsDao.instance.getTorrentById(infoHash);
+    if (existing != null) {
+      throw StateError(
+        'Torrent already exists: ${magnet.displayName ?? infoHash}',
+      );
+    }
+
+    final torrent = TorrentModel(
+      id: infoHash,
+      name: magnet.displayName ?? 'Magnet $infoHash',
+      type: 'magnet_link',
+      totalSize: null,
+      totalPieces: null,
+      pieceLength: null,
+      piecesHave: null,
+      status: 'queued',
+      filePath: null,
+      vaultLink: null,
+      magnetLink: uri,
       bytesDown: 0,
       bytesUp: 0,
       addedAt: DateTime.now().millisecondsSinceEpoch,

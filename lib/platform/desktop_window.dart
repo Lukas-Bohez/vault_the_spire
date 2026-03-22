@@ -17,3 +17,8 @@ Future<void> setupDesktopWindow() async {
     await windowManager.focus();
   });
 }
+
+Future<void> toggleDesktopFullScreen() async {
+  final isFull = await windowManager.isFullScreen();
+  await windowManager.setFullScreen(!isFull);
+}

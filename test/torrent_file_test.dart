@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vault_the_spire/bittorrent/bencode.dart';
+import 'package:vault_the_spire/bittorrent/magnet_link.dart';
 import 'package:vault_the_spire/bittorrent/torrent_file.dart';
 import 'package:vault_the_spire/services/torrent_service.dart';
 
@@ -24,6 +25,20 @@ void main() {
     expect(metadata.files.first.path, 'test.txt');
     expect(metadata.files.first.length, 12345);
     expect(metadata.pieceHashes.length, 1);
+  });
+
+  test('parse magnet link with btih and trackers', () {
+    final magnet = MagnetLink.parse(
+      'magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567'
+      '&dn=Test+Torrent&tr=http://tracker1.example/announce'
+      '&tr=udp://tracker2.example:80/announce',
+    );
+
+    expect(magnet.infoHashV1, '0123456789abcdef0123456789abcdef01234567');
+    expect(magnet.infoHashV2, isNull);
+    expect(magnet.displayName, 'Test Torrent');
+    expect(magnet.trackers.length, 2);
+    expect(magnet.peers, isEmpty);
   });
 
   test('create magnet link with trackers', () {

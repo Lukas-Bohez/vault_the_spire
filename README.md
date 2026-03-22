@@ -39,6 +39,36 @@ Commands:
 - Added `TorrentService.createMagnetLink` + unit test
 - Added AppBar user hint to trigger drag-and-drop instructions
 
+## Privacy-first mission
+
+Vault The Spire was born from the radical idea that private file and message sharing should not require giving up personal freedom.
+
+- No central surveillance; no opaque tracking.
+- Local encrypted storage with SQLCipher.
+- End-to-end encryption for vault files (AES-256-GCM) and message sessions (X25519 + ratchet keys).
+- Peer-to-peer BitTorrent protocol with standard DHT but your data is your data.
+
+Use it for:
+- Private torrents and vault files that do not leak metadata to third parties.
+- Secure contact sharing via QR imports.
+- Read-only cross-platform channel sync from public sources with no content tracking.
+
+## Spread the word (marketing copy)
+
+### Tagline
+**"Vault The Spire: Share privately, share securely, share without compromise."**
+
+### Social pitch
+> Built on open standards (BitTorrent + DHT + WebRTC) with encrypted vault overlays and contact QR onboarding. No ads, no telemetry, no hidden publisher keys. Run it on Windows/macOS/Linux/Android/iOS.
+
+### GitHub description suggestion
+`Vault The Spire - cross-platform Flutter app for encrypted torrent + peer-to-peer messaging and vault sharing. Privacy-first, open source, no airdrop spy routes.`
+
+### Call to action for contributors
+- Star the repo and share on Hacker News, Reddit r/privacy, r/selfhosted, r/piracy.
+- Write a blog post: "How to run private torrents + encrypted chats from a single app." 
+- Add demo videos showing drag/drop torrent import, magnet link sharing, and desktop fullscreen mode.
+
 ## Notes
 
 - package versions are currently not up-to-date; run `flutter pub outdated` and upgrade carefully.
