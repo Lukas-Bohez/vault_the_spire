@@ -183,8 +183,23 @@ jobs:
 
       - name: Ensure Android SDK 36 + build tools
         run: |
-          yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses
-          $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+          if [ -d "$ANDROID_SDK_ROOT" ]; then
+            SDKROOT="$ANDROID_SDK_ROOT"
+          elif [ -d "$ANDROID_HOME" ]; then
+            SDKROOT="$ANDROID_HOME"
+          elif [ -d "/usr/local/lib/android/sdk" ]; then
+            SDKROOT="/usr/local/lib/android/sdk"
+          else
+            echo "ERROR: Android SDK root not found. Set ANDROID_SDK_ROOT or ANDROID_HOME."
+            exit 1
+          fi
+
+          echo "Using Android SDK at $SDKROOT"
+          yes | "$SDKROOT/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDKROOT" --licenses
+          "$SDKROOT/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$SDKROOT" "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+        env:
+          ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
 
       - name: Build APK
         run: flutter build apk --release --no-tree-shake-icons
