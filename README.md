@@ -65,11 +65,11 @@ Use it for:
 `Vault The Spire - cross-platform Flutter app for encrypted torrent + peer-to-peer messaging and vault sharing. Privacy-first, open source, no airdrop spy routes.`
 
 ### Call to action for contributors
-- Star the repo and share on Hacker News, Reddit r/privacy, r/selfhosted, r/piracy.
+- Star the repo and share on Hacker News, Reddit r/privacy, r/selfhosted.
 - Write a blog post: "How to run private torrents + encrypted chats from a single app." 
 - Add demo videos showing drag/drop torrent import, magnet link sharing, and desktop fullscreen mode.
 
 ## Notes
 
-- package versions are currently not up-to-date; run `flutter pub outdated` and upgrade carefully.
+- Package versions are currently not up-to-date; run `flutter pub outdated` and upgrade carefully.
 
