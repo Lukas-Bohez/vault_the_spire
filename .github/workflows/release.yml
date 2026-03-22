@@ -1,0 +1,229 @@
+# GitHub Actions release workflow for Vault The Spire
+# Manually triggered with workflow_dispatch.
+# Requires appropriate platform tooling (Windows/Mac/Linux) in runner.
+# Node 24 for JavaScript actions context is forced via env.
+
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release tag (e.g. v1.2.3)'
+        required: true
+        type: string
+      release_name:
+        description: 'Release name (e.g. "Vault The Spire v1.2.3")'
+        required: true
+        type: string
+      release_notes:
+        description: 'Release notes (Markdown)'
+        required: true
+        type: string
+      is_prerelease:
+        description: 'Mark as pre-release?'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  FLUTTER_VERSION: '3.41.2'
+  APP_NAME: vault_the_spire
+  OUTPUT_NAME: VaultTheSpire
+
+jobs:
+  test-and-analyze:
+    name: Test and Analyze
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+        shell: bash
+
+      - name: Run tests
+        run: flutter test --coverage
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 7
+
+  build-windows:
+    name: Build Windows
+    needs: test-and-analyze
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Install dependencies
+        run: flutter pub get
+      - name: Build Windows release
+        run: flutter build windows --release --no-tree-shake-icons
+      - name: Package Windows build
+        shell: pwsh
+        run: |
+          $src = "build\windows\x64\runner\Release"
+          if (!(Test-Path $src)) { Write-Error "Build output not found: $src"; exit 1 }
+          Compress-Archive -Path "$src\*" -DestinationPath "${{ env.OUTPUT_NAME }}-windows-x64.zip" -Force
+      - uses: actions/upload-artifact@v5
+        with:
+          name: windows-x64
+          path: ${{ env.OUTPUT_NAME }}-windows-x64.zip
+
+  build-linux:
+    name: Build Linux
+    needs: test-and-analyze
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y --no-install-recommends clang cmake ninja-build pkg-config libgtk-3-dev liblzma-dev libstdc++-12-dev fuse libfuse2
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Install dependencies
+        run: flutter pub get
+      - name: Build Linux release
+        run: flutter build linux --release --no-tree-shake-icons
+      - name: Package Linux zip
+        run: |
+          set -euo pipefail
+          BUNDLE="$GITHUB_WORKSPACE/build/linux/x64/release/bundle"
+          if [ ! -d "$BUNDLE" ]; then echo "ERROR: bundle not found: $BUNDLE"; exit 1; fi
+          cd "$BUNDLE"
+          zip -r "$GITHUB_WORKSPACE/${{ env.OUTPUT_NAME }}-linux-x64.zip" .
+      - uses: actions/upload-artifact@v5
+        with:
+          name: linux-x64
+          path: ${{ env.OUTPUT_NAME }}-linux-x64.zip
+
+  build-macos:
+    name: Build macOS
+    needs: test-and-analyze
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Install dependencies
+        run: flutter pub get
+      - name: Build macOS release
+        run: flutter build macos --release --no-tree-shake-icons
+      - name: Package macOS build
+        run: |
+          set -euo pipefail
+          APP=$(find build/macos/Build/Products/Release -maxdepth 1 -name "*.app" | head -1)
+          if [ -z "$APP" ]; then echo "ERROR: .app bundle not found"; exit 1; fi
+          ditto -c -k --keepParent "$APP" "${{ env.OUTPUT_NAME }}-macOS.zip"
+      - uses: actions/upload-artifact@v5
+        with:
+          name: macos-x64
+          path: ${{ env.OUTPUT_NAME }}-macOS.zip
+
+  build-android:
+    name: Build Android
+    needs: test-and-analyze
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - name: Configure Android signing
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then echo "No Android signing secrets set, using debug keys"; exit 0; fi
+          set -euo pipefail
+          echo "$KEYSTORE_BASE64" | base64 --decode > android/app/release.keystore
+          cat > android/key.properties <<EOF
+            storePassword=$KEYSTORE_PASSWORD
+            keyPassword=$KEY_PASSWORD
+            keyAlias=$KEY_ALIAS
+            storeFile=release.keystore
+            EOF
+      - name: Install dependencies
+        run: flutter pub get
+      - name: Build APK
+        run: flutter build apk --release --no-tree-shake-icons
+      - name: Build AAB
+        run: flutter build appbundle --release --no-tree-shake-icons
+      - name: Collect Android builds
+        run: |
+          mkdir -p android-builds
+          cp build/app/outputs/flutter-apk/app-release.apk android-builds/${{ env.OUTPUT_NAME }}.apk || true
+          cp build/app/outputs/bundle/release/app-release.aab android-builds/${{ env.OUTPUT_NAME }}.aab || true
+      - uses: actions/upload-artifact@v5
+        with:
+          name: android-builds
+          path: android-builds
+
+  release:
+    name: Publish release
+    needs: [build-windows, build-linux, build-macos, build-android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v5
+        with:
+          path: artifacts
+
+      - name: Generate checksum manifest
+        run: |
+          cd artifacts
+          find . -type f -not -name "*.sha256" | sort | xargs sha256sum > ../SHA256SUMS.txt
+          cat ../SHA256SUMS.txt
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ inputs.release_tag }}
+          name: ${{ inputs.release_name }}
+          body: ${{ inputs.release_notes }}
+          prerelease: ${{ inputs.is_prerelease }}
+          files: |
+            artifacts/windows-x64/*.zip
+            artifacts/linux-x64/*.zip
+            artifacts/macos-x64/*.zip
+            artifacts/android-builds/*
+            SHA256SUMS.txt
