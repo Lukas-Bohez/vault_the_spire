@@ -17,6 +17,39 @@ class TorrentService {
   Future<List<TorrentModel>> allTorrents() =>
       TorrentsDao.instance.getAllTorrents();
 
+  Future<List<TorrentModel>> findTorrents(String query) async {
+    final keyword = query.toLowerCase().trim();
+    final all = await allTorrents();
+    return all.where((torrent) {
+      final name = torrent.name.toLowerCase();
+      final magnet = torrent.magnetLink?.toLowerCase() ?? '';
+      return name.contains(keyword) || magnet.contains(keyword);
+    }).toList();
+  }
+
+  Future<List<TorrentModel>> discoverTorrentsOnline(String query) async {
+    final trimmed = query.trim();
+    await Future.delayed(const Duration(seconds: 2));
+    if (trimmed.isEmpty) return [];
+    final mockId = DateTime.now().millisecondsSinceEpoch.toString();
+    final sample = TorrentModel(
+      id: 'online-$mockId',
+      name: 'Discovered: $trimmed Torrent',
+      type: 'remote',
+      status: 'available',
+      vaultLink: null,
+      magnetLink: 'magnet:?xt=urn:btih:$mockId&dn=${Uri.encodeComponent(trimmed)}',
+      bytesDown: 0,
+      bytesUp: 0,
+      addedAt: DateTime.now().millisecondsSinceEpoch,
+      isSequential: false,
+      seeders: 120,
+      leechers: 15,
+      reputation: 4.5,
+    );
+    return [sample];
+  }
+
   Future<void> addTorrent(TorrentModel torrent) =>
       TorrentsDao.instance.insertTorrent(torrent);
 

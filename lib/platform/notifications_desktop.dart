@@ -12,6 +12,7 @@ class DesktopNotificationPoller {
       DesktopNotificationPoller._();
 
   Timer? _timer;
+  int _pollCount = 0;
 
   DesktopNotificationPoller._();
 
@@ -25,19 +26,21 @@ class DesktopNotificationPoller {
   }
 
   Future<void> _poll() async {
-    // TODO: Implement backend poll endpoint in server service:
-    //  GET https://quizthespire.com/vault/api/notify/poll?username=<me>
-    // and process returned wake notifications.
+    _pollCount += 1;
+    developer.log('[DesktopNotificationPoller] polling for notifications ($_pollCount) ...');
 
-    // TODO: Add integration with the vault messaging/p2p service to open intent.
-    // For now we log for visibility and keep the loop alive.
-    developer.log('[DesktopNotificationPoller] polling for notifications ...');
+    // Mock integration for now: display a test notification every 5 poll cycles.
+    if (_pollCount % 5 == 0) {
+      await _showNotification(
+        'VaultTheSpire',
+        'You have a new message or event to review',
+      );
+    }
+  }
 
-    // Example placeholder response handling:
-    // final items = await NotificationApi.instance.fetchPendingDesktopWakes();
-    // for (final wake in items) {
-    //   await _showNotification(wake.fromUsername, wake.message);
-    //   p2pService.acceptConnection(wake.fromUsername, wake.roomCode);
-    // }
+  Future<void> _showNotification(String title, String message) async {
+    // Cross-platform desktop notifications can be integrated via native plugins.
+    // For now this logs information and can be used for future real notification hooks.
+    developer.log('[DesktopNotification] $title: $message');
   }
 }

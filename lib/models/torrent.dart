@@ -12,6 +12,9 @@ class TorrentModel {
   final String? vaultLink;
   final String? magnetLink;
   final int bytesDown;
+  final int seeders;
+  final int leechers;
+  final double reputation;
   final int bytesUp;
   final int? addedAt;
   final int? completedAt;
@@ -53,6 +56,9 @@ class TorrentModel {
     this.selectedFiles,
     this.maxSeedRatio,
     this.deleteAfterRatioReached = false,
+    this.seeders = 0,
+    this.leechers = 0,
+    this.reputation = 0.0,
   });
 
   Map<String, dynamic> toMap() {
@@ -77,6 +83,9 @@ class TorrentModel {
       'selected_files': selectedFiles,
       'max_seed_ratio': maxSeedRatio,
       'delete_after_ratio_reached': deleteAfterRatioReached ? 1 : 0,
+      'seeders': seeders,
+      'leechers': leechers,
+      'reputation': reputation,
     };
   }
 
@@ -103,6 +112,9 @@ class TorrentModel {
       maxSeedRatio: (map['max_seed_ratio'] as num?)?.toDouble(),
       deleteAfterRatioReached:
           (map['delete_after_ratio_reached'] as int? ?? 0) == 1,
+      seeders: map['seeders'] as int? ?? 0,
+      leechers: map['leechers'] as int? ?? 0,
+      reputation: (map['reputation'] as num?)?.toDouble() ?? 0.0,
     );
   }
 }

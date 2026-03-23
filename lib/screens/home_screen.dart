@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:vault_the_spire/services/sound_service.dart';
@@ -9,6 +11,7 @@ import 'package:vault_the_spire/services/tray_service.dart';
 import 'package:vault_the_spire/services/server_service.dart';
 import 'package:vault_the_spire/models/chat_message.dart';
 import 'package:vault_the_spire/models/server.dart';
+import 'package:vault_the_spire/models/torrent.dart';
 import 'package:vault_the_spire/services/startup_service.dart';
 import 'package:vault_the_spire/constants.dart';
 import 'package:vault_the_spire/services/torrent_service.dart';
@@ -39,13 +42,18 @@ class _HomeScreenState extends State<HomeScreen> {
   ChatMessage? _dmReplyTarget;
   bool _inVoiceChannel = false;
   String _voiceChannelServer = '';
-  final Set<String> _dmContacts = <String>{};
+
+  String _torrentSearchQuery = '';
+  bool _onlineDiscoveryLoading = false;
+  List<TorrentModel> _discoveredTorrents = [];  final Set<String> _dmContacts = <String>{};
   final Map<String, int> _dmUnread = <String, int>{};
   final Map<String, bool> _voiceMuted = <String, bool>{};
   final TextEditingController _serverNameController = TextEditingController();
   final TextEditingController _inviteCodeController = TextEditingController();
   final TextEditingController _channelNameController = TextEditingController();
+  final TextEditingController _torrentInputController = TextEditingController();
   final TextEditingController _dmPeerController = TextEditingController();
+  final FocusNode _hotkeyFocusNode = FocusNode();
   final TextEditingController _dmMessageController = TextEditingController();
   final TextEditingController _inlineMessageController =
       TextEditingController();
@@ -58,12 +66,14 @@ class _HomeScreenState extends State<HomeScreen> {
     _serverNameController.dispose();
     _inviteCodeController.dispose();
     _channelNameController.dispose();
+    _torrentInputController.dispose();
     _dmPeerController.dispose();
     _dmMessageController.dispose();
     _inlineMessageController.dispose();
     _identityNameController.dispose();
     _serverChatScrollController.dispose();
     _dmChatScrollController.dispose();
+    _hotkeyFocusNode.dispose();
     super.dispose();
   }
 
@@ -371,6 +381,126 @@ class _HomeScreenState extends State<HomeScreen> {
       await SoundService.instance.playClick();
       await SoundService.instance.stopVoiceSession();
     }
+  }
+
+  Future<void> _addTorrentFromInput() async {
+    final text = _torrentInputController.text.trim();
+    if (text.isEmpty) return;
+
+    try {
+      if (text.startsWith('magnet:')) {
+        await TorrentService.instance.addTorrentFromMagnetLink(text);
+      } else if (text.toLowerCase().endsWith('.torrent')) {
+        await TorrentService.instance.addTorrentFromTorrentFile(text);
+      } else {
+        // If path exists, add from directory or file path.
+        final path = text;
+        if (await File(path).exists() || await Directory(path).exists()) {
+          await TorrentService.instance.addTorrentFromPath(path);
+        } else {
+          throw FormatException('Invalid torrent input. Use magnet link or existing path');
+        }
+      }
+
+      _torrentInputController.clear();
+      await SoundService.instance.playNotification();
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Torrent added successfully')),
+      );
+    } catch (error) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to add torrent: $error')),
+      );
+    }
+  }
+
+  Future<void> _showSeedingSettings() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final torrents = await TorrentService.instance.allTorrents();
+    if (torrents.isEmpty) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('No torrents to configure yet')),
+      );
+      return;
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Seeding Settings'),
+          content: SizedBox(
+            width: 420,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: torrents.map((torrent) {
+                  final ratioController = TextEditingController(
+                    text: torrent.maxSeedRatio?.toStringAsFixed(2) ?? '',
+                  );
+                  bool deleteAfter = torrent.deleteAfterRatioReached;
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    child: Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            torrent.name,
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 4),
+                          TextField(
+                            controller: ratioController,
+                            decoration: const InputDecoration(
+                              labelText: 'Max seed ratio (e.g., 2.0)',
+                              isDense: true,
+                            ),
+                            keyboardType:
+                                const TextInputType.numberWithOptions(decimal: true),
+                            onSubmitted: (value) async {
+                              final ratio = double.tryParse(value);
+                              if (ratio == null) return;
+                              await TorrentService.instance.setSeedRatioLimit(
+                                torrent.id,
+                                ratio,
+                              );
+                              setState(() {});
+                            },
+                          ),
+                          Row(
+                            children: [
+                              Checkbox(
+                                value: deleteAfter,
+                                onChanged: (value) async {
+                                  if (value == null) return;
+                                  await TorrentService.instance
+                                      .setDeleteAfterRatioReached(torrent.id, value);
+                                  setState(() {});
+                                },
+                              ),
+                              const Text('Delete after reaching ratio'),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   Widget _buildServerPanel(ThemeData theme, {bool inDrawer = false}) {
@@ -745,6 +875,7 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               Expanded(
                 child: TextField(
+                  controller: _torrentInputController,
                   decoration: InputDecoration(
                     hintText: 'Paste magnet link or .torrent path here',
                     filled: true,
@@ -754,22 +885,60 @@ class _HomeScreenState extends State<HomeScreen> {
                       borderSide: BorderSide.none,
                     ),
                   ),
-                  onSubmitted: (text) async {
-                    if (text.trim().isEmpty) return;
-                    await TorrentService.instance.addTorrentFromMagnetLink(text.trim());
-                    setState(() {});
-                  },
+                  onSubmitted: (_) => _addTorrentFromInput(),
                 ),
               ),
               const SizedBox(width: 8),
               ElevatedButton.icon(
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Add torrent action coming soon')),
-                  );
-                },
+                onPressed: _addTorrentFromInput,
                 icon: const Icon(Icons.file_upload),
                 label: const Text('Add'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  decoration: InputDecoration(
+                    hintText: 'Find torrents by name or link',
+                    filled: true,
+                    fillColor: theme.colorScheme.surfaceContainerHighest,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                  onChanged: (value) => setState(() {
+                    _torrentSearchQuery = value;
+                  }),
+                ),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton.icon(
+                onPressed: () async {
+                  setState(() {
+                    _onlineDiscoveryLoading = true;
+                  });
+                  final discovered = await TorrentService.instance
+                      .discoverTorrentsOnline(_torrentSearchQuery);
+                  for (final torrent in discovered) {
+                    await TorrentService.instance.addTorrent(torrent);
+                  }
+                  setState(() {
+                    _discoveredTorrents = discovered;
+                    _onlineDiscoveryLoading = false;
+                  });
+                },
+                icon: _onlineDiscoveryLoading
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.search),
+                label: const Text('Discover online'),
               ),
             ],
           ),
@@ -782,18 +951,56 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: const Text('Refresh'),
               ),
               OutlinedButton(
-                onPressed: () {
+                onPressed: _showSeedingSettings,
+                child: const Text('Seeding settings'),
+              ),
+              OutlinedButton(
+                onPressed: () async {
+                  // CPU/GPU scan placeholder
                   ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text('Seeding settings pane coming soon'),
+                    content: Text('System scanning for torrent sources..'),
+                  ));
+                  await Future.delayed(const Duration(seconds: 2));
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('Scan complete (mock) - no new torrents'),
                   ));
                 },
-                child: const Text('Seeding settings'),
+                child: const Text('Scan for torrents'),
               ),
             ],
           ),
           const SizedBox(height: 12),
+          if (_discoveredTorrents.isNotEmpty) ...[
+            Text('Discovered Torrents', style: theme.textTheme.titleMedium),
+            const SizedBox(height: 8),
+            ..._discoveredTorrents.map((torrent) {
+              return ListTile(
+                leading: const Icon(Icons.new_releases),
+                title: Text(torrent.name),
+                subtitle: Text(
+                  'Seeders ${torrent.seeders}, Leechers ${torrent.leechers}, Rep ${torrent.reputation.toStringAsFixed(1)}',
+                ),
+                trailing: IconButton(
+                  icon: const Icon(Icons.download),
+                  tooltip: 'Add discovered torrent',
+                  onPressed: () async {
+                    await TorrentService.instance.addTorrent(torrent);
+                    setState(() {
+                      _discoveredTorrents.remove(torrent);
+                    });
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Added ${torrent.name}.')),
+                    );
+                  },
+                ),
+              );
+            }),
+            const Divider(),
+          ],
           FutureBuilder<List<dynamic>>(
-            future: TorrentService.instance.allTorrents(),
+            future: _torrentSearchQuery.isEmpty
+                ? TorrentService.instance.allTorrents()
+                : TorrentService.instance.findTorrents(_torrentSearchQuery),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());
@@ -1681,16 +1888,18 @@ class _HomeScreenState extends State<HomeScreen> {
     final theme = Theme.of(context);
     final isMobile = MediaQuery.of(context).size.width < 760;
 
-    if (isMobile) {
-      final pages = [
-        _buildMainArea(theme),
-        _buildTorrentsArea(theme),
-        _buildMessagesArea(theme),
-        _buildServerPanel(theme),
-      ];
+    final editablePages = [
+      _buildMainArea(theme),
+      _buildTorrentsArea(theme),
+      _buildMessagesArea(theme),
+      _buildServerPanel(theme),
+    ];
 
-      return Scaffold(
-        body: SafeArea(child: pages[_mobileNavIndex]),
+    Widget content;
+
+    if (isMobile) {
+      content = Scaffold(
+        body: SafeArea(child: editablePages[_mobileNavIndex]),
         bottomNavigationBar: BottomNavigationBar(
           currentIndex: _mobileNavIndex,
           onTap: (value) => setState(() {
@@ -1707,10 +1916,8 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       );
-    }
-
-    if (usePersistentSidebar) {
-      return Scaffold(
+    } else if (usePersistentSidebar) {
+      content = Scaffold(
         body: Row(
           children: [
             _buildServerPanel(theme),
@@ -1718,20 +1925,46 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       );
+    } else {
+      content = Scaffold(
+        key: _scaffoldKey,
+        appBar: AppBar(
+          title: const Text('VaultTheSpire'),
+          leading: IconButton(
+            icon: const Icon(Icons.menu),
+            onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+            tooltip: 'Open sidebar',
+          ),
+        ),
+        drawer: Drawer(child: _buildServerPanel(theme, inDrawer: true)),
+        body: _buildMainArea(theme),
+      );
     }
 
-    return Scaffold(
-      key: _scaffoldKey,
-      appBar: AppBar(
-        title: const Text('VaultTheSpire'),
-        leading: IconButton(
-          icon: const Icon(Icons.menu),
-          onPressed: () => _scaffoldKey.currentState?.openDrawer(),
-          tooltip: 'Open sidebar',
-        ),
-      ),
-      drawer: Drawer(child: _buildServerPanel(theme, inDrawer: true)),
-      body: _buildMainArea(theme),
+    return KeyboardListener(
+      focusNode: _hotkeyFocusNode,
+      autofocus: true,
+      onKeyEvent: (event) {
+        if (event is KeyDownEvent) {
+          final isCtrl = HardwareKeyboard.instance.logicalKeysPressed
+                  .contains(LogicalKeyboardKey.controlLeft) ||
+              HardwareKeyboard.instance.logicalKeysPressed
+                  .contains(LogicalKeyboardKey.controlRight);
+          final key = event.logicalKey;
+          if (key == LogicalKeyboardKey.digit1 && isCtrl) {
+            setState(() => _mainView = MainView.dashboard);
+          } else if (key == LogicalKeyboardKey.digit2 && isCtrl) {
+            setState(() => _mainView = MainView.torrents);
+          } else if (key == LogicalKeyboardKey.digit3 && isCtrl) {
+            setState(() => _mainView = MainView.messages);
+          } else if (key == LogicalKeyboardKey.digit4 && isCtrl) {
+            setState(() => _mainView = MainView.server);
+          } else if (key == LogicalKeyboardKey.keyS && isCtrl) {
+            _showSeedingSettings();
+          }
+        }
+      },
+      child: content,
     );
   }
 }

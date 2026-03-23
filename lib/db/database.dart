@@ -23,7 +23,7 @@ class AppDatabase {
     final dbPath = await _getDatabasePath();
     _database = await openDatabase(
       dbPath,
-      version: 3,
+      version: 4,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onConfigure: (db) async {
@@ -46,6 +46,7 @@ class AppDatabase {
       },
       onOpen: (db) async {
         await _ensureChatMessageColumns(db);
+        await _ensureDirectMessageServer(db);
       },
     );
     return _database!;
@@ -78,7 +79,10 @@ class AppDatabase {
         is_sequential INTEGER DEFAULT 0,
         selected_files TEXT,
         max_seed_ratio REAL,
-        delete_after_ratio_reached INTEGER DEFAULT 0
+        delete_after_ratio_reached INTEGER DEFAULT 0,
+        seeders INTEGER DEFAULT 0,
+        leechers INTEGER DEFAULT 0,
+        reputation REAL DEFAULT 0.0
       );
     ''');
 
@@ -122,6 +126,12 @@ class AppDatabase {
         FOREIGN KEY(server_id) REFERENCES servers(id) ON DELETE CASCADE
       );
     ''');
+
+    // Ensure a special DM server row exists so direct message records satisfy FK.
+    await db.execute('''
+      INSERT OR IGNORE INTO servers (id, name, description, icon, channels)
+      VALUES ('_dm', 'Direct Messages', 'System direct message channel', '💬', '[]');
+    ''');
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -146,7 +156,20 @@ class AppDatabase {
       ''');
     }
 
+    if (oldVersion < 4) {
+      await db.execute('''
+        ALTER TABLE torrents ADD COLUMN seeders INTEGER DEFAULT 0;
+      ''');
+      await db.execute('''
+        ALTER TABLE torrents ADD COLUMN leechers INTEGER DEFAULT 0;
+      ''');
+      await db.execute('''
+        ALTER TABLE torrents ADD COLUMN reputation REAL DEFAULT 0.0;
+      ''');
+    }
+
     await _ensureChatMessageColumns(db);
+    await _ensureTorrentColumns(db);
   }
 
   Future<bool> _columnExists(Database db, String table, String column) async {
@@ -166,6 +189,25 @@ class AppDatabase {
     if (!await _columnExists(db, 'chat_messages', 'reactions')) {
       await db.execute('ALTER TABLE chat_messages ADD COLUMN reactions TEXT;');
     }
+  }
+
+  Future<void> _ensureTorrentColumns(Database db) async {
+    if (!await _columnExists(db, 'torrents', 'seeders')) {
+      await db.execute('ALTER TABLE torrents ADD COLUMN seeders INTEGER DEFAULT 0;');
+    }
+    if (!await _columnExists(db, 'torrents', 'leechers')) {
+      await db.execute('ALTER TABLE torrents ADD COLUMN leechers INTEGER DEFAULT 0;');
+    }
+    if (!await _columnExists(db, 'torrents', 'reputation')) {
+      await db.execute('ALTER TABLE torrents ADD COLUMN reputation REAL DEFAULT 0.0;');
+    }
+  }
+
+  Future<void> _ensureDirectMessageServer(Database db) async {
+    await db.execute('''
+      INSERT OR IGNORE INTO servers (id, name, description, icon, channels)
+      VALUES ('_dm', 'Direct Messages', 'System direct message channel', '💬', '[]');
+    ''');
   }
 
   Future<void> close() async {
