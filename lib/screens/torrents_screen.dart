@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:vault_the_spire/models/torrent.dart';
 import 'package:vault_the_spire/platform/desktop_window.dart';
@@ -107,6 +108,80 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Failed to import torrent: $e')));
+    }
+  }
+
+  Future<void> _showCreateTorrentSourceDialog() async {
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Create torrent from'),
+          content: const Text('Choose a file or directory to create torrent.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop('file'),
+              child: const Text('File'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop('directory'),
+              child: const Text('Folder'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(null),
+              child: const Text('Cancel'),
+            ),
+          ],
+        );
+      },
+    );
+    if (choice == 'file') {
+      await _pickFileAndCreateTorrent();
+    } else if (choice == 'directory') {
+      await _pickDirectoryAndCreateTorrent();
+    }
+  }
+
+  Future<void> _pickFileAndCreateTorrent() async {
+    final result = await FilePicker.platform.pickFiles(
+      allowMultiple: false,
+      type: FileType.any,
+    );
+    if (result == null || result.files.isEmpty) return;
+    final path = result.files.single.path;
+    if (path == null) return;
+
+    try {
+      await TorrentService.instance.addTorrentFromPath(path);
+      await _refresh();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Torrent created from file and added.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to create torrent: $e')));
+    }
+  }
+
+  Future<void> _pickDirectoryAndCreateTorrent() async {
+    final path = await FilePicker.platform.getDirectoryPath();
+    if (path == null || path.isEmpty) return;
+
+    try {
+      await TorrentService.instance.addTorrentFromPath(path);
+      await _refresh();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Torrent created from folder and added.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to create torrent: $e')));
     }
   }
 
@@ -219,6 +294,11 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
             icon: const Icon(Icons.pause),
             tooltip: 'Pause all',
             onPressed: _pauseAll,
+          ),
+          IconButton(
+            icon: const Icon(Icons.add),
+            tooltip: 'Create torrent from file/folder',
+            onPressed: _showCreateTorrentSourceDialog,
           ),
           IconButton(
             icon: const Icon(Icons.add_link),
@@ -406,6 +486,32 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
                         TorrentDragDrop(
                           onTorrentFile: (path) {
                             _importTorrent(path);
+                          },
+                          onPath: (path) async {
+                            final messenger = ScaffoldMessenger.of(context);
+                            try {
+                              await TorrentService.instance.addTorrentFromPath(
+                                path,
+                              );
+                              await _refresh();
+                              if (!mounted) return;
+                              messenger.showSnackBar(
+                                const SnackBar(
+                                  content: Text(
+                                    'Path added as torrent container.',
+                                  ),
+                                ),
+                              );
+                            } catch (e) {
+                              if (!mounted) return;
+                              messenger.showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    'Failed to create torrent from path: $e',
+                                  ),
+                                ),
+                              );
+                            }
                           },
                         ),
                         const SizedBox(height: 12),

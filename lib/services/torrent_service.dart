@@ -1,6 +1,9 @@
 import 'dart:io';
+import 'dart:typed_data';
 
+import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
+import 'package:vault_the_spire/bittorrent/bencode.dart';
 import 'package:vault_the_spire/bittorrent/magnet_link.dart';
 import 'package:vault_the_spire/bittorrent/torrent_file.dart';
 import 'package:vault_the_spire/db/torrents_dao.dart';
@@ -258,10 +261,127 @@ class TorrentService {
         .join('&');
 
     final List<String> pieces = ['xt=urn:btih:$infoHash', 'dn=$encodedName'];
+
     if (trackersQuery.isNotEmpty) {
-      pieces.add(trackersQuery);
+      pieces.addAll(trackersQuery.split('&'));
     }
 
     return 'magnet:?${pieces.join('&')}';
   }
+
+  Future<void> addTorrentFromPath(
+    String path, {
+    int pieceLength = 262144,
+  }) async {
+    final type = await FileSystemEntity.type(path);
+    if (type == FileSystemEntityType.notFound) {
+      throw FileSystemException('Path does not exist', path);
+    }
+
+    final root = Directory(path);
+    final name = p.basename(path);
+    final baseDir = type == FileSystemEntityType.directory
+        ? Directory(path)
+        : File(path).parent;
+
+    final List<_FileEntry> entries = [];
+
+    if (type == FileSystemEntityType.file) {
+      final file = File(path);
+      final stat = await file.stat();
+      entries.add(
+        _FileEntry(
+          file.path,
+          p.relative(file.path, from: baseDir.path),
+          stat.size,
+        ),
+      );
+    } else {
+      await for (var entity in root.list(recursive: true, followLinks: false)) {
+        if (entity is File) {
+          final rel = p.relative(entity.path, from: root.path);
+          final stat = await entity.stat();
+          entries.add(_FileEntry(entity.path, rel, stat.size));
+        }
+      }
+      entries.sort((a, b) => a.relativePath.compareTo(b.relativePath));
+    }
+
+    if (entries.isEmpty) {
+      throw StateError('No files to create torrent from');
+    }
+
+    final bytesBuilder = BytesBuilder();
+    final pieceHashes = BytesBuilder();
+    int bufferLen = 0;
+
+    Future<void> addChunk(List<int> chunk) async {
+      bytesBuilder.add(chunk);
+      bufferLen += chunk.length;
+      if (bufferLen >= pieceLength) {
+        final pieceData = bytesBuilder.toBytes();
+        final toHash = pieceData.sublist(0, pieceLength);
+        final digest = sha1.convert(toHash);
+        pieceHashes.add(digest.bytes);
+        final remaining = pieceData.sublist(pieceLength);
+        bytesBuilder.clear();
+        bytesBuilder.add(remaining);
+        bufferLen = remaining.length;
+      }
+    }
+
+    for (final entry in entries) {
+      final file = File(entry.path);
+      final raf = file.openRead();
+      await for (final chunk in raf) {
+        await addChunk(chunk);
+      }
+    }
+
+    if (bufferLen > 0) {
+      final digest = sha1.convert(bytesBuilder.toBytes());
+      pieceHashes.add(digest.bytes);
+    }
+
+    final info = <String, dynamic>{
+      'name': name,
+      'piece length': pieceLength,
+      'pieces': Uint8List.fromList(pieceHashes.toBytes()),
+    };
+
+    if (type == FileSystemEntityType.file) {
+      info['length'] = entries.first.length;
+    } else {
+      final files = entries
+          .map(
+            (e) => {
+              'length': e.length,
+              'path': e.relativePath.split(p.separator),
+            },
+          )
+          .toList();
+      info['files'] = files;
+    }
+
+    final metadict = <String, dynamic>{
+      'announce': 'https://tracker.openbittorrent.com:443/announce',
+      'info': info,
+    };
+
+    final torrentBytes = bencode(metadict);
+    final torrentFileName = '$name.torrent';
+    final torrentFilePath = p.join(baseDir.path, torrentFileName);
+    final torrentFile = File(torrentFilePath);
+    await torrentFile.writeAsBytes(torrentBytes, flush: true);
+
+    await addTorrentFromTorrentFile(torrentFilePath);
+  }
+}
+
+class _FileEntry {
+  final String path;
+  final String relativePath;
+  final int length;
+
+  _FileEntry(this.path, this.relativePath, this.length);
 }

@@ -188,15 +188,14 @@ class _HomeScreenState extends State<HomeScreen> {
     messenger.showSnackBar(SnackBar(content: Text(message)));
   }
 
-  // ignore: use_build_context_synchronously
   Future<void> _exportIdentity() async {
     final messenger = ScaffoldMessenger.of(context);
-    final currentContext = context;
     try {
       final jsonString = await IdentityService.instance.exportIdentity();
+      if (!mounted) return;
       // ignore: use_build_context_synchronously
       await showDialog<void>(
-        context: currentContext,
+        context: context,
         builder: (context) {
           return AlertDialog(
             title: const Text('Export Identity'),
@@ -310,10 +309,30 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildServerPanel(ThemeData theme, {bool inDrawer = false}) {
     final identity = IdentityService.instance.identity;
     return Container(
-      width: inDrawer ? null : 260,
-      color: theme.colorScheme.surfaceContainerHighest,
+      width: inDrawer ? null : 320,
+      constraints: inDrawer
+          ? const BoxConstraints(minWidth: 280, maxWidth: 520)
+          : const BoxConstraints(
+              minWidth: 320,
+              maxWidth: 320,
+              minHeight: double.infinity,
+            ),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        border: inDrawer
+            ? null
+            : Border(
+                right: BorderSide(
+                  color: theme.colorScheme.outline.withAlpha(
+                    (0.15 * 255).round(),
+                  ),
+                  width: 1.2,
+                ),
+              ),
+      ),
       padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 12),
       child: SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -501,30 +520,64 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 8),
             if (selectedServer != null) ...[
               Card(
+                elevation: 2,
                 color: _inVoiceChannel
                     ? theme.colorScheme.tertiaryContainer
                     : theme.colorScheme.surfaceContainerHighest,
+                margin: EdgeInsets.zero,
                 child: ListTile(
-                  leading: const Icon(Icons.mic),
+                  leading: const Icon(Icons.mic, size: 22),
                   title: Text(
+                    _inVoiceChannel ? 'Voice channel active' : 'Voice chat',
+                    style: theme.textTheme.titleSmall,
+                  ),
+                  subtitle: Text(
                     _inVoiceChannel
-                        ? 'In voice in: $_voiceChannelServer'
+                        ? _voiceChannelServer
                         : 'Not in voice channel',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
                   trailing: ElevatedButton(
                     onPressed: () {
-                      if (selectedServer != null) {
-                        _toggleVoiceChannel(
-                          selectedServer!.id,
-                          selectedServer!.name,
-                        );
-                      }
+                      _toggleVoiceChannel(
+                        selectedServer!.id,
+                        selectedServer!.name,
+                      );
                     },
                     child: Text(_inVoiceChannel ? 'Leave' : 'Join'),
                   ),
                 ),
               ),
-              if (_inVoiceChannel)
+              if (_inVoiceChannel) ...[
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  children: _voiceMuted.entries.map((entry) {
+                    return InputChip(
+                      label: Text(
+                        '${entry.key}${entry.value ? ' (muted)' : ''}',
+                      ),
+                      avatar: Icon(
+                        entry.value ? Icons.volume_off : Icons.volume_up,
+                        size: 18,
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _voiceMuted[entry.key] = !entry.value;
+                        });
+                      },
+                      onDeleted: () {
+                        setState(() {
+                          _voiceMuted.remove(entry.key);
+                        });
+                      },
+                      deleteIcon: const Icon(Icons.close, size: 16),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 6),
                 ElevatedButton.icon(
                   onPressed: () {
                     setState(() {
@@ -536,7 +589,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   icon: const Icon(Icons.person_add),
                   label: const Text('Add participant'),
                 ),
-              const SizedBox(height: 10),
+              ],
+              const SizedBox(height: 12),
               const Text(
                 'Create Channel',
                 style: TextStyle(fontWeight: FontWeight.bold),
@@ -866,9 +920,33 @@ class _HomeScreenState extends State<HomeScreen> {
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                      Text(
-                                        m.author,
-                                        style: theme.textTheme.labelSmall,
+                                      Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.center,
+                                        children: [
+                                          CircleAvatar(
+                                            radius: 10,
+                                            backgroundColor: isMe
+                                                ? theme.colorScheme.primary
+                                                : theme.colorScheme.secondary,
+                                            child: Text(
+                                              m.author.isNotEmpty
+                                                  ? m.author[0].toUpperCase()
+                                                  : '?',
+                                              style: const TextStyle(
+                                                fontSize: 10,
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(width: 6),
+                                          Expanded(
+                                            child: Text(
+                                              m.author,
+                                              style: theme.textTheme.labelSmall,
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                       const SizedBox(height: 4),
                                       if (m.replyToMessageId != null)
@@ -1138,6 +1216,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 itemBuilder: (context, index) {
                   final m = messages[index];
                   return ListTile(
+                    leading: CircleAvatar(
+                      backgroundColor: Colors.blueGrey.shade600,
+                      child: Text(
+                        m.author.isNotEmpty ? m.author[0].toUpperCase() : '?',
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ),
                     title: Text(m.author),
                     subtitle: Text(m.text),
                     trailing: Text(
@@ -1332,7 +1417,11 @@ class _HomeScreenState extends State<HomeScreen> {
                             final nodeId =
                                 IdentityService.instance.identity?.nodeId ?? '';
                             if (nodeId.isNotEmpty) {
-                              _copyToClipboard(nodeId, 'Node ID copied', context);
+                              _copyToClipboard(
+                                nodeId,
+                                'Node ID copied',
+                                context,
+                              );
                             }
                           },
                         ),

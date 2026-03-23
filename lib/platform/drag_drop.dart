@@ -3,8 +3,9 @@ import 'package:flutter/material.dart';
 
 class TorrentDragDrop extends StatefulWidget {
   final void Function(String path) onTorrentFile;
+  final void Function(String path)? onPath;
 
-  const TorrentDragDrop({super.key, required this.onTorrentFile});
+  const TorrentDragDrop({super.key, required this.onTorrentFile, this.onPath});
 
   @override
   State<TorrentDragDrop> createState() => _TorrentDragDropState();
@@ -23,6 +24,8 @@ class _TorrentDragDropState extends State<TorrentDragDrop> {
         for (final file in detail.files) {
           if (file.name.endsWith('.torrent')) {
             widget.onTorrentFile(file.path);
+          } else {
+            widget.onPath?.call(file.path);
           }
         }
       },
