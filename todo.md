@@ -1,62 +1,63 @@
-# VaultTheSpire — Discord-Direction Feature Suggestions
+# VaultTheSpire — Google Play Store Readiness Checklist
 
-## 0. Roadmap & release plan
-- [x] Phase 1: Core Discord-like UX, task lists, messaging + torrents navigation, style and theming (completed)
-- [ ] Phase 2: Channels/guilds, role system, invite links, DM + server message persistence
-- [ ] Phase 3: Voice rooms, rich embeds, server discovery, advanced permission system
+## 1. Google Play Developer Account
+- [ ] Register at play.google.com/console ($25 one-time fee)
+- [ ] Verify identity and payment details
+- [ ] Accept Google Play Developer Distribution Agreement
 
-## 1. Differentiation & Marketing
-- [ ] Write clear landing page copy emphasizing "no company in the middle"
-- [ ] Add in-app messaging: "Your community, your rules, your keys"
-- [ ] Document clearly that no messages are stored on any central server
-- [ ] Add a comparison page vs Discord highlighting E2E encryption and P2P architecture
+## 2. App Content & Policy Compliance
+- [ ] Write and publish a Privacy Policy (required — must be hosted at a public URL)
+- [ ] Write Terms of Service clearly stating prohibited uses, including:
+  - [ ] No illegal content of any kind
+  - [ ] No CSAM (explicitly named — zero tolerance)
+  - [ ] No copyright infringement
+  - [ ] No harassment or hate speech
+- [ ] Complete the Content Rating Questionnaire in Play Console (IARC rating)
+- [ ] Ensure app does not violate Google Play's User Generated Content policy
+- [ ] Add in-app reporting mechanism for abusive content/users
+- [ ] Document how abuse reports are handled and actioned
 
-## 2. Voice Channels
-- [ ] Design voice channel UI (room list in server sidebar)
-- [ ] Implement WebRTC audio streams for voice rooms
-- [ ] Add mute/deafen controls
-- [ ] Add user speaking indicators (visual feedback when someone talks)
-- [ ] Support multiple simultaneous voice rooms per server
-- [ ] Add voice channel join/leave notifications in text channel
+## 3. Store Listing
+- [ ] App name: VaultTheSpire
+- [ ] Short description (80 chars max)
+- [ ] Full description (4000 chars max) — highlight privacy, encryption, P2P
+- [ ] Feature graphic (1024x500px)
+- [ ] App icon (512x512px, PNG)
+- [ ] At least 2 screenshots per device type (phone required, tablet optional)
+- [ ] Privacy Policy URL added to store listing
 
-## 3. Server/Guild System
-- [ ] Design server creation flow (name, icon, invite link)
-- [ ] Implement server list sidebar (like Discord's left icon rail)
-- [ ] Add channel categories within servers (text channels + voice channels)
-- [ ] Support server icons and banners
-- [ ] Add server discovery/explore screen for public servers
+## 4. App Bundle / APK
+- [ ] Build release AAB: `flutter build appbundle --release`
+- [ ] Sign the AAB with a release keystore (keep keystore backed up securely!)
+- [ ] Enable Google Play App Signing in Console
+- [ ] Set applicationId in build.gradle (e.g. com.quizthespire.vaultthespire)
+- [ ] Set versionCode and versionName correctly
+- [ ] Test release build on a physical device before upload
 
-## 4. Invite Links & Onboarding
-- [ ] Generate shareable invite links for servers
-- [ ] Support QR code invites (scan to join)
-- [ ] Add invite link expiry options (1 use, 7 days, never, etc.)
-- [ ] Deep link support: tapping a vault:// invite link opens the app and joins server
-- [ ] Show server preview (name, member count, description) before joining
+## 5. Permissions Audit
+- [ ] Review all permissions declared in AndroidManifest.xml
+- [ ] Remove any permissions not actively used
+- [ ] Add runtime permission requests with clear explanations to the user
+- [ ] Ensure INTERNET permission is declared
+- [ ] Justify any sensitive permissions if prompted during review
 
-## 5. Torrent Integration in Servers
-- [ ] Allow sharing magnet/vault links directly in chat channels
-- [ ] Render vault/magnet links as rich cards in chat (name, size, seed count)
-- [ ] Tap a shared torrent card to add it directly to the torrent engine
-- [ ] Show download progress inline in chat
-- [ ] Add a "Files" tab per server showing all shared torrents in that community
+## 6. Testing
+- [ ] Set up Internal Testing track in Play Console
+- [ ] Upload AAB to Internal Testing and test on multiple devices
+- [ ] Test on Android 8, 10, 12, and 14 (cover a wide range)
+- [ ] Fix any crashes reported in Android Vitals
+- [ ] Set up Closed Testing (beta) track before full release
 
-## 6. Roles & Permissions
-- [ ] Implement basic role system: Owner, Admin, Moderator, Member
-- [ ] Add role-based channel visibility (private channels for specific roles)
-- [ ] Add role-based permissions: who can post, upload, manage members
-- [ ] Allow custom roles with custom names and colors
-- [ ] Add role assignment UI in server settings
+## 7. Data Safety Form (required since 2022)
+- [ ] Complete Data Safety section in Play Console
+- [ ] Declare what data is collected (if any)
+- [ ] Declare whether data is shared with third parties
+- [ ] Declare encryption practices (highlight SQLCipher, E2E encryption)
+- [ ] Declare whether users can request data deletion
 
-## 7. Rich Link Embeds
-- [ ] Fetch Open Graph metadata for pasted URLs
-- [ ] Render link previews in chat (title, description, thumbnail)
-- [ ] Support image URL auto-preview inline
-- [ ] Support YouTube/video link embed cards
-- [ ] Add option to dismiss/collapse embeds per message
-
-## 8. Scope & Prioritization (Stay Focused)
-- [ ] Lock v1.x scope to: servers, text channels, DMs, basic roles, invite links
-- [ ] Defer voice channels to v1.5 or v2.0
-- [ ] Defer rich embeds until core stability is proven
-- [ ] Write a public roadmap so community knows what's coming
-- [ ] Set up a feedback channel (GitHub Issues or in-app) for user suggestions
+## 8. Launch
+- [ ] Submit for review (typically 1-7 days for new apps)
+- [ ] Monitor for policy violation emails from Google
+- [ ] Set up staged rollout (e.g. 10% → 50% → 100%) for first release
+- [ ] Respond to early user reviews promptly
+- [ ] Monitor Android Vitals for crashes and ANRs post-launch

@@ -6,6 +6,7 @@ import 'package:vault_the_spire/services/settings_service.dart';
 import 'package:vault_the_spire/services/theme_service.dart';
 import 'package:vault_the_spire/services/tray_service.dart';
 import 'package:vault_the_spire/services/server_service.dart';
+import 'package:vault_the_spire/models/server.dart';
 import 'package:vault_the_spire/services/startup_service.dart';
 import 'package:vault_the_spire/services/torrent_service.dart';
 
@@ -20,6 +21,8 @@ class _HomeScreenState extends State<HomeScreen> {
   bool useSystemTray = false;
   bool minimizeToTrayOnClose = false;
   bool launchOnStartup = false;
+  ServerModel? selectedServer;
+  String? selectedChannelId;
   final TextEditingController _serverNameController = TextEditingController();
   final TextEditingController _inviteCodeController = TextEditingController();
 
@@ -120,24 +123,51 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(height: 10),
                 const Divider(),
                 const SizedBox(height: 8),
-                const Text('Servers', style: TextStyle(fontWeight: FontWeight.bold)),
+                const Text(
+                  'Servers',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
                 const SizedBox(height: 8),
-                ...ServerService.instance.servers.map((server) => ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: Text(server.icon),
-                      title: Text(server.name),
-                      subtitle: Text(server.description, maxLines: 1, overflow: TextOverflow.ellipsis),
-                    )),
+                ...ServerService.instance.servers.map(
+                  (server) => ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Text(server.icon),
+                    title: Text(server.name),
+                    subtitle: Text(
+                      server.description,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    selected: selectedServer?.id == server.id,
+                    onTap: () {
+                      setState(() {
+                        selectedServer = server;
+                        selectedChannelId = server.channels.isNotEmpty
+                            ? server.channels.first.id
+                            : null;
+                      });
+                    },
+                  ),
+                ),
                 const SizedBox(height: 8),
                 TextField(
                   controller: _inviteCodeController,
-                  decoration: const InputDecoration(labelText: 'Invite code', isDense: true),
+                  decoration: const InputDecoration(
+                    labelText: 'Invite code',
+                    isDense: true,
+                  ),
                 ),
                 ElevatedButton(
                   onPressed: () {
-                    final success = ServerService.instance.joinServer(_inviteCodeController.text.trim());
+                    final success = ServerService.instance.joinServer(
+                      _inviteCodeController.text.trim(),
+                    );
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(success ? 'Joined server!' : 'Invalid invite code.')),
+                      SnackBar(
+                        content: Text(
+                          success ? 'Joined server!' : 'Invalid invite code.',
+                        ),
+                      ),
                     );
                     if (success) {
                       _inviteCodeController.clear();
@@ -149,7 +179,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(height: 8),
                 TextField(
                   controller: _serverNameController,
-                  decoration: const InputDecoration(labelText: 'New server name', isDense: true),
+                  decoration: const InputDecoration(
+                    labelText: 'New server name',
+                    isDense: true,
+                  ),
                 ),
                 ElevatedButton(
                   onPressed: () {
@@ -161,13 +194,35 @@ class _HomeScreenState extends State<HomeScreen> {
                     _serverNameController.clear();
                     setState(() {});
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Created server: ${server.name} (invite: ${server.id})')),
+                      SnackBar(
+                        content: Text(
+                          'Created server: ${server.name} (invite: ${server.id})',
+                        ),
+                      ),
                     );
                   },
                   child: const Text('Create server'),
                 ),
                 const SizedBox(height: 10),
                 const Divider(),
+                const SizedBox(height: 8),
+                if (selectedServer != null) ...[
+                  Text('Channels', style: theme.textTheme.labelMedium),
+                  const SizedBox(height: 8),
+                  ...selectedServer!.channels.map(
+                    (channel) => ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(channel.isVoice ? Icons.mic : Icons.tag),
+                      title: Text(channel.name),
+                      selected: selectedChannelId == channel.id,
+                      onTap: () {
+                        setState(() {
+                          selectedChannelId = channel.id;
+                        });
+                      },
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 8),
                 const Text(
                   'Welcome to the VaultTheSpire Discord-style client.',
