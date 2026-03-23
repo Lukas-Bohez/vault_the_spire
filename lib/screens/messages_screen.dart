@@ -1,3 +1,4 @@
+﻿import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:vault_the_spire/models/message.dart';
 import 'package:vault_the_spire/services/message_service.dart';
@@ -13,6 +14,8 @@ class _MessagesScreenState extends State<MessagesScreen> {
   final _recipientController = TextEditingController();
   final _bodyController = TextEditingController();
   List<MessageModel> _messages = [];
+  List<String> _conversationRecipients = [];
+  String? _selectedRecipient;
   bool _loading = true;
 
   @override
@@ -24,13 +27,39 @@ class _MessagesScreenState extends State<MessagesScreen> {
   Future<void> _reloadMessages() async {
     setState(() => _loading = true);
     _messages = await MessageService.instance.getMessages();
+
+    final recipients = <String>{};
+    for (final m in _messages) {
+      if (m.sender == 'me') {
+        if (m.recipient.isNotEmpty) recipients.add(m.recipient);
+      } else {
+        recipients.add(m.sender);
+      }
+    }
+
+    _conversationRecipients = recipients.toList()..sort();
+    if (_selectedRecipient == null && _conversationRecipients.isNotEmpty) {
+      _selectedRecipient = _conversationRecipients.first;
+      _recipientController.text = _selectedRecipient ?? '';
+    }
+
     setState(() => _loading = false);
   }
 
+  Future<void> _selectConversation(String peer) async {
+    if (!mounted) return;
+    _selectedRecipient = peer;
+    _recipientController.text = peer;
+    setState(() {});
+  }
+
   Future<void> _sendMessage() async {
-    final recipient = _recipientController.text.trim();
+    final recipient = (_recipientController.text.trim().isNotEmpty)
+        ? _recipientController.text.trim()
+        : _selectedRecipient;
     final body = _bodyController.text.trim();
-    if (recipient.isEmpty || body.isEmpty) return;
+
+    if (recipient == null || recipient.isEmpty || body.isEmpty) return;
 
     await MessageService.instance.sendLocalMessage(
       sender: 'me',
@@ -38,8 +67,8 @@ class _MessagesScreenState extends State<MessagesScreen> {
       body: body,
     );
 
-    _recipientController.clear();
     _bodyController.clear();
+    _selectedRecipient = recipient;
     await _reloadMessages();
   }
 
@@ -50,59 +79,233 @@ class _MessagesScreenState extends State<MessagesScreen> {
     super.dispose();
   }
 
+  List<MessageModel> _conversationMessages() {
+    if (_selectedRecipient == null) return [];
+    return _messages
+        .where((m) =>
+            (m.sender == 'me' && m.recipient == _selectedRecipient) ||
+            (m.sender == _selectedRecipient && m.recipient == 'me'))
+        .toList()
+      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+  }
+
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final conversations = _conversationRecipients;
+    final selectedMessages = _conversationMessages();
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Special Messaging')),
+      appBar: AppBar(title: const Text('Secure Messaging')),
       body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
+        padding: const EdgeInsets.all(12),
+        child: Row(
           children: [
-            TextField(
-              controller: _recipientController,
-              decoration: const InputDecoration(labelText: 'Recipient'),
+            Container(
+              width: 260,
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: isDark
+                    ? Colors.grey[900]
+                    : Colors.grey[200],
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Column(
+                children: [
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 8),
+                    child: Text(
+                      'Conversations',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  Expanded(
+                    child: conversations.isEmpty
+                        ? const Center(
+                            child: Text('No conversations yet'),
+                          )
+                        : ListView.builder(
+                            itemCount: conversations.length,
+                            itemBuilder: (context, index) {
+                              final peer = conversations[index];
+                              final unreadCount = _messages
+                                  .where((m) =>
+                                      m.sender == peer && !m.isSent && m.recipient == 'me')
+                                  .length;
+                              return ListTile(
+                                title: Text(peer),
+                                trailing: unreadCount > 0
+                                    ? CircleAvatar(
+                                        radius: 10,
+                                        backgroundColor: Colors.red,
+                                        child: Text(
+                                          unreadCount.toString(),
+                                          style: const TextStyle(
+                                              fontSize: 11,
+                                              color: Colors.white),
+                                        ),
+                                      )
+                                    : null,
+                                selected: _selectedRecipient == peer,
+                                selectedTileColor: Theme.of(context).colorScheme.primary.withOpacity(0.2),
+                                onTap: () => _selectConversation(peer),
+                              );
+                            },
+                          ),
+                  ),
+                  TextField(
+                    controller: _recipientController,
+                    decoration: const InputDecoration(
+                      labelText: 'Peer username',
+                      hintText: 'Enter peer username',
+                    ),
+                    onSubmitted: (text) {
+                      if (text.isNotEmpty) {
+                        _selectConversation(text);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  if (kDebugMode)
+                    ElevatedButton.icon(
+                      icon: const Icon(Icons.bug_report),
+                      label: const Text('Simulate incoming'),
+                      onPressed: () async {
+                        final target = _selectedRecipient ?? 'test-peer';
+                        await MessageService.instance.sendLocalMessage(
+                          sender: target,
+                          recipient: 'me',
+                          body: 'Sample debug inbound message',
+                        );
+                        await _reloadMessages();
+                      },
+                    ),
+                ],
+              ),
             ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _bodyController,
-              decoration: const InputDecoration(labelText: 'Message'),
-              minLines: 2,
-              maxLines: 5,
-            ),
-            const SizedBox(height: 12),
-            ElevatedButton.icon(
-              icon: const Icon(Icons.send),
-              label: const Text('Send Message'),
-              onPressed: _sendMessage,
-            ),
-            const SizedBox(height: 16),
-            if (_loading)
-              const Center(child: CircularProgressIndicator())
-            else if (_messages.isEmpty)
-              const Text('No messages yet. Send one!')
-            else
-              Expanded(
-                child: ListView.builder(
-                  itemCount: _messages.length,
-                  itemBuilder: (context, index) {
-                    final m = _messages[index];
-                    return Card(
-                      margin: const EdgeInsets.symmetric(vertical: 4),
-                      child: ListTile(
-                        title: Text(m.recipient),
-                        subtitle: Text(m.body),
-                        trailing: Text(
-                          m.isSent ? 'sent' : 'draft',
-                          style: TextStyle(
-                            color: m.isSent ? Colors.green : Colors.orange,
-                            fontSize: 12,
+            const SizedBox(width: 10),
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.grey[850] : Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (_selectedRecipient == null)
+                      Expanded(
+                        child: Center(
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: const [
+                              Icon(Icons.chat_bubble_outline, size: 72, color: Colors.grey),
+                              SizedBox(height: 12),
+                              Text(
+                                'Select a peer or enter a username to start messaging',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(color: Colors.grey, fontSize: 16),
+                              ),
+                            ],
                           ),
                         ),
+                      )
+                    else ...[
+                      Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Row(
+                          children: [
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _selectedRecipient!,
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                Text(
+                                  'Last activity: ${selectedMessages.isEmpty ? '—' : DateTime.fromMillisecondsSinceEpoch(selectedMessages.last.createdAt)}',
+                                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
-                    );
-                  },
+                      const Divider(height: 1),
+                      Expanded(
+                        child: _loading
+                            ? const Center(child: CircularProgressIndicator())
+                            : ListView.builder(
+                                padding: const EdgeInsets.all(12),
+                                itemCount: selectedMessages.length,
+                                itemBuilder: (context, index) {
+                                  final message = selectedMessages[index];
+                                  final isMine = message.sender == 'me';
+                                  return Align(
+                                    alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
+                                    child: Container(
+                                      margin: const EdgeInsets.symmetric(vertical: 4),
+                                      padding: const EdgeInsets.all(10),
+                                      decoration: BoxDecoration(
+                                        color: isMine ? Colors.blueAccent : Colors.grey[300],
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            message.body,
+                                            style: TextStyle(
+                                              color: isMine ? Colors.white : Colors.black87,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            DateTime.fromMillisecondsSinceEpoch(message.createdAt).toLocal().toString(),
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              color: isMine ? Colors.white70 : Colors.black54,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                      ),
+                      const Divider(height: 1),
+                      Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: TextField(
+                                controller: _bodyController,
+                                decoration: const InputDecoration(
+                                  hintText: 'Type your message',
+                                  border: OutlineInputBorder(),
+                                ),
+                                minLines: 1,
+                                maxLines: 3,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            ElevatedButton(
+                              onPressed: _sendMessage,
+                              child: const Icon(Icons.send),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
+            ),
           ],
         ),
       ),
