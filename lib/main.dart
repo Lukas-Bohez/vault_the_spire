@@ -123,20 +123,26 @@ class _MainAppState extends State<MainApp> {
       theme: ThemeData(
         brightness: Brightness.light,
         primaryColor: const Color(0xFF5865F2),
-        scaffoldBackgroundColor: const Color(0xFFF6F6F7),
+        scaffoldBackgroundColor: const Color(0xFFF2F3F5),
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF5865F2),
           brightness: Brightness.light,
+          primary: const Color(0xFF5865F2),
+          secondary: const Color(0xFF2F3136),
+          surface: const Color(0xFFF2F3F5),
         ),
         useMaterial3: true,
       ),
       darkTheme: ThemeData(
         brightness: Brightness.dark,
         primaryColor: const Color(0xFF5865F2),
-        scaffoldBackgroundColor: const Color(0xFF0F0F14),
+        scaffoldBackgroundColor: const Color(0xFF0B0D14),
         colorScheme: ColorScheme.fromSeed(
           seedColor: const Color(0xFF5865F2),
           brightness: Brightness.dark,
+          primary: const Color(0xFF5865F2),
+          secondary: const Color(0xFF2F3136),
+          surface: const Color(0xFF12181F),
         ),
         useMaterial3: true,
       ),

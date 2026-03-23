@@ -289,6 +289,73 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  Widget _buildModuleNav(ThemeData theme) {
+    final tabs = [
+      {'icon': Icons.dashboard, 'label': 'Dashboard', 'view': MainView.dashboard},
+      {'icon': Icons.storage, 'label': 'Torrents', 'view': MainView.torrents},
+      {'icon': Icons.chat, 'label': 'Messages', 'view': MainView.messages},
+      {'icon': Icons.cloud, 'label': 'Servers', 'view': MainView.server},
+    ];
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        border: Border(
+          bottom: BorderSide(
+            color: theme.colorScheme.onSurface.withAlpha((0.08 * 255).round()),
+          ),
+        ),
+      ),
+      child: Row(
+        children: tabs.map((tab) {
+          final view = tab['view'] as MainView;
+          final selected = _mainView == view;
+          return Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                elevation: selected ? 0 : 0,
+                backgroundColor: selected
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.surface,
+                foregroundColor: selected
+                    ? theme.colorScheme.onPrimary
+                    : theme.colorScheme.onSurface,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                side: BorderSide(
+                  color: selected
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurface.withAlpha((0.15 * 255).round()),
+                ),
+              ),
+              icon: Icon(tab['icon'] as IconData, size: 18),
+              label: Text(tab['label'] as String),
+              onPressed: () => setState(() {
+                _mainView = view;
+              }),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildMainContent(ThemeData theme) {
+    switch (_mainView) {
+      case MainView.torrents:
+        return _buildTorrentsArea(theme);
+      case MainView.messages:
+        return _buildMessagesArea(theme);
+      case MainView.server:
+        return _buildServerChatArea(theme);
+      case MainView.dashboard:
+        return _buildDashboard(theme);
+    }
+  }
+
   Future<void> _toggleVoiceChannel(String serverId, String channelName) async {
     final joining = !_inVoiceChannel;
     setState(() {
@@ -638,6 +705,57 @@ class _HomeScreenState extends State<HomeScreen> {
         children: [
           Text('Torrents', style: theme.textTheme.headlineMedium),
           const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  decoration: InputDecoration(
+                    hintText: 'Paste magnet link or .torrent path here',
+                    filled: true,
+                    fillColor: theme.colorScheme.surfaceContainerHighest,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(10),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                  onSubmitted: (text) async {
+                    if (text.trim().isEmpty) return;
+                    await TorrentService.instance.addTorrentFromMagnetLink(text.trim());
+                    setState(() {});
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton.icon(
+                onPressed: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Add torrent action coming soon')),
+                  );
+                },
+                icon: const Icon(Icons.file_upload),
+                label: const Text('Add'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 10,
+            children: [
+              ElevatedButton(
+                onPressed: () => setState(() {}),
+                child: const Text('Refresh'),
+              ),
+              OutlinedButton(
+                onPressed: () {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('Seeding settings pane coming soon'),
+                  ));
+                },
+                child: const Text('Seeding settings'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
           FutureBuilder<List<dynamic>>(
             future: TorrentService.instance.allTorrents(),
             builder: (context, snapshot) {
@@ -1290,16 +1408,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildMainArea(ThemeData theme) {
-    switch (_mainView) {
-      case MainView.torrents:
-        return _buildTorrentsArea(theme);
-      case MainView.messages:
-        return _buildMessagesArea(theme);
-      case MainView.server:
-        return _buildServerChatArea(theme);
-      case MainView.dashboard:
-        return _buildDashboard(theme);
-    }
+    return Column(
+      children: [
+        _buildModuleNav(theme),
+        Expanded(child: _buildMainContent(theme)),
+      ],
+    );
   }
 
   Widget _buildDashboard(ThemeData theme) {
