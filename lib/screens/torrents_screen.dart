@@ -19,6 +19,7 @@ class TorrentsScreen extends StatefulWidget {
 class _TorrentsScreenState extends State<TorrentsScreen> {
   late Future<List<TorrentModel>> _futureTorrents;
   String _statusFilter = 'All';
+  final _magnetController = TextEditingController();
 
   final List<String> _statusCategories = const [
     'All',
@@ -118,6 +119,31 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
     }
   }
 
+  Future<void> _addMagnetLinkFromInput() async {
+    final link = _magnetController.text.trim();
+    if (link.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a magnet link')), 
+      );
+      return;
+    }
+
+    try {
+      await TorrentService.instance.addTorrentFromMagnetLink(link);
+      _magnetController.clear();
+      await _refresh();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Magnet link added.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to add magnet: $e')),
+      );
+    }
+  }
+
   Future<void> _toggleFullScreen() async {
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
       final messenger = ScaffoldMessenger.of(context);
@@ -132,6 +158,12 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
         ),
       );
     }
+  }
+
+  @override
+  void dispose() {
+    _magnetController.dispose();
+    super.dispose();
   }
 
   @override
@@ -192,6 +224,30 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
                   icon: const Icon(Icons.refresh),
                   tooltip: 'Refresh',
                   onPressed: _refresh,
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _magnetController,
+                    decoration: const InputDecoration(
+                      labelText: 'Paste magnet link',
+                      hintText: 'magnet:?xt=urn:btih:...',
+                      border: OutlineInputBorder(),
+                    ),
+                    keyboardType: TextInputType.url,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.add_link),
+                  label: const Text('Add'),
+                  onPressed: _addMagnetLinkFromInput,
                 ),
               ],
             ),
