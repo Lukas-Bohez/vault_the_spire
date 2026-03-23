@@ -18,6 +18,16 @@ class TorrentsScreen extends StatefulWidget {
 
 class _TorrentsScreenState extends State<TorrentsScreen> {
   late Future<List<TorrentModel>> _futureTorrents;
+  String _statusFilter = 'All';
+
+  final List<String> _statusCategories = const [
+    'All',
+    'Downloading',
+    'Paused',
+    'Seeding',
+    'Completed',
+    'Error',
+  ];
 
   @override
   void initState() {
@@ -153,9 +163,43 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
           ),
         ],
       ),
-      body: FutureBuilder<List<TorrentModel>>(
-        future: _futureTorrents,
-        builder: (context, snapshot) {
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(
+              children: [
+                const Text('Category: '),
+                const SizedBox(width: 8),
+                DropdownButton<String>(
+                  value: _statusFilter,
+                  items: _statusCategories
+                      .map((status) => DropdownMenuItem(
+                            value: status,
+                            child: Text(status),
+                          ))
+                      .toList(),
+                  onChanged: (value) {
+                    if (value != null) {
+                      setState(() {
+                        _statusFilter = value;
+                      });
+                    }
+                  },
+                ),
+                const Spacer(),
+                IconButton(
+                  icon: const Icon(Icons.refresh),
+                  tooltip: 'Refresh',
+                  onPressed: _refresh,
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: FutureBuilder<List<TorrentModel>>(
+              future: _futureTorrents,
+              builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(child: CircularProgressIndicator());
           }
@@ -163,7 +207,27 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
             return Center(child: Text('Error: ${snapshot.error}'));
           }
           final torrents = snapshot.data ?? [];
-          if (torrents.isEmpty) {
+          final filteredTorrents = _statusFilter == 'All'
+              ? torrents
+              : torrents.where((t) {
+                  final status = (t.status ?? '').toLowerCase();
+                  switch (_statusFilter) {
+                    case 'Downloading':
+                      return status.contains('download');
+                    case 'Paused':
+                      return status.contains('pause');
+                    case 'Seeding':
+                      return status.contains('seed');
+                    case 'Completed':
+                      return status.contains('complete');
+                    case 'Error':
+                      return status.contains('error');
+                    default:
+                      return true;
+                  }
+                }).toList();
+
+          if (filteredTorrents.isEmpty) {
             return Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
@@ -197,9 +261,9 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
           return RefreshIndicator(
             onRefresh: _refresh,
             child: ListView.builder(
-              itemCount: torrents.length,
+              itemCount: filteredTorrents.length,
               itemBuilder: (context, index) {
-                final torrent = torrents[index];
+                final torrent = filteredTorrents[index];
                 final progress =
                     torrent.totalPieces != null && torrent.totalPieces! > 0
                     ? (torrent.piecesHave
