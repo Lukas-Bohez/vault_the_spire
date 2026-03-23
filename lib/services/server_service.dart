@@ -167,4 +167,3 @@ class ServerService {
 
   ServerModel? decodeInvite(String invite) => _decodeInvite(invite);
 }
-

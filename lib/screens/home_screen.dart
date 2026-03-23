@@ -336,10 +336,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     if (!mounted) return;
                     Navigator.of(context).push(
                       MaterialPageRoute(
-                        builder: (_) => DMScreen(
-                          user: 'you',
-                          peer: peer,
-                        ),
+                        builder: (_) => DMScreen(user: 'you', peer: peer),
                       ),
                     );
                   },
