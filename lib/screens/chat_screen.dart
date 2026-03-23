@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:vault_the_spire/models/chat_message.dart';
 import 'package:vault_the_spire/models/server.dart';
 import 'package:vault_the_spire/services/chat_service.dart';
 
@@ -26,27 +27,41 @@ class _ChatScreenState extends State<ChatScreen> {
     final channel = widget.server.channels.firstWhere(
       (c) => c.id == widget.channelId,
     );
-    final messages = ChatService.instance.messagesFor(
-      widget.server.id,
-      widget.channelId,
-    );
 
     return Scaffold(
       appBar: AppBar(title: Text('${widget.server.name} / ${channel.name}')),
       body: Column(
         children: [
           Expanded(
-            child: ListView.builder(
-              padding: const EdgeInsets.all(12),
-              itemCount: messages.length,
-              itemBuilder: (context, index) {
-                final m = messages[index];
-                return ListTile(
-                  title: Text(m.author),
-                  subtitle: Text(m.text),
-                  trailing: Text(
-                    '${m.timestamp.hour}:${m.timestamp.minute.toString().padLeft(2, '0')}',
-                  ),
+            child: FutureBuilder<List<ChatMessage>>(
+              future: ChatService.instance.messagesFor(
+                widget.server.id,
+                widget.channelId,
+              ),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (snapshot.hasError) {
+                  return Center(child: Text('Error: ${snapshot.error}'));
+                }
+                final messages = snapshot.data ?? <ChatMessage>[];
+                if (messages.isEmpty) {
+                  return const Center(child: Text('No messages yet.'));
+                }
+                return ListView.builder(
+                  padding: const EdgeInsets.all(12),
+                  itemCount: messages.length,
+                  itemBuilder: (context, index) {
+                    final m = messages[index];
+                    return ListTile(
+                      title: Text(m.author),
+                      subtitle: Text(m.text),
+                      trailing: Text(
+                        '${m.timestamp.hour}:${m.timestamp.minute.toString().padLeft(2, '0')}',
+                      ),
+                    );
+                  },
                 );
               },
             ),

@@ -1,4 +1,5 @@
 import 'package:uuid/uuid.dart';
+import 'package:vault_the_spire/db/server_dao.dart';
 import 'package:vault_the_spire/models/server.dart';
 
 class ServerService {
@@ -9,6 +10,12 @@ class ServerService {
   final List<ServerModel> _servers = [];
 
   List<ServerModel> get servers => List.unmodifiable(_servers);
+
+  Future<void> init() async {
+    _servers
+      ..clear()
+      ..addAll(await ServerDao.instance.getAllServers());
+  }
 
   ServerModel createServer({required String name, String description = ''}) {
     final server = ServerModel(
@@ -21,24 +28,31 @@ class ServerService {
       ],
     );
     _servers.add(server);
+    ServerDao.instance.insertServer(server);
     return server;
   }
 
-  bool joinServer(String inviteCode) {
+  Future<bool> joinServer(String inviteCode) async {
     // inviteCode currently equals a server id; in future support real invite tokens.
-    final server = _servers.firstWhere(
+    final existing = _servers.firstWhere(
       (s) => s.id == inviteCode,
       orElse: () => ServerModel(id: '', name: '', channels: []),
     );
-    if (server.id.isEmpty) return false;
 
-    // Already known server from local list: success.
-    final exists = _servers.any((s) => s.id == server.id);
-    if (!exists) {
-      _servers.add(server);
+    if (existing.id.isNotEmpty) {
+      return true;
     }
 
+    final server = await ServerDao.instance.getServerById(inviteCode);
+    if (server == null) return false;
+
+    _servers.add(server);
     return true;
+  }
+
+  Future<void> removeServer(String id) async {
+    _servers.removeWhere((s) => s.id == id);
+    await ServerDao.instance.deleteServer(id);
   }
 
   String generateInvite(ServerModel server) => server.id;

@@ -87,6 +87,28 @@ class AppDatabase {
         protocol TEXT NOT NULL DEFAULT 'local'
       );
     ''');
+
+    await db.execute('''
+      CREATE TABLE servers (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT,
+        icon TEXT,
+        channels TEXT NOT NULL
+      );
+    ''');
+
+    await db.execute('''
+      CREATE TABLE chat_messages (
+        id TEXT PRIMARY KEY,
+        server_id TEXT NOT NULL,
+        channel_id TEXT NOT NULL,
+        author TEXT NOT NULL,
+        text TEXT NOT NULL,
+        timestamp INTEGER NOT NULL,
+        FOREIGN KEY(server_id) REFERENCES servers(id) ON DELETE CASCADE
+      );
+    ''');
   }
 
   Future<void> close() async {

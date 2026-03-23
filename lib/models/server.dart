@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 class ServerModel {
   final String id;
   final String name;
@@ -12,6 +14,31 @@ class ServerModel {
     this.icon = '🛡️',
     required this.channels,
   });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'name': name,
+      'description': description,
+      'icon': icon,
+      'channels': jsonEncode(channels.map((c) => c.toMap()).toList()),
+    };
+  }
+
+  factory ServerModel.fromMap(Map<String, dynamic> map) {
+    final channelJson = map['channels'] as String? ?? '[]';
+    final channelList = (jsonDecode(channelJson) as List<dynamic>)
+        .map((e) => ChannelModel.fromMap(Map<String, dynamic>.from(e)))
+        .toList();
+
+    return ServerModel(
+      id: map['id'] as String,
+      name: map['name'] as String,
+      description: map['description'] as String? ?? '',
+      icon: map['icon'] as String? ?? '🛡️',
+      channels: channelList,
+    );
+  }
 }
 
 class ChannelModel {
@@ -20,4 +47,16 @@ class ChannelModel {
   final bool isVoice;
 
   ChannelModel({required this.id, required this.name, this.isVoice = false});
+
+  Map<String, dynamic> toMap() {
+    return {'id': id, 'name': name, 'isVoice': isVoice ? 1 : 0};
+  }
+
+  factory ChannelModel.fromMap(Map<String, dynamic> map) {
+    return ChannelModel(
+      id: map['id'] as String,
+      name: map['name'] as String,
+      isVoice: (map['isVoice'] as int? ?? 0) == 1,
+    );
+  }
 }

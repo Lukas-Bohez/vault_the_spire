@@ -40,6 +40,10 @@ class _HomeScreenState extends State<HomeScreen> {
     useSystemTray = SettingsService.instance.useSystemTray;
     minimizeToTrayOnClose = SettingsService.instance.minimizeToTrayOnClose;
     launchOnStartup = SettingsService.instance.launchOnStartup;
+
+    ServerService.instance.init().then((_) {
+      setState(() {});
+    });
   }
 
   Future<void> _toggleSystemTray(bool value) async {
@@ -159,10 +163,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 ElevatedButton(
-                  onPressed: () {
-                    final success = ServerService.instance.joinServer(
+                  onPressed: () async {
+                    final success = await ServerService.instance.joinServer(
                       _inviteCodeController.text.trim(),
                     );
+                    if (!mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text(
