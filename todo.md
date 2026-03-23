@@ -63,11 +63,20 @@
 - [ ] Monitor Android Vitals for crashes and ANRs post-launch
 
 ## 9. In-app feature roadmap (next sprints)
-- [ ] Auto-open channel chat pane when selecting a channel on the server sidebar
-- [ ] Persist server list + channels in local encrypted DB (SQLCipher)
-- [ ] Persist chat messages in local encrypted DB (SQLCipher)
-- [ ] Add proper invite join flow with 1-click import + validation error UX
-- [ ] Add server/channel create/delete and rename UI actions
+- [x] Auto-open channel chat pane when selecting a channel on the server sidebar
+- [x] Persist server list + channels in local encrypted DB (SQLCipher)
+- [x] Persist chat messages in local encrypted DB (SQLCipher)
+- [x] Add proper invite join flow with 1-click import + validation error UX
+- [x] Add server/channel create/delete and rename UI actions
 - [ ] Add ephemeral private DMs + @ mentions
 - [ ] Add dark theme and high contrast test coverage
 - [ ] Add unit tests for server/chat service and widget integration
+
+## 10. Release 2.0.0 readiness
+- [ ] Bump package version to 2.0.0 in pubspec.yaml
+- [ ] Update CHANGELOG.md with v2.0.0 features and migration notes
+- [ ] End-to-end test for server/chat persistence + SQLCipher database migration
+- [ ] Update docs for desktop + Android permissions + SQLCipher key management
+- [ ] Verify all platform builds (Android, iOS, Linux, macOS, Windows, Web) pass
+- [ ] Final security audit for cached user data and permissions
+- [ ] Add a non-blocking in-app update UX or version check notice

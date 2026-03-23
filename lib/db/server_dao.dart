@@ -36,6 +36,17 @@ class ServerDao {
     return ServerModel.fromMap(rows.first);
   }
 
+  Future<void> updateServer(ServerModel server) async {
+    final db = await _db;
+    await db.update(
+      'servers',
+      server.toMap(),
+      where: 'id = ?',
+      whereArgs: [server.id],
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
   Future<void> deleteServer(String id) async {
     final db = await _db;
     await db.delete('servers', where: 'id = ?', whereArgs: [id]);

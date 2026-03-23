@@ -60,3 +60,21 @@ class ChannelModel {
     );
   }
 }
+
+extension ServerModelCopy on ServerModel {
+  ServerModel copyWith({
+    String? id,
+    String? name,
+    String? description,
+    String? icon,
+    List<ChannelModel>? channels,
+  }) {
+    return ServerModel(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      description: description ?? this.description,
+      icon: icon ?? this.icon,
+      channels: channels ?? this.channels,
+    );
+  }
+}

@@ -26,11 +26,13 @@ class _HomeScreenState extends State<HomeScreen> {
   String? selectedChannelId;
   final TextEditingController _serverNameController = TextEditingController();
   final TextEditingController _inviteCodeController = TextEditingController();
+  final TextEditingController _channelNameController = TextEditingController();
 
   @override
   void dispose() {
     _serverNameController.dispose();
     _inviteCodeController.dispose();
+    _channelNameController.dispose();
     super.dispose();
   }
 
@@ -152,6 +154,74 @@ class _HomeScreenState extends State<HomeScreen> {
                             : null;
                       });
                     },
+                    trailing: PopupMenuButton<String>(
+                      onSelected: (value) async {
+                        if (value == 'delete') {
+                          await ServerService.instance.removeServer(server.id);
+                          if (selectedServer?.id == server.id) {
+                            selectedServer = null;
+                            selectedChannelId = null;
+                          }
+                          setState(() {});
+                        } else if (value == 'rename') {
+                          final newName = await showDialog<String>(
+                            context: context,
+                            builder: (context) {
+                              final tmp = TextEditingController(
+                                text: server.name,
+                              );
+                              return AlertDialog(
+                                title: const Text('Rename server'),
+                                content: TextField(controller: tmp),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.of(context).pop(),
+                                    child: const Text('Cancel'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () => Navigator.of(
+                                      context,
+                                    ).pop(tmp.text.trim()),
+                                    child: const Text('Rename'),
+                                  ),
+                                ],
+                              );
+                            },
+                          );
+                          if (newName != null && newName.isNotEmpty) {
+                            await ServerService.instance.renameServer(
+                              server.id,
+                              newName,
+                            );
+                            if (selectedServer?.id == server.id) {
+                              selectedServer = server.copyWith(name: newName);
+                            }
+                            setState(() {});
+                          }
+                        } else if (value == 'invite') {
+                          final inviteCode = ServerService.instance
+                              .generateInvite(server);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Invite code: $inviteCode')),
+                          );
+                        }
+                      },
+                      itemBuilder: (context) => [
+                        const PopupMenuItem(
+                          value: 'invite',
+                          child: Text('Copy invite code'),
+                        ),
+                        const PopupMenuItem(
+                          value: 'rename',
+                          child: Text('Rename'),
+                        ),
+                        const PopupMenuItem(
+                          value: 'delete',
+                          child: Text('Delete'),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -198,7 +268,10 @@ class _HomeScreenState extends State<HomeScreen> {
                       description: 'Community server',
                     );
                     _serverNameController.clear();
-                    setState(() {});
+                    setState(() {
+                      selectedServer = server;
+                      selectedChannelId = server.channels.first.id;
+                    });
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text(
@@ -209,6 +282,37 @@ class _HomeScreenState extends State<HomeScreen> {
                   },
                   child: const Text('Create server'),
                 ),
+                if (selectedServer != null) ...[
+                  const SizedBox(height: 10),
+                  const Text(
+                    'Create Channel',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: _channelNameController,
+                    decoration: const InputDecoration(
+                      labelText: 'New channel name',
+                      isDense: true,
+                    ),
+                  ),
+                  ElevatedButton(
+                    onPressed: () async {
+                      final name = _channelNameController.text.trim();
+                      if (name.isEmpty || selectedServer == null) return;
+                      final updated = await ServerService.instance.addChannel(
+                        selectedServer!.id,
+                        name,
+                      );
+                      _channelNameController.clear();
+                      setState(() {
+                        selectedServer = updated;
+                        selectedChannelId = updated.channels.last.id;
+                      });
+                    },
+                    child: const Text('Add channel'),
+                  ),
+                ],
                 const SizedBox(height: 10),
                 const Divider(),
                 const SizedBox(height: 8),
@@ -234,6 +338,30 @@ class _HomeScreenState extends State<HomeScreen> {
                           ),
                         );
                       },
+                      trailing: IconButton(
+                        icon: const Icon(Icons.delete_outline, size: 18),
+                        onPressed: () async {
+                          if (selectedServer == null) return;
+                          await ServerService.instance.removeChannel(
+                            selectedServer!.id,
+                            channel.id,
+                          );
+                          final updated = ServerService.instance.servers
+                              .firstWhere(
+                                (s) => s.id == selectedServer!.id,
+                                orElse: () => selectedServer!,
+                              );
+                          setState(() {
+                            selectedServer = updated;
+                            if (selectedChannelId == channel.id) {
+                              selectedChannelId =
+                                  selectedServer?.channels.isNotEmpty == true
+                                  ? selectedServer!.channels.first.id
+                                  : null;
+                            }
+                          });
+                        },
+                      ),
                     ),
                   ),
                 ],
