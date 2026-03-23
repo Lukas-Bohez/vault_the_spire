@@ -7,6 +7,7 @@ import 'package:vault_the_spire/models/torrent.dart';
 import 'package:vault_the_spire/platform/desktop_window.dart';
 import 'package:vault_the_spire/platform/drag_drop.dart';
 import 'package:vault_the_spire/screens/torrent_detail_screen.dart';
+import 'package:vault_the_spire/services/torrent_engine_service.dart';
 import 'package:vault_the_spire/services/torrent_service.dart';
 
 class TorrentsScreen extends StatefulWidget {
@@ -393,6 +394,13 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
                                 await _refresh();
                               }
                             }
+                          } else if (value == 'start') {
+                            await TorrentEngineService.instance.startTorrent(torrent.id);
+                            await _refresh();
+                          } else if (value == 'stop') {
+                            TorrentEngineService.instance.stopTorrent(torrent.id);
+                            await TorrentService.instance.updateTorrentStatus(torrent.id, 'paused');
+                            await _refresh();
                           } else if (value == 'toggle_delete') {
                             await TorrentService.instance.setDeleteAfterRatioReached(
                               torrent.id,
@@ -400,9 +408,11 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
                             );
                             await _refresh();
                           } else if (value == 'remove') {
+                            TorrentEngineService.instance.stopTorrent(torrent.id);
                             await TorrentService.instance.removeTorrent(
                               torrent.id,
                             );
+                            await _refresh();
                           } else if (value == 'open') {
                             final path = torrent.filePath;
                             if (path != null &&
@@ -435,6 +445,8 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
                         }
                       },
                       itemBuilder: (_) => [
+                        PopupMenuItem(value: 'start', child: Text('Start download')),
+                        PopupMenuItem(value: 'stop', child: Text('Stop download')),
                         PopupMenuItem(value: 'pause', child: Text('Pause')),
                         PopupMenuItem(value: 'resume', child: Text('Resume')),
                         PopupMenuItem(value: 'set_ratio', child: Text('Set seed ratio limit')),

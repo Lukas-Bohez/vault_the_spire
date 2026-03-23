@@ -17,6 +17,9 @@ class TorrentService {
   Future<void> addTorrent(TorrentModel torrent) =>
       TorrentsDao.instance.insertTorrent(torrent);
 
+  Future<TorrentModel?> getTorrentById(String id) =>
+      TorrentsDao.instance.getTorrentById(id);
+
   Future<void> updateTorrent(TorrentModel torrent) =>
       TorrentsDao.instance.updateTorrent(torrent);
 
