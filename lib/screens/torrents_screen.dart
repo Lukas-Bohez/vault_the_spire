@@ -332,8 +332,18 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
                 return Card(
                   child: ListTile(
                     title: Text(torrent.name),
-                    subtitle: Text(
-                      'Status: ${torrent.status ?? 'unknown'} • ${(progress * 100).toStringAsFixed(1)}%',
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Status: ${torrent.status ?? 'unknown'} • ${(progress * 100).toStringAsFixed(1)}%',
+                        ),
+                        if (torrent.maxSeedRatio != null)
+                          Text(
+                            'Seed ratio limit: ${torrent.maxSeedRatio!.toStringAsFixed(2)}${torrent.deleteAfterRatioReached ? ' (delete after reached)' : ''}',
+                            style: const TextStyle(fontSize: 12, color: Colors.grey),
+                          ),
+                      ],
                     ),
                     trailing: PopupMenuButton<String>(
                       onSelected: (value) async {
@@ -348,6 +358,47 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
                               torrent.id,
                               'downloading',
                             );
+                          } else if (value == 'set_ratio') {
+                            final ratioController = TextEditingController(
+                              text: torrent.maxSeedRatio?.toStringAsFixed(2) ?? '2.00',
+                            );
+                            final submit = await showDialog<bool>(
+                              context: context,
+                              builder: (ctx) => AlertDialog(
+                                title: const Text('Set seed ratio limit'),
+                                content: TextField(
+                                  controller: ratioController,
+                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                  decoration: const InputDecoration(
+                                    labelText: 'Seed ratio',
+                                    hintText: '2.0',
+                                  ),
+                                ),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () => Navigator.of(ctx).pop(false),
+                                    child: const Text('Cancel'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () => Navigator.of(ctx).pop(true),
+                                    child: const Text('Set'),
+                                  ),
+                                ],
+                              ),
+                            );
+                            if (submit == true) {
+                              final parsed = double.tryParse(ratioController.text);
+                              if (parsed != null && parsed > 0) {
+                                await TorrentService.instance.setSeedRatioLimit(torrent.id, parsed);
+                                await _refresh();
+                              }
+                            }
+                          } else if (value == 'toggle_delete') {
+                            await TorrentService.instance.setDeleteAfterRatioReached(
+                              torrent.id,
+                              !torrent.deleteAfterRatioReached,
+                            );
+                            await _refresh();
                           } else if (value == 'remove') {
                             await TorrentService.instance.removeTorrent(
                               torrent.id,
@@ -386,6 +437,8 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
                       itemBuilder: (_) => [
                         PopupMenuItem(value: 'pause', child: Text('Pause')),
                         PopupMenuItem(value: 'resume', child: Text('Resume')),
+                        PopupMenuItem(value: 'set_ratio', child: Text('Set seed ratio limit')),
+                        PopupMenuItem(value: 'toggle_delete', child: Text(torrent.deleteAfterRatioReached ? 'Disable delete after ratio' : 'Enable delete after ratio')),
                         PopupMenuItem(
                           value: 'open',
                           child: Text('Open folder'),

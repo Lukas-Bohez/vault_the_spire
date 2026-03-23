@@ -47,8 +47,120 @@ class TorrentService {
       completedAt: existing.completedAt,
       isSequential: existing.isSequential,
       selectedFiles: existing.selectedFiles,
+      maxSeedRatio: existing.maxSeedRatio,
+      deleteAfterRatioReached: existing.deleteAfterRatioReached,
     );
     await TorrentsDao.instance.updateTorrent(updated);
+  }
+
+  Future<void> setSeedRatioLimit(String id, double ratio) async {
+    final existing = await TorrentsDao.instance.getTorrentById(id);
+    if (existing == null) {
+      throw StateError('Torrent not found: $id');
+    }
+    final updated = TorrentModel(
+      id: existing.id,
+      name: existing.name,
+      type: existing.type,
+      totalSize: existing.totalSize,
+      totalPieces: existing.totalPieces,
+      pieceLength: existing.pieceLength,
+      piecesHave: existing.piecesHave,
+      status: existing.status,
+      vaultKey: existing.vaultKey,
+      filePath: existing.filePath,
+      vaultLink: existing.vaultLink,
+      magnetLink: existing.magnetLink,
+      bytesDown: existing.bytesDown,
+      bytesUp: existing.bytesUp,
+      addedAt: existing.addedAt,
+      completedAt: existing.completedAt,
+      isSequential: existing.isSequential,
+      selectedFiles: existing.selectedFiles,
+      maxSeedRatio: ratio,
+      deleteAfterRatioReached: existing.deleteAfterRatioReached,
+    );
+    await TorrentsDao.instance.updateTorrent(updated);
+  }
+
+  Future<void> setDeleteAfterRatioReached(String id, bool value) async {
+    final existing = await TorrentsDao.instance.getTorrentById(id);
+    if (existing == null) {
+      throw StateError('Torrent not found: $id');
+    }
+    final updated = TorrentModel(
+      id: existing.id,
+      name: existing.name,
+      type: existing.type,
+      totalSize: existing.totalSize,
+      totalPieces: existing.totalPieces,
+      pieceLength: existing.pieceLength,
+      piecesHave: existing.piecesHave,
+      status: existing.status,
+      vaultKey: existing.vaultKey,
+      filePath: existing.filePath,
+      vaultLink: existing.vaultLink,
+      magnetLink: existing.magnetLink,
+      bytesDown: existing.bytesDown,
+      bytesUp: existing.bytesUp,
+      addedAt: existing.addedAt,
+      completedAt: existing.completedAt,
+      isSequential: existing.isSequential,
+      selectedFiles: existing.selectedFiles,
+      maxSeedRatio: existing.maxSeedRatio,
+      deleteAfterRatioReached: value,
+    );
+    await TorrentsDao.instance.updateTorrent(updated);
+  }
+
+  Future<void> updateProgress(String id, int bytesDown, int bytesUp) async {
+    final existing = await TorrentsDao.instance.getTorrentById(id);
+    if (existing == null) {
+      throw StateError('Torrent not found: $id');
+    }
+
+    double suggestedRatio = existing.maxSeedRatio ?? 0.0;
+    bool shouldDelete = existing.deleteAfterRatioReached;
+    String updatedStatus = existing.status ?? 'downloading';
+
+    if (existing.maxSeedRatio != null && existing.maxSeedRatio! > 0) {
+      final ratio = existing.bytesDown > 0 ? bytesUp / existing.bytesDown : 0.0;
+      if (ratio >= existing.maxSeedRatio!) {
+        updatedStatus = 'seed_ratio_reached';
+        if (existing.deleteAfterRatioReached) {
+          shouldDelete = true;
+        }
+      }
+    }
+
+    final updated = TorrentModel(
+      id: existing.id,
+      name: existing.name,
+      type: existing.type,
+      totalSize: existing.totalSize,
+      totalPieces: existing.totalPieces,
+      pieceLength: existing.pieceLength,
+      piecesHave: existing.piecesHave,
+      status: updatedStatus,
+      vaultKey: existing.vaultKey,
+      filePath: existing.filePath,
+      vaultLink: existing.vaultLink,
+      magnetLink: existing.magnetLink,
+      bytesDown: bytesDown,
+      bytesUp: bytesUp,
+      addedAt: existing.addedAt,
+      completedAt: existing.completedAt,
+      isSequential: existing.isSequential,
+      selectedFiles: existing.selectedFiles,
+      maxSeedRatio: existing.maxSeedRatio,
+      deleteAfterRatioReached: shouldDelete,
+    );
+
+    await TorrentsDao.instance.updateTorrent(updated);
+
+    if (shouldDelete && updatedStatus == 'seed_ratio_reached') {
+      await TorrentsDao.instance.deleteTorrent(id);
+    }
   }
 
   Future<void> addTorrentFromTorrentFile(String path) async {

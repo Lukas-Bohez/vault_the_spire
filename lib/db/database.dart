@@ -23,8 +23,9 @@ class AppDatabase {
     final dbPath = await _getDatabasePath();
     _database = await openDatabase(
       dbPath,
-      version: 1,
+      version: 2,
       onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
       onConfigure: (db) async {
         // Enable foreign keys
         await db.execute('PRAGMA foreign_keys = ON');
@@ -72,7 +73,9 @@ class AppDatabase {
         added_at INTEGER,
         completed_at INTEGER,
         is_sequential INTEGER DEFAULT 0,
-        selected_files TEXT
+        selected_files TEXT,
+        max_seed_ratio REAL,
+        delete_after_ratio_reached INTEGER DEFAULT 0
       );
     ''');
 
@@ -87,6 +90,18 @@ class AppDatabase {
         protocol TEXT NOT NULL DEFAULT 'local'
       );
     ''');
+  }
+
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await db.execute('''
+        ALTER TABLE torrents ADD COLUMN max_seed_ratio REAL;
+      ''');
+      await db.execute('''
+        ALTER TABLE torrents ADD COLUMN delete_after_ratio_reached INTEGER DEFAULT 0;
+      ''');
+    }
+  }
 
     await db.execute('''
       CREATE TABLE servers (

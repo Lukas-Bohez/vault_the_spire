@@ -17,6 +17,8 @@ class TorrentModel {
   final int? completedAt;
   final bool isSequential;
   final String? selectedFiles;
+  final double? maxSeedRatio;
+  final bool deleteAfterRatioReached;
 
   TorrentModel({
     required this.id,
@@ -37,6 +39,8 @@ class TorrentModel {
     this.completedAt,
     this.isSequential = false,
     this.selectedFiles,
+    this.maxSeedRatio,
+    this.deleteAfterRatioReached = false,
   });
 
   Map<String, dynamic> toMap() {
@@ -59,6 +63,8 @@ class TorrentModel {
       'completed_at': completedAt,
       'is_sequential': isSequential ? 1 : 0,
       'selected_files': selectedFiles,
+      'max_seed_ratio': maxSeedRatio,
+      'delete_after_ratio_reached': deleteAfterRatioReached ? 1 : 0,
     };
   }
 
@@ -82,6 +88,9 @@ class TorrentModel {
       completedAt: map['completed_at'] as int?,
       isSequential: (map['is_sequential'] as int? ?? 0) == 1,
       selectedFiles: map['selected_files'] as String?,
+      maxSeedRatio: (map['max_seed_ratio'] as num?)?.toDouble(),
+      deleteAfterRatioReached:
+          (map['delete_after_ratio_reached'] as int? ?? 0) == 1,
     );
   }
 }
