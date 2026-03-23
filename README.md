@@ -1,15 +1,40 @@
-# Vault The Spire
+﻿# Vault The Spire
 
-Desktop-first Flutter torrent + identity project.
+**Vault The Spire** is a cross-platform Flutter app for private file sharing and encrypted peer-to-peer messaging. It combines BitTorrent with an encrypted local vault, end-to-end encrypted messaging, and QR-based contact onboarding — all with no telemetry, no accounts, and no central servers.
 
-## Quick start
+## Privacy-first mission
 
-Vault The Spire is a user-facing client for https://quizthespire.com/. It talks to the QuizTheSpire API for channels, messaging, and torrent vault sync.
+Vault The Spire was built around the principle that private communications and file sharing should be under user control.
+
+- No centralized surveillance, no opaque tracking.
+- No mandatory accounts or external identity provider.
+- End-to-end cryptography for vault and chat sessions.
+- Local encrypted storage by default, with optional seedable DHT-based file discovery.
+
+## Features
+
+### User-facing features
+
+- Drag-and-drop torrent and magnet link import.
+- Magnet link generation and QR sharing for contacts.
+- Encrypted local vault (AES-256-GCM + SQLCipher) with per-item metadata.
+- Cross-platform desktop support (Windows, macOS, Linux) plus mobile (Android/iOS).
+- Peer-to-peer channel & messaging sync with contact QR onboarding.
+
+### Under the hood
+
+- SQLCipher-encrypted local database via `sqflite`.
+- Torrent parsing & DHT support using BitTorrent protocol standards.
+- `audioplayers` and GStreamer for cross-platform audio playback.
+- E2E encryption (X25519 key agreement + ratchet session)
+- Docker-less, auth-less, and telemetry-free architecture.
+
+## Quickstart
 
 ### End-user install (recommended)
-1. Visit https://quizthespire.com/ and download the latest app package for your platform.
-2. Install normally (Windows MSI, macOS DMG, Linux AppImage).
-3. Run the app and choose `Settings -> Launch on startup` to enable automatic startup.
+1. Download the latest package from https://quizthespire.com/ (Windows MSI, macOS DMG, Linux AppImage).
+2. Install and launch.
+3. Optional: enable `Settings -> Launch on startup`.
 
 ### Developer install
 Requirements:
@@ -17,80 +42,27 @@ Requirements:
 - Dart SDK
 - Platform tools for your OS (Windows/macOS/Linux)
 
-Commands:
+```bash
+flutter pub get
+flutter analyze --no-fatal-infos
+flutter test --coverage
+flutter run -d windows  # or -d macos, -d linux
+```
 
-- `flutter pub get`
-- `flutter analyze`
-- `flutter test`
-- `flutter run -d windows` (or `-d macos`, `-d linux`)
+## CI / GitHub Actions
 
-## Features implemented
+- `ci.yml` runs analysis + tests only (no full Linux build in CI due desktop dependency variance).
+- `release.yml` runs full cross-platform builds and now includes required dependencies for Linux (GTK/GStreamer).
 
-- local torrent metadata persistence (SQFlite + SQLCipher)
-- drag/drop `.torrent` import on torrents screen
-- parser for `.torrent` files (bencode, info-hash)
-- magnet link generation
-- identity service initialization and status display
+## Contributing
 
-## Development workflow
-
-1. Checkout branch and install deps
-2. Run `flutter test` regularly after changes
-3. `dart format .` before commit
-4. Add tests for new service/screen behavior
-
-## Improvement included in this commit
-
-- Completed TODO for torrent file parsing and insertion from drag/drop
-- Added `TorrentService.addTorrentFromTorrentFile`
-- Added user snack bars for success/failure in `TorrentsScreen`
-- Added `TorrentService.createMagnetLink` + unit test
-- Added AppBar user hint to trigger drag-and-drop instructions
+Please see [CONTRIBUTING.md](CONTRIBUTING.md) for project contribution workflow.
 
 ## License
 
-Vault The Spire is released under the GNU General Public License v3.0 (GPL-3.0). See [LICENSE](LICENSE) for details.
-
-## Privacy-first mission
-
-Vault The Spire was born from the radical idea that private file and message sharing should not require giving up personal freedom.
-
-- No central surveillance; no opaque tracking.
-- Local encrypted storage with SQLCipher.
-- End-to-end encryption for vault files (AES-256-GCM) and message sessions (X25519 + ratchet keys).
-- Peer-to-peer BitTorrent protocol with standard DHT but your data is your data.
-
-Use it for:
-- Private torrents and vault files that do not leak metadata to third parties.
-- Secure contact sharing via QR imports.
-- Read-only cross-platform channel sync from public sources with no content tracking.
-
-## Spread the word (marketing copy)
-
-### Tagline
-**"Vault The Spire: Share privately, share securely, share without compromise."**
-
-### Sound design
-- Skeuomorphic feedback sounds added for UI events:
-  - click/open actions
-  - channel creation / server join
-  - message send
-  - mention highlight
-
-- Sounds are stored in `assets/sounds/` and played with `audioplayers`.
-
-### Social pitch
-> Built on open standards (BitTorrent + DHT + WebRTC) with encrypted vault overlays and contact QR onboarding. No ads, no telemetry, no hidden publisher keys. Run it on Windows/macOS/Linux/Android/iOS.
-
-### GitHub description suggestion
-`Vault The Spire - cross-platform Flutter app for encrypted torrent + peer-to-peer messaging and vault sharing. Privacy-first, open source, no airdrop spy routes.`
-
-### Call to action for contributors
-- Star the repo and share on Hacker News, Reddit r/privacy, r/selfhosted.
-- Write a blog post: "How to run private torrents + encrypted chats from a single app." 
-- Add demo videos showing drag/drop torrent import, magnet link sharing, and desktop fullscreen mode.
+Vault The Spire is released under GNU GPL 3.0. See [LICENSE](LICENSE).
 
 ## Notes
 
-- Package versions are currently not up-to-date; run `flutter pub outdated` and upgrade carefully.
-
+- Keep dependencies up to date using `flutter pub outdated` and `flutter pub upgrade` in a feature branch.
+- `todo.md` is maintained as an internal backlog; prefer GitHub issues for public task tracking.

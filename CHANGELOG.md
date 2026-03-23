@@ -19,5 +19,11 @@
 ### Fixed
 - Copied initial code with several user-facing feature improvements and bugfixes.
 
+## [Unreleased]
+### Changed
+- README restructured for clarity, focus, and maintainability.
+- CI pipeline optimized: `ci.yml` run analysis/tests only; remove full Linux production build there.
+- `release.yml` Linux install steps extended with GStreamer sysdeps for `audioplayers_linux`.
+
 ## [2.0.0] - earlier
 - Feature snapshot from prior milestone.
