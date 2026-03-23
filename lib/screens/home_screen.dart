@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -45,7 +46,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   String _torrentSearchQuery = '';
   bool _onlineDiscoveryLoading = false;
-  List<TorrentModel> _discoveredTorrents = [];  final Set<String> _dmContacts = <String>{};
+  bool _isMinerActive = false;
+  Timer? _torrentMiningTimer;
+  List<TorrentModel> _discoveredTorrents = [];
+  final Set<String> _dmContacts = <String>{};
   final Map<String, int> _dmUnread = <String, int>{};
   final Map<String, bool> _voiceMuted = <String, bool>{};
   final TextEditingController _serverNameController = TextEditingController();
@@ -74,6 +78,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _serverChatScrollController.dispose();
     _dmChatScrollController.dispose();
     _hotkeyFocusNode.dispose();
+    _torrentMiningTimer?.cancel();
     super.dispose();
   }
 
@@ -92,6 +97,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
     ServerService.instance.init().then((_) {
       setState(() {});
+    });
+
+    _torrentMiningTimer = Timer.periodic(const Duration(seconds: 20), (_) async {
+      if (!_isMinerActive) return;
+      await _performMiningSweep();
     });
   }
 
@@ -458,15 +468,11 @@ class _HomeScreenState extends State<HomeScreen> {
                               labelText: 'Max seed ratio (e.g., 2.0)',
                               isDense: true,
                             ),
-                            keyboardType:
-                                const TextInputType.numberWithOptions(decimal: true),
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
                             onSubmitted: (value) async {
                               final ratio = double.tryParse(value);
                               if (ratio == null) return;
-                              await TorrentService.instance.setSeedRatioLimit(
-                                torrent.id,
-                                ratio,
-                              );
+                              await TorrentService.instance.setSeedRatioLimit(torrent.id, ratio);
                               setState(() {});
                             },
                           ),
@@ -476,8 +482,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 value: deleteAfter,
                                 onChanged: (value) async {
                                   if (value == null) return;
-                                  await TorrentService.instance
-                                      .setDeleteAfterRatioReached(torrent.id, value);
+                                  await TorrentService.instance.setDeleteAfterRatioReached(torrent.id, value);
                                   setState(() {});
                                 },
                               ),
@@ -503,6 +508,35 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Future<void> _performMiningSweep() async {
+    final currentSearch = _torrentSearchQuery.isNotEmpty ? _torrentSearchQuery : 'trending';
+    final discovered = await TorrentService.instance.discoverTorrentsOnline(currentSearch);
+    for (final torrent in discovered) {
+      await TorrentService.instance.addTorrent(torrent);
+    }
+
+    setState(() {
+      _discoveredTorrents.addAll(discovered);
+      _discoveredTorrents = _discoveredTorrents.fold<List<TorrentModel>>([], (acc, item) {
+        if (!acc.any((t) => t.id == item.id)) acc.add(item);
+        return acc;
+      });
+    });
+  }
+
+  void _toggleMiner(bool value) {
+    setState(() {
+      _isMinerActive = value;
+      if (!value) {
+        _torrentMiningTimer?.cancel();
+      } else {
+        _torrentMiningTimer ??= Timer.periodic(const Duration(seconds: 20), (_) async {
+          await _performMiningSweep();
+        });
+      }
+    });
+  }
+
   Widget _buildServerPanel(ThemeData theme, {bool inDrawer = false}) {
     final identity = IdentityService.instance.identity;
     return Container(
@@ -520,9 +554,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ? null
             : Border(
                 right: BorderSide(
-                  color: theme.colorScheme.outline.withAlpha(
-                    (0.15 * 255).round(),
-                  ),
+                  color: theme.colorScheme.outline.withAlpha((0.15 * 255).round()),
                   width: 1.2,
                 ),
               ),
@@ -646,25 +678,17 @@ class _HomeScreenState extends State<HomeScreen> {
                   await SoundService.instance.playClick();
                   setState(() {
                     selectedServer = server;
-                    selectedChannelId = server.channels.isNotEmpty
-                        ? server.channels.first.id
-                        : null;
+                    selectedChannelId = server.channels.isNotEmpty ? server.channels.first.id : null;
                     _mainView = MainView.server;
                   });
                 },
                 trailing: PopupMenuButton<String>(
                   onSelected: (value) async {
                     final messenger = ScaffoldMessenger.of(context);
-                    final currentContext = context;
                     if (value == 'invite') {
-                      final inviteCode = ServerService.instance.generateInvite(
-                        server,
-                      );
-                      messenger.showSnackBar(
-                        SnackBar(content: Text('Invite code: $inviteCode')),
-                      );
-                    }
-                    if (value == 'delete') {
+                      final inviteCode = ServerService.instance.generateInvite(server);
+                      messenger.showSnackBar(SnackBar(content: Text('Invite code: $inviteCode')));
+                    } else if (value == 'delete') {
                       await ServerService.instance.removeServer(server.id);
                       if (selectedServer?.id == server.id) {
                         selectedServer = null;
@@ -672,14 +696,11 @@ class _HomeScreenState extends State<HomeScreen> {
                       }
                       setState(() {});
                     } else if (value == 'rename') {
-                      await _renameServer(currentContext, server);
+                      await _renameServer(context, server);
                     }
                   },
                   itemBuilder: (context) => [
-                    const PopupMenuItem(
-                      value: 'invite',
-                      child: Text('Copy invite code'),
-                    ),
+                    const PopupMenuItem(value: 'invite', child: Text('Copy invite code')),
                     const PopupMenuItem(value: 'rename', child: Text('Rename')),
                     const PopupMenuItem(value: 'delete', child: Text('Delete')),
                   ],
@@ -698,16 +719,10 @@ class _HomeScreenState extends State<HomeScreen> {
             ElevatedButton(
               onPressed: () async {
                 await SoundService.instance.playNotification();
-                final success = await ServerService.instance.joinServer(
-                  _inviteCodeController.text.trim(),
-                );
+                final success = await ServerService.instance.joinServer(_inviteCodeController.text.trim());
                 if (!mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      success ? 'Joined server!' : 'Invalid invite code.',
-                    ),
-                  ),
+                  SnackBar(content: Text(success ? 'Joined server!' : 'Invalid invite code.')),
                 );
                 if (success) {
                   _inviteCodeController.clear();
@@ -739,13 +754,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   selectedChannelId = server.channels.first.id;
                 });
                 if (!mounted) return;
-                final messenger = ScaffoldMessenger.of(context);
-                messenger.showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      'Created server: ${server.name} (invite: ${server.id})',
-                    ),
-                  ),
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Created server: ${server.name} (invite: ${server.id})')),
                 );
               },
               child: const Text('Create server'),
@@ -754,9 +764,7 @@ class _HomeScreenState extends State<HomeScreen> {
             if (selectedServer != null) ...[
               Card(
                 elevation: 2,
-                color: _inVoiceChannel
-                    ? theme.colorScheme.tertiaryContainer
-                    : theme.colorScheme.surfaceContainerHighest,
+                color: _inVoiceChannel ? theme.colorScheme.tertiaryContainer : theme.colorScheme.surfaceContainerHighest,
                 margin: EdgeInsets.zero,
                 child: ListTile(
                   leading: const Icon(Icons.mic, size: 22),
@@ -765,18 +773,13 @@ class _HomeScreenState extends State<HomeScreen> {
                     style: theme.textTheme.titleSmall,
                   ),
                   subtitle: Text(
-                    _inVoiceChannel
-                        ? _voiceChannelServer
-                        : 'Not in voice channel',
+                    _inVoiceChannel ? _voiceChannelServer : 'Not in voice channel',
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
                   trailing: ElevatedButton(
                     onPressed: () {
-                      _toggleVoiceChannel(
-                        selectedServer!.id,
-                        selectedServer!.name,
-                      );
+                      _toggleVoiceChannel(selectedServer!.id, selectedServer!.name);
                     },
                     child: Text(_inVoiceChannel ? 'Leave' : 'Join'),
                   ),
@@ -786,16 +789,10 @@ class _HomeScreenState extends State<HomeScreen> {
                 const SizedBox(height: 8),
                 Wrap(
                   spacing: 8,
-                  runSpacing: 6,
                   children: _voiceMuted.entries.map((entry) {
                     return InputChip(
-                      label: Text(
-                        '${entry.key}${entry.value ? ' (muted)' : ''}',
-                      ),
-                      avatar: Icon(
-                        entry.value ? Icons.volume_off : Icons.volume_up,
-                        size: 18,
-                      ),
+                      label: Text('${entry.key}${entry.value ? ' (muted)' : ''}'),
+                      avatar: Icon(entry.value ? Icons.volume_off : Icons.volume_up, size: 16),
                       onPressed: () {
                         setState(() {
                           _voiceMuted[entry.key] = !entry.value;
@@ -823,37 +820,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   label: const Text('Add participant'),
                 ),
               ],
-              const SizedBox(height: 12),
-              const Text(
-                'Create Channel',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 6),
-              TextField(
-                controller: _channelNameController,
-                decoration: const InputDecoration(
-                  labelText: 'New channel name',
-                  isDense: true,
-                ),
-              ),
-              const SizedBox(height: 6),
-              ElevatedButton(
-                onPressed: () async {
-                  await SoundService.instance.playClick();
-                  final name = _channelNameController.text.trim();
-                  if (name.isEmpty || selectedServer == null) return;
-                  final updated = await ServerService.instance.addChannel(
-                    selectedServer!.id,
-                    name,
-                  );
-                  _channelNameController.clear();
-                  setState(() {
-                    selectedServer = updated;
-                    selectedChannelId = updated.channels.last.id;
-                  });
-                },
-                child: const Text('Add channel'),
-              ),
             ],
             const SizedBox(height: 10),
           ],
