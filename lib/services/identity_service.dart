@@ -27,7 +27,42 @@ class IdentityService {
       }
     }
 
+    await _generateAndSaveIdentity();
+  }
+
+  Future<void> _generateAndSaveIdentity() async {
     final identity = await Identity.generate();
+    _identity = identity;
+    await _secureStorage.write(
+      key: _kIdentityKey,
+      value: jsonEncode(identity.toJson()),
+    );
+  }
+
+  Future<void> setDisplayName(String displayName) async {
+    if (_identity == null) return;
+    _identity = Identity(
+      publicKeyBase64: _identity!.publicKeyBase64,
+      privateKeyBase64: _identity!.privateKeyBase64,
+      nodeId: _identity!.nodeId,
+      displayName: displayName.trim().isEmpty ? 'You' : displayName.trim(),
+    );
+    await _secureStorage.write(
+      key: _kIdentityKey,
+      value: jsonEncode(_identity!.toJson()),
+    );
+  }
+
+  Future<String> exportIdentity() async {
+    if (_identity == null) {
+      throw StateError('Identity not initialized');
+    }
+    return jsonEncode(_identity!.toJson());
+  }
+
+  Future<void> importIdentity(String jsonString) async {
+    final data = jsonDecode(jsonString) as Map<String, dynamic>;
+    final identity = Identity.fromJson(data);
     _identity = identity;
     await _secureStorage.write(
       key: _kIdentityKey,

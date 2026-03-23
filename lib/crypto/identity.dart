@@ -7,11 +7,13 @@ class Identity {
   final String publicKeyBase64;
   final String privateKeyBase64;
   final String nodeId;
+  final String displayName;
 
   Identity({
     required this.publicKeyBase64,
     required this.privateKeyBase64,
     required this.nodeId,
+    required this.displayName,
   });
 
   static Future<Identity> generate() async {
@@ -32,6 +34,7 @@ class Identity {
       publicKeyBase64: publicKeyBase64,
       privateKeyBase64: privateKeyBase64,
       nodeId: nodeId,
+      displayName: 'You',
     );
   }
 
@@ -45,6 +48,7 @@ class Identity {
     'publicKeyBase64': publicKeyBase64,
     'privateKeyBase64': privateKeyBase64,
     'nodeId': nodeId,
+    'displayName': displayName,
   };
 
   factory Identity.fromJson(Map<String, dynamic> json) {
@@ -52,6 +56,7 @@ class Identity {
       publicKeyBase64: json['publicKeyBase64'] as String,
       privateKeyBase64: json['privateKeyBase64'] as String,
       nodeId: json['nodeId'] as String,
+      displayName: json['displayName'] as String? ?? 'You',
     );
   }
 }

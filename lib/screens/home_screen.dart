@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:vault_the_spire/services/sound_service.dart';
 import 'package:vault_the_spire/services/identity_service.dart';
 import 'package:vault_the_spire/services/settings_service.dart';
@@ -48,6 +49,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _dmMessageController = TextEditingController();
   final TextEditingController _inlineMessageController =
       TextEditingController();
+  final TextEditingController _identityNameController = TextEditingController();
   final ScrollController _serverChatScrollController = ScrollController();
   final ScrollController _dmChatScrollController = ScrollController();
 
@@ -59,6 +61,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _dmPeerController.dispose();
     _dmMessageController.dispose();
     _inlineMessageController.dispose();
+    _identityNameController.dispose();
     _serverChatScrollController.dispose();
     _dmChatScrollController.dispose();
     super.dispose();
@@ -71,6 +74,11 @@ class _HomeScreenState extends State<HomeScreen> {
     minimizeToTrayOnClose = SettingsService.instance.minimizeToTrayOnClose;
     launchOnStartup = SettingsService.instance.launchOnStartup;
     usePersistentSidebar = SettingsService.instance.usePersistentSidebar;
+
+    if (IdentityService.instance.identity != null) {
+      _identityNameController.text =
+          IdentityService.instance.identity?.displayName ?? '';
+    }
 
     ServerService.instance.init().then((_) {
       setState(() {});
@@ -155,6 +163,117 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() {
       usePersistentSidebar = value;
     });
+  }
+
+  Future<void> _saveIdentityName() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final trimmed = _identityNameController.text.trim();
+    final newName = trimmed.isEmpty ? 'You' : trimmed;
+    await IdentityService.instance.setDisplayName(newName);
+    if (!mounted) return;
+    setState(() {});
+    messenger.showSnackBar(
+      const SnackBar(content: Text('Identity name updated')),
+    );
+  }
+
+  Future<void> _copyToClipboard(
+    String text,
+    String message,
+    BuildContext ctx,
+  ) async {
+    final messenger = ScaffoldMessenger.of(ctx);
+    await Clipboard.setData(ClipboardData(text: text));
+    if (!mounted) return;
+    messenger.showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  // ignore: use_build_context_synchronously
+  Future<void> _exportIdentity() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final currentContext = context;
+    try {
+      final jsonString = await IdentityService.instance.exportIdentity();
+      // ignore: use_build_context_synchronously
+      await showDialog<void>(
+        context: currentContext,
+        builder: (context) {
+          return AlertDialog(
+            title: const Text('Export Identity'),
+            content: SelectableText(jsonString),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                },
+                child: const Text('Close'),
+              ),
+              TextButton(
+                onPressed: () {
+                  _copyToClipboard(jsonString, 'Identity JSON copied', context);
+                  Navigator.of(context).pop();
+                },
+                child: const Text('Copy'),
+              ),
+            ],
+          );
+        },
+      );
+    } catch (error) {
+      if (!mounted) return;
+      messenger.showSnackBar(SnackBar(content: Text('Export failed: $error')));
+    }
+  }
+
+  Future<void> _importIdentity() async {
+    final result = await showDialog<String?>(
+      context: context,
+      builder: (context) {
+        final controller = TextEditingController();
+        return AlertDialog(
+          title: const Text('Import Identity JSON'),
+          content: TextField(
+            controller: controller,
+            decoration: const InputDecoration(
+              hintText: 'Paste identity JSON here',
+            ),
+            maxLines: 6,
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop(controller.text.trim());
+              },
+              child: const Text('Import'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (result == null || result.isEmpty) return;
+
+    try {
+      await IdentityService.instance.importIdentity(result);
+      if (!mounted) return;
+      _identityNameController.text =
+          IdentityService.instance.identity?.displayName ?? 'You';
+      setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Identity imported successfully')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Import failed: $error')));
+    }
   }
 
   void _scrollToEnd(ScrollController controller) {
@@ -867,24 +986,32 @@ class _HomeScreenState extends State<HomeScreen> {
                     : () async {
                         final text = _dmMessageController.text.trim();
                         if (text.isEmpty) return;
-                        await ChatService.instance.sendDirectMessage(
-                          'you',
-                          _selectedDmPeer,
-                          text,
-                          replyToMessageId: _dmReplyTarget?.id,
-                        );
-                        if (ChatService.instance.messageMentions(
-                          _selectedDmPeer,
-                          text,
-                        )) {
-                          await SoundService.instance.playMention();
-                        } else {
-                          await SoundService.instance.playSend();
+                        try {
+                          await ChatService.instance.sendDirectMessage(
+                            'you',
+                            _selectedDmPeer,
+                            text,
+                            replyToMessageId: _dmReplyTarget?.id,
+                          );
+                          if (ChatService.instance.messageMentions(
+                            _selectedDmPeer,
+                            text,
+                          )) {
+                            await SoundService.instance.playMention();
+                          } else {
+                            await SoundService.instance.playSend();
+                          }
+                          _dmReplyTarget = null;
+                          _dmMessageController.clear();
+                          if (!mounted) return;
+                          setState(() {});
+                          _scrollToEnd(_dmChatScrollController);
+                        } catch (error) {
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Send failed: $error')),
+                          );
                         }
-                        _dmReplyTarget = null;
-                        _dmMessageController.clear();
-                        setState(() {});
-                        _scrollToEnd(_dmChatScrollController);
                       },
               ),
             ],
@@ -917,11 +1044,13 @@ class _HomeScreenState extends State<HomeScreen> {
             color: theme.colorScheme.secondaryContainer,
             padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 14),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'Voice chat active: $_voiceChannelServer',
-                  style: theme.textTheme.bodyMedium,
+                Expanded(
+                  child: Text(
+                    'Voice chat active: $_voiceChannelServer',
+                    style: theme.textTheme.bodyMedium,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
                 TextButton.icon(
                   onPressed: () {
@@ -1037,19 +1166,35 @@ class _HomeScreenState extends State<HomeScreen> {
                 onPressed: () async {
                   final text = _inlineMessageController.text.trim();
                   if (text.isEmpty) return;
-                  await ChatService.instance.sendMessage(
-                    selectedServer!.id,
-                    selectedChannelId!,
-                    'you',
-                    text,
-                  );
-                  if (ChatService.instance.messageMentions('you', text)) {
-                    await SoundService.instance.playMention();
-                  } else {
-                    await SoundService.instance.playSend();
+                  if (selectedServer == null || selectedChannelId == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Select server/channel first'),
+                      ),
+                    );
+                    return;
                   }
-                  _inlineMessageController.clear();
-                  setState(() {});
+                  try {
+                    await ChatService.instance.sendMessage(
+                      selectedServer!.id,
+                      selectedChannelId!,
+                      'you',
+                      text,
+                    );
+                    if (ChatService.instance.messageMentions('you', text)) {
+                      await SoundService.instance.playMention();
+                    } else {
+                      await SoundService.instance.playSend();
+                    }
+                    _inlineMessageController.clear();
+                    if (!mounted) return;
+                    setState(() {});
+                  } catch (error) {
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Send failed: $error')),
+                    );
+                  }
                 },
               ),
             ],
@@ -1162,6 +1307,53 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                       value: usePersistentSidebar,
                       onChanged: (v) => _togglePersistentSidebar(v),
+                    ),
+                    const Divider(),
+                    TextField(
+                      controller: _identityNameController,
+                      decoration: const InputDecoration(
+                        labelText: 'Identity display name',
+                        isDense: true,
+                      ),
+                    ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: _saveIdentityName,
+                            child: const Text('Save name'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton(
+                          tooltip: 'Copy node ID',
+                          icon: const Icon(Icons.copy),
+                          onPressed: () {
+                            final nodeId =
+                                IdentityService.instance.identity?.nodeId ?? '';
+                            if (nodeId.isNotEmpty) {
+                              _copyToClipboard(nodeId, 'Node ID copied', context);
+                            }
+                          },
+                        ),
+                      ],
+                    ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: _exportIdentity,
+                            child: const Text('Export identity'),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton(
+                            onPressed: _importIdentity,
+                            child: const Text('Import identity'),
+                          ),
+                        ),
+                      ],
                     ),
                     SwitchListTile(
                       title: const Text('Enable sound effects'),
