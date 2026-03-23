@@ -61,6 +61,59 @@ class TorrentModel {
     this.reputation = 0.0,
   });
 
+  TorrentModel copyWith({
+    String? id,
+    String? name,
+    int? totalSize,
+    int? totalPieces,
+    int? pieceLength,
+    String? piecesHave,
+    String? status,
+    String? type,
+    String? vaultKey,
+    String? filePath,
+    String? vaultLink,
+    String? magnetLink,
+    int? bytesDown,
+    int? bytesUp,
+    int? addedAt,
+    int? completedAt,
+    bool? isSequential,
+    String? selectedFiles,
+    double? maxSeedRatio,
+    bool? deleteAfterRatioReached,
+    int? seeders,
+    int? leechers,
+    double? reputation,
+  }) {
+    return TorrentModel(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      type: type ?? this.type,
+      totalSize: totalSize ?? this.totalSize,
+      totalPieces: totalPieces ?? this.totalPieces,
+      pieceLength: pieceLength ?? this.pieceLength,
+      piecesHave: piecesHave ?? this.piecesHave,
+      status: status ?? this.status,
+      vaultKey: vaultKey ?? this.vaultKey,
+      filePath: filePath ?? this.filePath,
+      vaultLink: vaultLink ?? this.vaultLink,
+      magnetLink: magnetLink ?? this.magnetLink,
+      bytesDown: bytesDown ?? this.bytesDown,
+      bytesUp: bytesUp ?? this.bytesUp,
+      addedAt: addedAt ?? this.addedAt,
+      completedAt: completedAt ?? this.completedAt,
+      isSequential: isSequential ?? this.isSequential,
+      selectedFiles: selectedFiles ?? this.selectedFiles,
+      maxSeedRatio: maxSeedRatio ?? this.maxSeedRatio,
+      deleteAfterRatioReached:
+          deleteAfterRatioReached ?? this.deleteAfterRatioReached,
+      seeders: seeders ?? this.seeders,
+      leechers: leechers ?? this.leechers,
+      reputation: reputation ?? this.reputation,
+    );
+  }
+
   Map<String, dynamic> toMap() {
     return {
       'id': id,

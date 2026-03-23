@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
@@ -32,20 +33,35 @@ class TorrentService {
     await Future.delayed(const Duration(seconds: 2));
     if (trimmed.isEmpty) return [];
     final mockId = DateTime.now().millisecondsSinceEpoch.toString();
+    final random = Random();
+    final sampleNames = [
+      'Ubuntu ISO',
+      'OpenClassroom Linux',
+      'Flutter Dev Bookpack',
+      'Top Hits 2026',
+      'Classic Movie Collection',
+      'Anime Essentials Pack',
+      'Pro Photography Tutorials',
+    ];
+    final selectedName = sampleNames[random.nextInt(sampleNames.length)];
     final sample = TorrentModel(
       id: 'online-$mockId',
-      name: 'Discovered: $trimmed Torrent',
+      name: '$selectedName - $trimmed',
       type: 'remote',
       status: 'available',
+      totalSize: 100 * 1024 * 1024 + random.nextInt(900) * 1024 * 1024,
+      totalPieces: 1024,
+      pieceLength: 256 * 1024,
       vaultLink: null,
-      magnetLink: 'magnet:?xt=urn:btih:$mockId&dn=${Uri.encodeComponent(trimmed)}',
+      magnetLink:
+          'magnet:?xt=urn:btih:$mockId&dn=${Uri.encodeComponent(selectedName)}',
       bytesDown: 0,
       bytesUp: 0,
       addedAt: DateTime.now().millisecondsSinceEpoch,
       isSequential: false,
-      seeders: 120,
-      leechers: 15,
-      reputation: 4.5,
+      seeders: 50 + random.nextInt(300),
+      leechers: 5 + random.nextInt(50),
+      reputation: 1.0 + random.nextDouble() * 4.0,
     );
     return [sample];
   }
@@ -199,6 +215,66 @@ class TorrentService {
     if (shouldDelete && updatedStatus == 'seed_ratio_reached') {
       await TorrentsDao.instance.deleteTorrent(id);
     }
+  }
+
+  Future<void> downloadTorrent(String id, String destinationPath) async {
+    final existing = await TorrentsDao.instance.getTorrentById(id);
+    if (existing == null) {
+      throw StateError('Torrent not found: $id');
+    }
+
+    if (destinationPath.trim().isEmpty) {
+      throw ArgumentError('Destination path cannot be empty');
+    }
+
+    final folder = Directory(destinationPath);
+    if (!await folder.exists()) {
+      throw FileSystemException(
+        'Destination folder does not exist',
+        destinationPath,
+      );
+    }
+
+    final totalSize = existing.totalSize ?? 500 * 1024 * 1024;
+    int bytesDown = existing.bytesDown;
+    int bytesUp = existing.bytesUp;
+
+    await updateTorrent(
+      existing.copyWith(
+        status: 'downloading',
+        filePath: destinationPath,
+        bytesDown: bytesDown,
+        bytesUp: bytesUp,
+      ),
+    );
+
+    final int chunkSize = max(1024 * 1024, (totalSize ~/ 25));
+
+    while (bytesDown < totalSize) {
+      await Future.delayed(const Duration(seconds: 1));
+      bytesDown = min(totalSize, bytesDown + chunkSize);
+      bytesUp = min(totalSize, bytesUp + chunkSize);
+
+      await updateProgress(id, bytesDown, bytesUp);
+    }
+
+    await updateTorrent(
+      existing.copyWith(
+        status: 'completed',
+        bytesDown: totalSize,
+        bytesUp: totalSize,
+        completedAt: DateTime.now().millisecondsSinceEpoch,
+        filePath: destinationPath,
+        isSequential: true,
+      ),
+    );
+  }
+
+  Future<void> setDestinationAndStart(String id, String destinationPath) async {
+    await updateTorrent(
+      (await getTorrentById(id))!.copyWith(filePath: destinationPath),
+    );
+    await downloadTorrent(id, destinationPath);
   }
 
   Future<void> addTorrentFromTorrentFile(String path) async {

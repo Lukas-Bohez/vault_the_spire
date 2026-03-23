@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:vault_the_spire/services/sound_service.dart';
@@ -26,6 +27,8 @@ class HomeScreen extends StatefulWidget {
 
 enum MainView { dashboard, torrents, messages, server }
 
+enum TorrentSortMode { reputation, seeders, leechers }
+
 class _HomeScreenState extends State<HomeScreen> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
@@ -49,6 +52,9 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _isMinerActive = false;
   Timer? _torrentMiningTimer;
   List<TorrentModel> _discoveredTorrents = [];
+  String _downloadDestination = '';
+  TorrentSortMode _sortMode = TorrentSortMode.reputation;
+  int _minSeeders = 0;
   final Set<String> _dmContacts = <String>{};
   final Map<String, int> _dmUnread = <String, int>{};
   final Map<String, bool> _voiceMuted = <String, bool>{};
@@ -99,7 +105,9 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {});
     });
 
-    _torrentMiningTimer = Timer.periodic(const Duration(seconds: 20), (_) async {
+    _torrentMiningTimer = Timer.periodic(const Duration(seconds: 20), (
+      _,
+    ) async {
       if (!_isMinerActive) return;
       await _performMiningSweep();
     });
@@ -208,6 +216,26 @@ class _HomeScreenState extends State<HomeScreen> {
     messenger.showSnackBar(SnackBar(content: Text(message)));
   }
 
+  Future<void> _chooseDownloadDirectory() async {
+    try {
+      final result = await FilePicker.platform.getDirectoryPath();
+      if (result != null && result.isNotEmpty) {
+        setState(() {
+          _downloadDestination = result;
+        });
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Destination set: $_downloadDestination')),
+        );
+      }
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Destination selection failed: $error')),
+      );
+    }
+  }
+
   Future<void> _exportIdentity() async {
     final messenger = ScaffoldMessenger.of(context);
     try {
@@ -311,7 +339,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildModuleNav(ThemeData theme) {
     final tabs = [
-      {'icon': Icons.dashboard, 'label': 'Dashboard', 'view': MainView.dashboard},
+      {
+        'icon': Icons.dashboard,
+        'label': 'Dashboard',
+        'view': MainView.dashboard,
+      },
       {'icon': Icons.storage, 'label': 'Torrents', 'view': MainView.torrents},
       {'icon': Icons.chat, 'label': 'Messages', 'view': MainView.messages},
       {'icon': Icons.cloud, 'label': 'Servers', 'view': MainView.server},
@@ -348,7 +380,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 side: BorderSide(
                   color: selected
                       ? theme.colorScheme.primary
-                      : theme.colorScheme.onSurface.withAlpha((0.15 * 255).round()),
+                      : theme.colorScheme.onSurface.withAlpha(
+                          (0.15 * 255).round(),
+                        ),
                 ),
               ),
               icon: Icon(tab['icon'] as IconData, size: 18),
@@ -408,7 +442,9 @@ class _HomeScreenState extends State<HomeScreen> {
         if (await File(path).exists() || await Directory(path).exists()) {
           await TorrentService.instance.addTorrentFromPath(path);
         } else {
-          throw FormatException('Invalid torrent input. Use magnet link or existing path');
+          throw FormatException(
+            'Invalid torrent input. Use magnet link or existing path',
+          );
         }
       }
 
@@ -419,9 +455,9 @@ class _HomeScreenState extends State<HomeScreen> {
         const SnackBar(content: Text('Torrent added successfully')),
       );
     } catch (error) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to add torrent: $error')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to add torrent: $error')));
     }
   }
 
@@ -468,11 +504,16 @@ class _HomeScreenState extends State<HomeScreen> {
                               labelText: 'Max seed ratio (e.g., 2.0)',
                               isDense: true,
                             ),
-                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
                             onSubmitted: (value) async {
                               final ratio = double.tryParse(value);
                               if (ratio == null) return;
-                              await TorrentService.instance.setSeedRatioLimit(torrent.id, ratio);
+                              await TorrentService.instance.setSeedRatioLimit(
+                                torrent.id,
+                                ratio,
+                              );
                               setState(() {});
                             },
                           ),
@@ -482,7 +523,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                 value: deleteAfter,
                                 onChanged: (value) async {
                                   if (value == null) return;
-                                  await TorrentService.instance.setDeleteAfterRatioReached(torrent.id, value);
+                                  await TorrentService.instance
+                                      .setDeleteAfterRatioReached(
+                                        torrent.id,
+                                        value,
+                                      );
                                   setState(() {});
                                 },
                               ),
@@ -509,15 +554,31 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _performMiningSweep() async {
-    final currentSearch = _torrentSearchQuery.isNotEmpty ? _torrentSearchQuery : 'trending';
-    final discovered = await TorrentService.instance.discoverTorrentsOnline(currentSearch);
+    final currentSearch = _torrentSearchQuery.isNotEmpty
+        ? _torrentSearchQuery
+        : 'trending';
+    final discovered = await TorrentService.instance.discoverTorrentsOnline(
+      currentSearch,
+    );
     for (final torrent in discovered) {
-      await TorrentService.instance.addTorrent(torrent);
+      try {
+        await TorrentService.instance.addTorrent(torrent);
+      } catch (_) {
+        // ignore duplicates
+      }
+      if (_isMinerActive && _downloadDestination.isNotEmpty) {
+        TorrentService.instance
+            .downloadTorrent(torrent.id, _downloadDestination)
+            .catchError((_) {});
+      }
     }
 
     setState(() {
       _discoveredTorrents.addAll(discovered);
-      _discoveredTorrents = _discoveredTorrents.fold<List<TorrentModel>>([], (acc, item) {
+      _discoveredTorrents = _discoveredTorrents.fold<List<TorrentModel>>([], (
+        acc,
+        item,
+      ) {
         if (!acc.any((t) => t.id == item.id)) acc.add(item);
         return acc;
       });
@@ -530,7 +591,9 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!value) {
         _torrentMiningTimer?.cancel();
       } else {
-        _torrentMiningTimer ??= Timer.periodic(const Duration(seconds: 20), (_) async {
+        _torrentMiningTimer ??= Timer.periodic(const Duration(seconds: 20), (
+          _,
+        ) async {
           await _performMiningSweep();
         });
       }
@@ -554,7 +617,9 @@ class _HomeScreenState extends State<HomeScreen> {
             ? null
             : Border(
                 right: BorderSide(
-                  color: theme.colorScheme.outline.withAlpha((0.15 * 255).round()),
+                  color: theme.colorScheme.outline.withAlpha(
+                    (0.15 * 255).round(),
+                  ),
                   width: 1.2,
                 ),
               ),
@@ -678,7 +743,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   await SoundService.instance.playClick();
                   setState(() {
                     selectedServer = server;
-                    selectedChannelId = server.channels.isNotEmpty ? server.channels.first.id : null;
+                    selectedChannelId = server.channels.isNotEmpty
+                        ? server.channels.first.id
+                        : null;
                     _mainView = MainView.server;
                   });
                 },
@@ -686,8 +753,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   onSelected: (value) async {
                     final messenger = ScaffoldMessenger.of(context);
                     if (value == 'invite') {
-                      final inviteCode = ServerService.instance.generateInvite(server);
-                      messenger.showSnackBar(SnackBar(content: Text('Invite code: $inviteCode')));
+                      final inviteCode = ServerService.instance.generateInvite(
+                        server,
+                      );
+                      messenger.showSnackBar(
+                        SnackBar(content: Text('Invite code: $inviteCode')),
+                      );
                     } else if (value == 'delete') {
                       await ServerService.instance.removeServer(server.id);
                       if (selectedServer?.id == server.id) {
@@ -700,7 +771,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     }
                   },
                   itemBuilder: (context) => [
-                    const PopupMenuItem(value: 'invite', child: Text('Copy invite code')),
+                    const PopupMenuItem(
+                      value: 'invite',
+                      child: Text('Copy invite code'),
+                    ),
                     const PopupMenuItem(value: 'rename', child: Text('Rename')),
                     const PopupMenuItem(value: 'delete', child: Text('Delete')),
                   ],
@@ -719,10 +793,16 @@ class _HomeScreenState extends State<HomeScreen> {
             ElevatedButton(
               onPressed: () async {
                 await SoundService.instance.playNotification();
-                final success = await ServerService.instance.joinServer(_inviteCodeController.text.trim());
+                final success = await ServerService.instance.joinServer(
+                  _inviteCodeController.text.trim(),
+                );
                 if (!mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(success ? 'Joined server!' : 'Invalid invite code.')),
+                  SnackBar(
+                    content: Text(
+                      success ? 'Joined server!' : 'Invalid invite code.',
+                    ),
+                  ),
                 );
                 if (success) {
                   _inviteCodeController.clear();
@@ -755,7 +835,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 });
                 if (!mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Created server: ${server.name} (invite: ${server.id})')),
+                  SnackBar(
+                    content: Text(
+                      'Created server: ${server.name} (invite: ${server.id})',
+                    ),
+                  ),
                 );
               },
               child: const Text('Create server'),
@@ -764,7 +848,9 @@ class _HomeScreenState extends State<HomeScreen> {
             if (selectedServer != null) ...[
               Card(
                 elevation: 2,
-                color: _inVoiceChannel ? theme.colorScheme.tertiaryContainer : theme.colorScheme.surfaceContainerHighest,
+                color: _inVoiceChannel
+                    ? theme.colorScheme.tertiaryContainer
+                    : theme.colorScheme.surfaceContainerHighest,
                 margin: EdgeInsets.zero,
                 child: ListTile(
                   leading: const Icon(Icons.mic, size: 22),
@@ -773,13 +859,18 @@ class _HomeScreenState extends State<HomeScreen> {
                     style: theme.textTheme.titleSmall,
                   ),
                   subtitle: Text(
-                    _inVoiceChannel ? _voiceChannelServer : 'Not in voice channel',
+                    _inVoiceChannel
+                        ? _voiceChannelServer
+                        : 'Not in voice channel',
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
                   trailing: ElevatedButton(
                     onPressed: () {
-                      _toggleVoiceChannel(selectedServer!.id, selectedServer!.name);
+                      _toggleVoiceChannel(
+                        selectedServer!.id,
+                        selectedServer!.name,
+                      );
                     },
                     child: Text(_inVoiceChannel ? 'Leave' : 'Join'),
                   ),
@@ -791,8 +882,13 @@ class _HomeScreenState extends State<HomeScreen> {
                   spacing: 8,
                   children: _voiceMuted.entries.map((entry) {
                     return InputChip(
-                      label: Text('${entry.key}${entry.value ? ' (muted)' : ''}'),
-                      avatar: Icon(entry.value ? Icons.volume_off : Icons.volume_up, size: 16),
+                      label: Text(
+                        '${entry.key}${entry.value ? ' (muted)' : ''}',
+                      ),
+                      avatar: Icon(
+                        entry.value ? Icons.volume_off : Icons.volume_up,
+                        size: 16,
+                      ),
                       onPressed: () {
                         setState(() {
                           _voiceMuted[entry.key] = !entry.value;
@@ -829,6 +925,22 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildTorrentsArea(ThemeData theme) {
+    final filteredDiscovered = _discoveredTorrents
+        .where((torrent) => torrent.seeders >= _minSeeders)
+        .toList();
+
+    filteredDiscovered.sort((a, b) {
+      switch (_sortMode) {
+        case TorrentSortMode.seeders:
+          return b.seeders.compareTo(a.seeders);
+        case TorrentSortMode.leechers:
+          return b.leechers.compareTo(a.leechers);
+        case TorrentSortMode.reputation:
+        default:
+          return b.reputation.compareTo(a.reputation);
+      }
+    });
+
     return Container(
       color: theme.colorScheme.surface,
       padding: const EdgeInsets.all(18),
@@ -909,6 +1021,76 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
           const SizedBox(height: 14),
+          Card(
+            elevation: 1,
+            color: theme.colorScheme.surfaceContainerHighest,
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _downloadDestination.isEmpty
+                              ? 'No download destination selected'
+                              : 'Download destination: $_downloadDestination',
+                          style: theme.textTheme.bodySmall,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton(
+                        onPressed: _chooseDownloadDirectory,
+                        child: const Text('Choose folder'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      const Text('Sort by:'),
+                      const SizedBox(width: 8),
+                      DropdownButton<TorrentSortMode>(
+                        value: _sortMode,
+                        onChanged: (value) {
+                          if (value != null) {
+                            setState(() {
+                              _sortMode = value;
+                            });
+                          }
+                        },
+                        items: TorrentSortMode.values.map((item) {
+                          return DropdownMenuItem(
+                            value: item,
+                            child: Text(item.toString().split('.').last),
+                          );
+                        }).toList(),
+                      ),
+                      const SizedBox(width: 16),
+                      const Text('Min seeders:'),
+                      Expanded(
+                        child: Slider(
+                          min: 0,
+                          max: 500,
+                          divisions: 25,
+                          value: _minSeeders.toDouble(),
+                          label: '$_minSeeders',
+                          onChanged: (value) {
+                            setState(() {
+                              _minSeeders = value.toInt();
+                            });
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
           Wrap(
             spacing: 10,
             children: [
@@ -920,44 +1102,139 @@ class _HomeScreenState extends State<HomeScreen> {
                 onPressed: _showSeedingSettings,
                 child: const Text('Seeding settings'),
               ),
-              OutlinedButton(
-                onPressed: () async {
-                  // CPU/GPU scan placeholder
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text('System scanning for torrent sources..'),
-                  ));
-                  await Future.delayed(const Duration(seconds: 2));
-                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                    content: Text('Scan complete (mock) - no new torrents'),
-                  ));
-                },
-                child: const Text('Scan for torrents'),
-              ),
             ],
           ),
           const SizedBox(height: 12),
-          if (_discoveredTorrents.isNotEmpty) ...[
+          Card(
+            elevation: 1,
+            color: theme.colorScheme.surfaceContainerHighest,
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Auto mining',
+                      style: theme.textTheme.bodyMedium,
+                    ),
+                  ),
+                  Text(_isMinerActive ? 'Running' : 'Stopped'),
+                  const SizedBox(width: 8),
+                  Switch(value: _isMinerActive, onChanged: _toggleMiner),
+                ],
+              ),
+            ),
+          ),
+          if (_downloadDestination.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 6, bottom: 4),
+              child: Text(
+                'Choose a destination folder to enable auto-download',
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
+          if (filteredDiscovered.isNotEmpty) ...[
             Text('Discovered Torrents', style: theme.textTheme.titleMedium),
             const SizedBox(height: 8),
-            ..._discoveredTorrents.map((torrent) {
+            ...filteredDiscovered.map((torrent) {
               return ListTile(
                 leading: const Icon(Icons.new_releases),
                 title: Text(torrent.name),
-                subtitle: Text(
-                  'Seeders ${torrent.seeders}, Leechers ${torrent.leechers}, Rep ${torrent.reputation.toStringAsFixed(1)}',
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Seeders ${torrent.seeders}, Leechers ${torrent.leechers}, Rep ${torrent.reputation.toStringAsFixed(1)}',
+                      style: theme.textTheme.bodySmall,
+                    ),
+                    if (torrent.magnetLink != null)
+                      Text(
+                        torrent.magnetLink!,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontSize: 12,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    if (torrent.filePath != null &&
+                        torrent.filePath!.isNotEmpty)
+                      Text(
+                        'Destination: ${torrent.filePath}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontSize: 12,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                  ],
                 ),
-                trailing: IconButton(
-                  icon: const Icon(Icons.download),
-                  tooltip: 'Add discovered torrent',
-                  onPressed: () async {
-                    await TorrentService.instance.addTorrent(torrent);
-                    setState(() {
-                      _discoveredTorrents.remove(torrent);
-                    });
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Added ${torrent.name}.')),
-                    );
-                  },
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.add),
+                      tooltip: 'Add discovered torrent',
+                      onPressed: () async {
+                        try {
+                          await TorrentService.instance.addTorrent(torrent);
+                          setState(() {
+                            _discoveredTorrents.remove(torrent);
+                          });
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Added ${torrent.name}.')),
+                          );
+                        } catch (e) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Already added: ${torrent.name}'),
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.download),
+                      tooltip: 'Download torrent',
+                      onPressed: () async {
+                        if (_downloadDestination.isEmpty) {
+                          await _chooseDownloadDirectory();
+                          if (_downloadDestination.isEmpty) {
+                            return;
+                          }
+                        }
+
+                        try {
+                          await TorrentService.instance.addTorrent(torrent);
+                        } catch (_) {}
+
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Starting download: ${torrent.name}'),
+                          ),
+                        );
+
+                        TorrentService.instance
+                            .downloadTorrent(torrent.id, _downloadDestination)
+                            .then((_) {
+                              if (!mounted) return;
+                              setState(() {});
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text(
+                                    'Download complete: ${torrent.name}',
+                                  ),
+                                ),
+                              );
+                            })
+                            .catchError((error) {
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Download failed: $error'),
+                                ),
+                              );
+                            });
+                      },
+                    ),
+                  ],
                 ),
               );
             }),
@@ -983,9 +1260,61 @@ class _HomeScreenState extends State<HomeScreen> {
                   itemCount: torrents.length,
                   itemBuilder: (context, index) {
                     final torrent = torrents[index];
+                    final progress =
+                        (torrent.totalSize != null && torrent.totalSize! > 0)
+                        ? (torrent.bytesDown / torrent.totalSize!).clamp(
+                            0.0,
+                            1.0,
+                          )
+                        : 0.0;
                     return ListTile(
                       title: Text(torrent.name ?? 'Unnamed'),
-                      subtitle: Text(torrent.status ?? 'unknown'),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(torrent.status ?? 'unknown'),
+                          if (torrent.totalSize != null)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 4.0),
+                              child: LinearProgressIndicator(
+                                value: progress,
+                                minHeight: 6,
+                              ),
+                            ),
+                          if (torrent.totalSize != null)
+                            Text('${(progress * 100).toStringAsFixed(0)}%'),
+                        ],
+                      ),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (torrent.status != 'downloading' &&
+                              torrent.status != 'completed')
+                            IconButton(
+                              icon: const Icon(Icons.play_arrow),
+                              tooltip: 'Start download',
+                              onPressed: () async {
+                                if (_downloadDestination.isEmpty) {
+                                  await _chooseDownloadDirectory();
+                                  if (_downloadDestination.isEmpty) return;
+                                }
+                                await TorrentService.instance.downloadTorrent(
+                                  torrent.id,
+                                  _downloadDestination,
+                                );
+                                setState(() {});
+                              },
+                            ),
+                          if (torrent.status == 'downloading')
+                            const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          if (torrent.status == 'completed')
+                            const Icon(Icons.check_circle, color: Colors.green),
+                        ],
+                      ),
                     );
                   },
                 ),
@@ -1052,7 +1381,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     _dmUnread[payload] = 0;
                   });
                   messenger.showSnackBar(
-                    const SnackBar(content: Text('Friend identity pasted and added')),
+                    const SnackBar(
+                      content: Text('Friend identity pasted and added'),
+                    ),
                   );
                 },
                 icon: const Icon(Icons.paste),
@@ -1912,10 +2243,13 @@ class _HomeScreenState extends State<HomeScreen> {
       autofocus: true,
       onKeyEvent: (event) {
         if (event is KeyDownEvent) {
-          final isCtrl = HardwareKeyboard.instance.logicalKeysPressed
-                  .contains(LogicalKeyboardKey.controlLeft) ||
-              HardwareKeyboard.instance.logicalKeysPressed
-                  .contains(LogicalKeyboardKey.controlRight);
+          final isCtrl =
+              HardwareKeyboard.instance.logicalKeysPressed.contains(
+                LogicalKeyboardKey.controlLeft,
+              ) ||
+              HardwareKeyboard.instance.logicalKeysPressed.contains(
+                LogicalKeyboardKey.controlRight,
+              );
           final key = event.logicalKey;
           if (key == LogicalKeyboardKey.digit1 && isCtrl) {
             setState(() => _mainView = MainView.dashboard);
