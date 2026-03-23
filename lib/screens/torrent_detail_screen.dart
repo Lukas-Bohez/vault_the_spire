@@ -1,27 +1,34 @@
 import 'package:flutter/material.dart';
 import 'package:vault_the_spire/models/torrent.dart';
+import 'package:vault_the_spire/services/torrent_engine_service.dart';
 
-class TorrentDetailScreen extends StatelessWidget {
+class TorrentDetailScreen extends StatefulWidget {
   final TorrentModel torrent;
 
   const TorrentDetailScreen({super.key, required this.torrent});
 
   @override
+  State<TorrentDetailScreen> createState() => _TorrentDetailScreenState();
+}
+
+class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
+  @override
   Widget build(BuildContext context) {
-    final piecesCount = torrent.totalPieces ?? 0;
+    final piecesCount = widget.torrent.totalPieces ?? 0;
     final haveCount =
-        torrent.piecesHave?.split(',').where((e) => e == '1').length ?? 0;
+        widget.torrent.piecesHave?.split(',').where((e) => e == '1').length ??
+        0;
     final progress = piecesCount > 0 ? (haveCount / piecesCount) : 0.0;
 
     return Scaffold(
-      appBar: AppBar(title: Text(torrent.name)),
+      appBar: AppBar(title: Text(widget.torrent.name)),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'InfoHash: ${torrent.id}',
+              'InfoHash: ${widget.torrent.id}',
               style: const TextStyle(fontSize: 12, color: Colors.grey),
             ),
             const SizedBox(height: 8),
@@ -29,11 +36,41 @@ class TorrentDetailScreen extends StatelessWidget {
             const SizedBox(height: 8),
             Text('Progress: ${(progress * 100).toStringAsFixed(1)}%'),
             const SizedBox(height: 16),
-            Text('Status: ${torrent.status ?? 'unknown'}'),
-            Text('Type: ${torrent.type}'),
-            Text('Size: ${torrent.totalSize ?? 0} bytes'),
-            Text('Downloaded: ${torrent.bytesDown}'),
-            Text('Uploaded: ${torrent.bytesUp}'),
+            StreamBuilder<TorrentEngineStatus>(
+              stream: TorrentEngineService.instance.statusStream.where(
+                (status) => status.torrentId == widget.torrent.id,
+              ),
+              builder: (context, snapshot) {
+                final status = snapshot.data;
+                if (status == null) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Status: ${widget.torrent.status ?? 'unknown'}'),
+                      Text('Type: ${widget.torrent.type}'),
+                      Text('Size: ${widget.torrent.totalSize ?? 0} bytes'),
+                      Text('Downloaded: ${widget.torrent.bytesDown}'),
+                      Text('Uploaded: ${widget.torrent.bytesUp}'),
+                    ],
+                  );
+                }
+
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Status: ${status.state}'),
+                    Text('Type: ${widget.torrent.type}'),
+                    Text('Size: ${widget.torrent.totalSize ?? 0} bytes'),
+                    Text('Downloaded: ${status.downloaded}'),
+                    Text('Uploaded: ${status.uploaded}'),
+                    Text('Peers: ${status.peers}'),
+                    Text(
+                      'Progress engine: ${(status.progress * 100).toStringAsFixed(1)}%',
+                    ),
+                  ],
+                );
+              },
+            ),
             const SizedBox(height: 16),
             Text('Pieces: $haveCount / $piecesCount'),
             const SizedBox(height: 16),
