@@ -3,6 +3,7 @@ import 'package:vault_the_spire/screens/messages_screen.dart';
 import 'package:vault_the_spire/screens/torrents_screen.dart';
 import 'package:vault_the_spire/services/identity_service.dart';
 import 'package:vault_the_spire/services/settings_service.dart';
+import 'package:vault_the_spire/services/theme_service.dart';
 import 'package:vault_the_spire/services/tray_service.dart';
 import 'package:vault_the_spire/services/startup_service.dart';
 import 'package:vault_the_spire/services/torrent_service.dart';
@@ -87,6 +88,25 @@ class _HomeScreenState extends State<HomeScreen> {
               label: const Text('Open Messaging'),
             ),
             const SizedBox(height: 16),
+            Card(
+              elevation: 1,
+              color: Theme.of(context).colorScheme.secondary.withAlpha(20),
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: const [
+                    Text('Quick start', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    SizedBox(height: 8),
+                    Text('1. Enable system tray and toggle "Minimize to tray".'),
+                    Text('2. Add torrents or import .torrent files in Torrents view.'),
+                    Text('3. Open Messaging and send encrypted messages locally.'),
+                    Text('4. Keep app open; closing to tray keeps background state.'),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
             const Text('Core identity and peer state are initialized.'),
             const SizedBox(height: 16),
             if (identity == null)
@@ -132,6 +152,14 @@ class _HomeScreenState extends State<HomeScreen> {
                       title: const Text('Minimize to tray on close'),
                       value: _minimizeToTrayOnClose,
                       onChanged: _useSystemTray ? _toggleMinimizeToTray : null,
+                    ),
+                    SwitchListTile(
+                      title: const Text('Use dark theme'),
+                      value: ThemeService.instance.themeMode == ThemeMode.dark,
+                      onChanged: (dark) async {
+                        await ThemeService.instance.setThemeMode(dark ? ThemeMode.dark : ThemeMode.light);
+                        setState(() {});
+                      },
                     ),
                     SwitchListTile(
                       title: const Text('Launch on startup'),

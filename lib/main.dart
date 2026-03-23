@@ -13,6 +13,7 @@ import 'package:vault_the_spire/screens/home_screen.dart';
 import 'package:vault_the_spire/services/identity_service.dart';
 import 'package:vault_the_spire/services/settings_service.dart';
 import 'package:vault_the_spire/services/startup_service.dart';
+import 'package:vault_the_spire/services/theme_service.dart';
 import 'package:vault_the_spire/services/tray_service.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -53,6 +54,7 @@ Future<void> main() async {
       if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
         await setupDesktopWindow();
 
+        await ThemeService.instance.load();
         await SettingsService.instance.load();
 
         if (SettingsService.instance.launchOnStartup) {
@@ -89,14 +91,48 @@ Future<void> main() async {
   );
 }
 
-class MainApp extends StatelessWidget {
+class MainApp extends StatefulWidget {
   const MainApp({super.key});
+
+  @override
+  State<MainApp> createState() => _MainAppState();
+}
+
+class _MainAppState extends State<MainApp> {
+  final themeService = ThemeService.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    themeService.addListener(_onThemeChanged);
+  }
+
+  @override
+  void dispose() {
+    themeService.removeListener(_onThemeChanged);
+    super.dispose();
+  }
+
+  void _onThemeChanged() {
+    setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'VaultTheSpire',
-      theme: ThemeData(primarySwatch: Colors.indigo, useMaterial3: true),
+      theme: ThemeData(
+        brightness: Brightness.light,
+        primarySwatch: Colors.indigo,
+        scaffoldBackgroundColor: Colors.grey[50],
+        useMaterial3: true,
+      ),
+      darkTheme: ThemeData(
+        brightness: Brightness.dark,
+        primarySwatch: Colors.indigo,
+        useMaterial3: true,
+      ),
+      themeMode: themeService.themeMode,
       home: const HomeScreen(),
     );
   }
