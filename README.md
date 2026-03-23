@@ -4,6 +4,14 @@ Desktop-first Flutter torrent + identity project.
 
 ## Quick start
 
+Vault The Spire is a user-facing client for https://quizthespire.com/. It talks to the QuizTheSpire API for channels, messaging, and torrent vault sync.
+
+### End-user install (recommended)
+1. Visit https://quizthespire.com/ and download the latest app package for your platform.
+2. Install normally (Windows MSI, macOS DMG, Linux AppImage).
+3. Run the app and choose `Settings -> Launch on startup` to enable automatic startup.
+
+### Developer install
 Requirements:
 - Flutter SDK (stable channel)
 - Dart SDK

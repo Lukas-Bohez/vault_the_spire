@@ -10,6 +10,12 @@ class AppDatabase {
   static final AppDatabase instance = AppDatabase._();
 
   static Database? _database;
+  static String? _encryptionKey;
+
+  /// Optionally set a SQLCipher key before opening the DB.
+  static void setEncryptionKey(String key) {
+    _encryptionKey = key;
+  }
 
   Future<Database> get database async {
     if (_database != null) return _database!;
@@ -22,6 +28,20 @@ class AppDatabase {
       onConfigure: (db) async {
         // Enable foreign keys
         await db.execute('PRAGMA foreign_keys = ON');
+
+        if (_encryptionKey != null && _encryptionKey!.isNotEmpty) {
+          await db.execute(
+            "PRAGMA key = '${_encryptionKey!.replaceAll("'", "''")}'",
+          );
+
+          final cipherRows = await db.rawQuery('PRAGMA cipher_version;');
+          final cipherVersion = cipherRows.isNotEmpty
+              ? cipherRows.first.values.first?.toString() ?? ''
+              : '';
+          if (cipherVersion.isEmpty) {
+            throw StateError('SQLCipher not loaded — check your dependencies!');
+          }
+        }
       },
     );
     return _database!;
@@ -53,6 +73,18 @@ class AppDatabase {
         completed_at INTEGER,
         is_sequential INTEGER DEFAULT 0,
         selected_files TEXT
+      );
+    ''');
+
+    await db.execute('''
+      CREATE TABLE messages (
+        id TEXT PRIMARY KEY,
+        sender TEXT NOT NULL,
+        recipient TEXT NOT NULL,
+        body TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        is_sent INTEGER NOT NULL DEFAULT 0,
+        protocol TEXT NOT NULL DEFAULT 'local'
       );
     ''');
   }

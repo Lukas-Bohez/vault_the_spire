@@ -5,8 +5,10 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   desktop_drop
   flutter_secure_storage_windows
+  permission_handler_windows
   screen_retriever
   sqlcipher_flutter_libs
+  tray_manager
   window_manager
 )
 

@@ -1,0 +1,199 @@
+import 'dart:async';
+import 'dart:io';
+import 'dart:ui' show Offset, Size;
+
+import 'package:flutter/foundation.dart' show VoidCallback, debugPrint, kIsWeb;
+import 'package:path/path.dart' as p;
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:tray_manager/tray_manager.dart';
+import 'package:window_manager/window_manager.dart';
+
+class TrayService with TrayListener, WindowListener {
+  static bool enabled = false;
+  static bool shouldMinimiseToTrayOnClose = false;
+
+  bool _initialised = false;
+  final bool Function() shouldMinimiseToTray;
+  final VoidCallback? onTrayShow;
+  final VoidCallback? onTrayQuit;
+
+  TrayService({
+    required this.shouldMinimiseToTray,
+    this.onTrayShow,
+    this.onTrayQuit,
+  });
+
+  bool get isDesktop =>
+      !kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS);
+
+  Future<void> init() async {
+    if (!isDesktop || _initialised) return;
+    _initialised = true;
+    enabled = true;
+    shouldMinimiseToTrayOnClose = shouldMinimiseToTray();
+
+    await windowManager.ensureInitialized();
+    await _restoreWindowGeometry();
+    await windowManager.setPreventClose(true);
+    windowManager.addListener(this);
+
+    await _setupTray();
+  }
+
+  Future<void> _setupTray() async {
+    String iconPath;
+    if (Platform.isWindows) {
+      final exeDir = p.dirname(Platform.resolvedExecutable);
+      final ico = p.join(
+        exeDir,
+        'data',
+        'flutter_assets',
+        'assets',
+        'icons',
+        'app_icon.ico',
+      );
+      final png = p.join(
+        exeDir,
+        'data',
+        'flutter_assets',
+        'assets',
+        'icons',
+        'favicon-192x192.png',
+      );
+      iconPath = File(ico).existsSync() ? ico : png;
+    } else {
+      iconPath = 'assets/icons/favicon-192x192.png';
+    }
+
+    try {
+      await trayManager.setIcon(iconPath);
+    } catch (e) {
+      debugPrint('TrayService: setIcon failed ($iconPath): $e');
+    }
+
+    try {
+      await trayManager.setToolTip('VaultTheSpire');
+    } catch (e) {
+      debugPrint('TrayService: setToolTip failed: $e');
+    }
+
+    final menu = Menu(
+      items: [
+        MenuItem(key: 'show', label: 'Show'),
+        MenuItem.separator(),
+        MenuItem(key: 'quit', label: 'Quit'),
+      ],
+    );
+
+    try {
+      await trayManager.setContextMenu(menu);
+    } catch (e) {
+      debugPrint('TrayService: setContextMenu failed: $e');
+    }
+
+    trayManager.addListener(this);
+  }
+
+  @override
+  void onTrayIconMouseDown() => _showWindow();
+
+  @override
+  void onTrayIconRightMouseDown() => trayManager.popUpContextMenu();
+
+  @override
+  void onTrayMenuItemClick(MenuItem menuItem) {
+    switch (menuItem.key) {
+      case 'show':
+        _showWindow();
+        break;
+      case 'quit':
+        onTrayQuit?.call();
+        break;
+    }
+  }
+
+  @override
+  void onWindowClose() {
+    _saveWindowGeometry();
+    if (shouldMinimiseToTray()) {
+      debugPrint('TrayService: minimizing to tray on close');
+      windowManager.hide();
+    } else {
+      onTrayQuit?.call();
+    }
+  }
+
+  @override
+  void onWindowResized() => _scheduleGeometrySave();
+
+  @override
+  void onWindowMoved() => _scheduleGeometrySave();
+
+  static const _kWindowX = 'window_x';
+  static const _kWindowY = 'window_y';
+  static const _kWindowW = 'window_w';
+  static const _kWindowH = 'window_h';
+  Timer? _geometryDebounce;
+
+  Future<void> _saveWindowGeometry() async {
+    try {
+      final bounds = await windowManager.getBounds();
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setDouble(_kWindowX, bounds.left);
+      await prefs.setDouble(_kWindowY, bounds.top);
+      await prefs.setDouble(_kWindowW, bounds.width);
+      await prefs.setDouble(_kWindowH, bounds.height);
+    } catch (_) {}
+  }
+
+  void _scheduleGeometrySave() {
+    _geometryDebounce?.cancel();
+    _geometryDebounce = Timer(
+      const Duration(milliseconds: 500),
+      _saveWindowGeometry,
+    );
+  }
+
+  Future<void> _restoreWindowGeometry() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final x = prefs.getDouble(_kWindowX);
+      final y = prefs.getDouble(_kWindowY);
+      final w = prefs.getDouble(_kWindowW);
+      final h = prefs.getDouble(_kWindowH);
+      if (x == null || y == null || w == null || h == null) return;
+      if (w < 100 || h < 100) return;
+
+      const minVisibleX = -200.0;
+      const minVisibleY = 0.0;
+      const maxSafe = 99999.0;
+      final safeX = x.clamp(minVisibleX, maxSafe);
+      final safeY = y.clamp(minVisibleY, maxSafe);
+
+      await windowManager.setBounds(
+        null,
+        position: Offset(safeX, safeY),
+        size: Size(w, h),
+      );
+    } catch (_) {}
+  }
+
+  Future<void> _showWindow() async {
+    onTrayShow?.call();
+    await windowManager.show();
+    await windowManager.focus();
+  }
+
+  Future<void> destroy() async {
+    if (!_initialised) return;
+    enabled = false;
+    shouldMinimiseToTrayOnClose = false;
+
+    trayManager.removeListener(this);
+    windowManager.removeListener(this);
+    _geometryDebounce?.cancel();
+    await trayManager.destroy();
+    await windowManager.setPreventClose(false);
+    await windowManager.destroy();
+  }
+}
