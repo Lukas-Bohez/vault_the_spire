@@ -20,7 +20,7 @@ dependencies:
   path_provider: ^2.1.0
   path: ^1.8.3
   http: ^1.0.0
-  permission_handler: ^10.4.0
+  permission_handler: ^12.0.0
   sqflite_common_ffi: ^2.3.0
   shared_preferences: ^2.0.20
   tray_manager: ^0.5.2
