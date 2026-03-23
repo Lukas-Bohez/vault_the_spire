@@ -22,9 +22,12 @@ class HomeScreen extends StatefulWidget {
 enum MainView { dashboard, torrents, messages, server }
 
 class _HomeScreenState extends State<HomeScreen> {
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+
   bool useSystemTray = false;
   bool minimizeToTrayOnClose = false;
   bool launchOnStartup = false;
+  bool usePersistentSidebar = false;
   MainView _mainView = MainView.dashboard;
   ServerModel? selectedServer;
   String? selectedChannelId;
@@ -67,6 +70,7 @@ class _HomeScreenState extends State<HomeScreen> {
     useSystemTray = SettingsService.instance.useSystemTray;
     minimizeToTrayOnClose = SettingsService.instance.minimizeToTrayOnClose;
     launchOnStartup = SettingsService.instance.launchOnStartup;
+    usePersistentSidebar = SettingsService.instance.usePersistentSidebar;
 
     ServerService.instance.init().then((_) {
       setState(() {});
@@ -146,6 +150,13 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  Future<void> _togglePersistentSidebar(bool value) async {
+    await SettingsService.instance.setUsePersistentSidebar(value);
+    setState(() {
+      usePersistentSidebar = value;
+    });
+  }
+
   void _scrollToEnd(ScrollController controller) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (controller.hasClients) {
@@ -177,21 +188,33 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Widget _buildServerPanel(ThemeData theme) {
+  Widget _buildServerPanel(ThemeData theme, {bool inDrawer = false}) {
     final identity = IdentityService.instance.identity;
     return Container(
-      width: 260,
+      width: inDrawer ? null : 260,
       color: theme.colorScheme.surfaceContainerHighest,
       padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 12),
       child: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(
-              'VaultTheSpire',
-              style: theme.textTheme.headlineSmall?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+            Row(
+              children: [
+                Image.asset(
+                  kAppFavicon192,
+                  width: 38,
+                  height: 38,
+                  fit: BoxFit.cover,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'VaultTheSpire',
+                  style: theme.textTheme.headlineSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 8),
             Wrap(
@@ -1133,6 +1156,14 @@ class _HomeScreenState extends State<HomeScreen> {
                       },
                     ),
                     SwitchListTile(
+                      title: const Text('Persistent sidebar'),
+                      subtitle: const Text(
+                        'Keeps full left panel visible on desktop',
+                      ),
+                      value: usePersistentSidebar,
+                      onChanged: (v) => _togglePersistentSidebar(v),
+                    ),
+                    SwitchListTile(
                       title: const Text('Enable sound effects'),
                       value: SettingsService.instance.soundEffectsEnabled,
                       onChanged: (enabled) async {
@@ -1222,13 +1253,29 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
+    if (usePersistentSidebar) {
+      return Scaffold(
+        body: Row(
+          children: [
+            _buildServerPanel(theme),
+            Expanded(child: _buildMainArea(theme)),
+          ],
+        ),
+      );
+    }
+
     return Scaffold(
-      body: Row(
-        children: [
-          _buildServerPanel(theme),
-          Expanded(child: _buildMainArea(theme)),
-        ],
+      key: _scaffoldKey,
+      appBar: AppBar(
+        title: const Text('VaultTheSpire'),
+        leading: IconButton(
+          icon: const Icon(Icons.menu),
+          onPressed: () => _scaffoldKey.currentState?.openDrawer(),
+          tooltip: 'Open sidebar',
+        ),
       ),
+      drawer: Drawer(child: _buildServerPanel(theme, inDrawer: true)),
+      body: _buildMainArea(theme),
     );
   }
 }

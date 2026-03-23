@@ -5,6 +5,7 @@ class SettingsService {
   static const _kMinimizeToTrayOnClose = 'minimize_to_tray_on_close';
   static const _kLaunchOnStartup = 'launch_on_startup';
   static const _kSoundEffectsEnabled = 'sound_effects_enabled';
+  static const _kUsePersistentSidebar = 'use_persistent_sidebar';
 
   static final SettingsService instance = SettingsService._();
 
@@ -14,6 +15,7 @@ class SettingsService {
   bool minimizeToTrayOnClose = true;
   bool launchOnStartup = false;
   bool soundEffectsEnabled = true;
+  bool usePersistentSidebar = false;
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -21,6 +23,7 @@ class SettingsService {
     minimizeToTrayOnClose = prefs.getBool(_kMinimizeToTrayOnClose) ?? true;
     launchOnStartup = prefs.getBool(_kLaunchOnStartup) ?? false;
     soundEffectsEnabled = prefs.getBool(_kSoundEffectsEnabled) ?? true;
+    usePersistentSidebar = prefs.getBool(_kUsePersistentSidebar) ?? false;
   }
 
   Future<void> setUseSystemTray(bool value) async {
@@ -45,5 +48,11 @@ class SettingsService {
     soundEffectsEnabled = value;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kSoundEffectsEnabled, value);
+  }
+
+  Future<void> setUsePersistentSidebar(bool value) async {
+    usePersistentSidebar = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kUsePersistentSidebar, value);
   }
 }

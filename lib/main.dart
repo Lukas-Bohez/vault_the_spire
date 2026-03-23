@@ -39,10 +39,9 @@ Future<void> _requestAndroidPermissions() async {
 }
 
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-
   await runZonedGuarded(
     () async {
+      WidgetsFlutterBinding.ensureInitialized();
       await _initSqlCipherOnAndroid();
       await _requestAndroidPermissions();
 
@@ -123,13 +122,22 @@ class _MainAppState extends State<MainApp> {
       title: 'VaultTheSpire',
       theme: ThemeData(
         brightness: Brightness.light,
-        primarySwatch: Colors.indigo,
-        scaffoldBackgroundColor: Colors.grey[50],
+        primaryColor: const Color(0xFF5865F2),
+        scaffoldBackgroundColor: const Color(0xFFF6F6F7),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF5865F2),
+          brightness: Brightness.light,
+        ),
         useMaterial3: true,
       ),
       darkTheme: ThemeData(
         brightness: Brightness.dark,
-        primarySwatch: Colors.indigo,
+        primaryColor: const Color(0xFF5865F2),
+        scaffoldBackgroundColor: const Color(0xFF0F0F14),
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: const Color(0xFF5865F2),
+          brightness: Brightness.dark,
+        ),
         useMaterial3: true,
       ),
       themeMode: themeService.themeMode,

@@ -44,6 +44,9 @@ class AppDatabase {
           }
         }
       },
+      onOpen: (db) async {
+        await _ensureChatMessageColumns(db);
+      },
     );
     return _database!;
   }
@@ -141,6 +144,27 @@ class AppDatabase {
       await db.execute('''
         ALTER TABLE chat_messages ADD COLUMN reactions TEXT;
       ''');
+    }
+
+    await _ensureChatMessageColumns(db);
+  }
+
+  Future<bool> _columnExists(Database db, String table, String column) async {
+    final result = await db.rawQuery('PRAGMA table_info($table);');
+    return result.any((row) => row['name'] == column);
+  }
+
+  Future<void> _ensureChatMessageColumns(Database db) async {
+    if (!await _columnExists(db, 'chat_messages', 'edited_at')) {
+      await db.execute(
+        'ALTER TABLE chat_messages ADD COLUMN edited_at INTEGER;',
+      );
+    }
+    if (!await _columnExists(db, 'chat_messages', 'reply_to')) {
+      await db.execute('ALTER TABLE chat_messages ADD COLUMN reply_to TEXT;');
+    }
+    if (!await _columnExists(db, 'chat_messages', 'reactions')) {
+      await db.execute('ALTER TABLE chat_messages ADD COLUMN reactions TEXT;');
     }
   }
 
