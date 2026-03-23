@@ -456,7 +456,43 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 14),
             Text('Identity', style: theme.textTheme.labelMedium),
             const SizedBox(height: 6),
-            Text(identity != null ? identity.nodeId : 'No node'),
+            Row(
+              children: [
+                Expanded(
+                  child: SelectableText(
+                    identity != null ? identity.nodeId : 'No node',
+                    style: const TextStyle(fontFamily: 'monospace'),
+                  ),
+                ),
+                IconButton(
+                  tooltip: 'Copy identity',
+                  icon: const Icon(Icons.copy, size: 20),
+                  onPressed: identity == null
+                      ? null
+                      : () {
+                          _copyToClipboard(
+                            identity.nodeId,
+                            'Identity copied',
+                            context,
+                          );
+                        },
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            ElevatedButton.icon(
+              onPressed: identity == null
+                  ? null
+                  : () {
+                      _copyToClipboard(
+                        identity.nodeId,
+                        'Identity shared to clipboard',
+                        context,
+                      );
+                    },
+              icon: const Icon(Icons.share),
+              label: const Text('Share identity'),
+            ),
             const SizedBox(height: 10),
             const Divider(),
             const SizedBox(height: 8),
@@ -823,6 +859,31 @@ class _HomeScreenState extends State<HomeScreen> {
                         });
                       },
                 child: const Text('Open'),
+              ),
+              const SizedBox(width: 8),
+              OutlinedButton.icon(
+                onPressed: () async {
+                  final messenger = ScaffoldMessenger.of(context);
+                  final item = await Clipboard.getData('text/plain');
+                  final payload = item?.text?.trim() ?? '';
+                  if (payload.isEmpty) {
+                    messenger.showSnackBar(
+                      const SnackBar(content: Text('Clipboard is empty')),
+                    );
+                    return;
+                  }
+                  setState(() {
+                    _dmPeerController.text = payload;
+                    _selectedDmPeer = payload;
+                    _dmContacts.add(payload);
+                    _dmUnread[payload] = 0;
+                  });
+                  messenger.showSnackBar(
+                    const SnackBar(content: Text('Friend identity pasted and added')),
+                  );
+                },
+                icon: const Icon(Icons.paste),
+                label: const Text('Paste friend'),
               ),
               const SizedBox(width: 8),
               ElevatedButton(
