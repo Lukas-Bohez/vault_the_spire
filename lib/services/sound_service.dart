@@ -28,4 +28,24 @@ class SoundService {
   Future<void> playSend() async => _play('sounds/send.wav');
   Future<void> playNotification() async => _play('sounds/notification.wav');
   Future<void> playMention() async => _play('sounds/mention.wav');
+
+  Future<void> startVoiceSession() async {
+    // ramp up a sustained tone simulation (notification sound loop) for voice chat.
+    if (!SettingsService.instance.soundEffectsEnabled) return;
+    try {
+      await _player.setReleaseMode(ReleaseMode.loop);
+      await _player.play(AssetSource('sounds/notification.wav'), volume: 0.35);
+    } catch (e) {
+      debugPrint('Voice session start failed: $e');
+    }
+  }
+
+  Future<void> stopVoiceSession() async {
+    try {
+      await _player.stop();
+      await _player.setReleaseMode(ReleaseMode.release);
+    } catch (e) {
+      debugPrint('Voice session stop failed: $e');
+    }
+  }
 }
