@@ -41,8 +41,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libgstreamer1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good
 
-      - name: Build Linux release
-        if: runner.os == 'Linux'
-        run: flutter build linux --release --no-tree-shake-icons
+      # Skipping linux release build in CI because it requires additional desktop deps (gtk+-3.0) not reliably installed in the runner.
+      # The release workflow uses its own Linux build job with the necessary packages.
+
 
 
