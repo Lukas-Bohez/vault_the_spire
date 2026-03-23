@@ -831,7 +831,6 @@ class _HomeScreenState extends State<HomeScreen> {
       case MainView.server:
         return _buildServerChatArea(theme);
       case MainView.dashboard:
-      default:
         return _buildDashboard(theme);
     }
   }
