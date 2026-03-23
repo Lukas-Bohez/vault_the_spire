@@ -4,12 +4,34 @@ import 'dart:math';
 import 'package:vault_the_spire/models/torrent.dart';
 import 'package:vault_the_spire/services/torrent_service.dart';
 
+class TorrentEngineStatus {
+  final String torrentId;
+  final int downloaded;
+  final int uploaded;
+  final double progress;
+  final String state;
+  final int peers;
+
+  TorrentEngineStatus({
+    required this.torrentId,
+    required this.downloaded,
+    required this.uploaded,
+    required this.progress,
+    required this.state,
+    required this.peers,
+  });
+}
+
 class TorrentEngineService {
   TorrentEngineService._();
 
   static final TorrentEngineService instance = TorrentEngineService._();
 
   final Map<String, Timer> _runningDownloads = {};
+  final StreamController<TorrentEngineStatus> _statusController =
+      StreamController.broadcast();
+
+  Stream<TorrentEngineStatus> get statusStream => _statusController.stream;
 
   bool isRunning(String torrentId) => _runningDownloads.containsKey(torrentId);
 
@@ -93,17 +115,42 @@ class TorrentEngineService {
         ),
       );
 
+      final newDownloaded = min(
+        latest.bytesDown + perPieceBytes,
+        latest.totalSize ?? latest.bytesDown + perPieceBytes,
+      );
+      final newUploaded = latest.bytesUp + 512;
       await TorrentService.instance.updateProgress(
         torrentId,
-        min(
-          latest.bytesDown + perPieceBytes,
-          latest.totalSize ?? latest.bytesDown + perPieceBytes,
+        newDownloaded,
+        newUploaded,
+      );
+
+      final total = latest.totalSize ?? 0;
+      final progress = total > 0 ? newDownloaded / total : 0.0;
+      _statusController.add(
+        TorrentEngineStatus(
+          torrentId: torrentId,
+          downloaded: newDownloaded,
+          uploaded: newUploaded,
+          progress: progress,
+          state: 'downloading',
+          peers: 8,
         ),
-        latest.bytesUp + 512,
       );
     });
 
     _runningDownloads[torrentId] = timer;
+    _statusController.add(
+      TorrentEngineStatus(
+        torrentId: torrentId,
+        downloaded: torrent.bytesDown,
+        uploaded: torrent.bytesUp,
+        progress: 0.0,
+        state: 'starting',
+        peers: 0,
+      ),
+    );
   }
 
   void stopTorrent(String torrentId) {
@@ -112,6 +159,16 @@ class TorrentEngineService {
       timer.cancel();
     }
     TorrentService.instance.updateTorrentStatus(torrentId, 'paused');
+    _statusController.add(
+      TorrentEngineStatus(
+        torrentId: torrentId,
+        downloaded: 0,
+        uploaded: 0,
+        progress: 0.0,
+        state: 'paused',
+        peers: 0,
+      ),
+    );
   }
 
   void stopAll() {

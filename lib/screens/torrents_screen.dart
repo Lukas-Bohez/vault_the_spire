@@ -21,6 +21,8 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
   late Future<List<TorrentModel>> _futureTorrents;
   String _statusFilter = 'All';
   final _magnetController = TextEditingController();
+  final Map<String, TorrentEngineStatus> _engineStatuses = {};
+  StreamSubscription<TorrentEngineStatus>? _engineSubscription;
 
   final List<String> _statusCategories = const [
     'All',
@@ -35,6 +37,14 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
   void initState() {
     super.initState();
     _futureTorrents = TorrentService.instance.allTorrents();
+    _engineSubscription = TorrentEngineService.instance.statusStream.listen(
+      (status) {
+        if (!mounted) return;
+        setState(() {
+          _engineStatuses[status.torrentId] = status;
+        });
+      },
+    );
   }
 
   Future<void> _refresh() async {
@@ -164,6 +174,7 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
   @override
   void dispose() {
     _magnetController.dispose();
+    _engineSubscription?.cancel();
     super.dispose();
   }
 
@@ -338,8 +349,14 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
                       children: [
                         Text(
                           'Status: ${torrent.status ?? 'unknown'} • ${(progress * 100).toStringAsFixed(1)}%',
-                        ),
-                        if (torrent.maxSeedRatio != null)
+                        ),                        if (_engineStatuses.containsKey(torrent.id))
+                          Builder(builder: (context) {
+                            final status = _engineStatuses[torrent.id]!;
+                            return Text(
+                              'Downloading: ${status.downloaded} B / ${status.uploaded} B • peers: ${status.peers}',
+                              style: const TextStyle(fontSize: 12, color: Colors.grey),
+                            );
+                          }),                        if (torrent.maxSeedRatio != null)
                           Text(
                             'Seed ratio limit: ${torrent.maxSeedRatio!.toStringAsFixed(2)}${torrent.deleteAfterRatioReached ? ' (delete after reached)' : ''}',
                             style: const TextStyle(fontSize: 12, color: Colors.grey),
