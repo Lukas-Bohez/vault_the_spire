@@ -47,6 +47,10 @@ Commands:
 - Added `TorrentService.createMagnetLink` + unit test
 - Added AppBar user hint to trigger drag-and-drop instructions
 
+## License
+
+Vault The Spire is released under the GNU General Public License v3.0 (GPL-3.0). See [LICENSE](LICENSE) for details.
+
 ## Privacy-first mission
 
 Vault The Spire was born from the radical idea that private file and message sharing should not require giving up personal freedom.
