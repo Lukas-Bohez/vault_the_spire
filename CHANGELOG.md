@@ -1,0 +1,23 @@
+# Changelog
+
+## [3.0.0] - 2026-03-23
+### Added
+- Skeuomorphic sound effects (click, send, notification, mention) via `audioplayers`.
+- Mobile haptic feedback on action triggers.
+- Configurable sound toggle in settings (persistent via shared_preferences).
+- DM/mention pattern handling in chat flows.
+- Server invite encode/decode support (base64/JSON). 
+- Server/channel CRUD: create, rename, delete, add/remove channel.
+- Persistent SQLCipher-backed storage for servers, channels, and chat messages.
+- Theme setting and system tray settings improved by robust service layer.
+- GPL-3.0 license and metadata.
+
+### Changed
+- Bumped version to `3.0.0+0`.
+- Annotated README with sound and release details.
+
+### Fixed
+- Copied initial code with several user-facing feature improvements and bugfixes.
+
+## [2.0.0] - earlier
+- Feature snapshot from prior milestone.

@@ -72,9 +72,9 @@
 - [ ] Add dark theme and high contrast test coverage
 - [ ] Add unit tests for server/chat service and widget integration
 
-## 10. Release 2.0.0 readiness
-- [ ] Bump package version to 2.0.0 in pubspec.yaml
-- [ ] Update CHANGELOG.md with v2.0.0 features and migration notes
+## 10. Release 3.0.0 readiness
+- [x] Bump package version to 3.0.0 in pubspec.yaml
+- [ ] Update CHANGELOG.md with v3.0.0 features and migration notes
 - [ ] End-to-end test for server/chat persistence + SQLCipher database migration
 - [ ] Update docs for desktop + Android permissions + SQLCipher key management
 - [ ] Verify all platform builds (Android, iOS, Linux, macOS, Windows, Web) pass
