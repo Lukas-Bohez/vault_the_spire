@@ -499,6 +499,16 @@ class _HomeScreenState extends State<HomeScreen> {
                                 setState(() {});
                               },
                             ),
+                            SwitchListTile(
+                              title: const Text('Enable sound effects'),
+                              value:
+                                  SettingsService.instance.soundEffectsEnabled,
+                              onChanged: (enabled) async {
+                                await SettingsService.instance
+                                    .setSoundEffectsEnabled(enabled);
+                                setState(() {});
+                              },
+                            ),
                           ],
                         ),
                       ),

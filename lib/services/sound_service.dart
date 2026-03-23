@@ -1,5 +1,9 @@
+import 'dart:io';
+
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+import 'package:vault_the_spire/services/settings_service.dart';
 
 class SoundService {
   SoundService._();
@@ -8,6 +12,10 @@ class SoundService {
   final AudioPlayer _player = AudioPlayer();
 
   Future<void> _play(String asset) async {
+    if (!SettingsService.instance.soundEffectsEnabled) return;
+    if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
+      HapticFeedback.lightImpact();
+    }
     try {
       await _player.play(AssetSource(asset), volume: 0.85);
     } catch (e) {
