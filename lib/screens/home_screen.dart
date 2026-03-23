@@ -7,7 +7,6 @@ import 'package:vault_the_spire/services/theme_service.dart';
 import 'package:vault_the_spire/services/tray_service.dart';
 import 'package:vault_the_spire/services/startup_service.dart';
 import 'package:vault_the_spire/services/torrent_service.dart';
-import 'package:window_manager/window_manager.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -17,29 +16,32 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  late bool _useSystemTray;
-  late bool _minimizeToTrayOnClose;
-  late bool _launchOnStartup;
+  bool useSystemTray = false;
+  bool minimizeToTrayOnClose = false;
+  bool launchOnStartup = false;
 
   @override
   void initState() {
     super.initState();
-    _useSystemTray = SettingsService.instance.useSystemTray;
-    _minimizeToTrayOnClose = SettingsService.instance.minimizeToTrayOnClose;
-    _launchOnStartup = SettingsService.instance.launchOnStartup;
+    useSystemTray = SettingsService.instance.useSystemTray;
+    minimizeToTrayOnClose = SettingsService.instance.minimizeToTrayOnClose;
+    launchOnStartup = SettingsService.instance.launchOnStartup;
   }
 
   Future<void> _toggleSystemTray(bool value) async {
     await SettingsService.instance.setUseSystemTray(value);
     setState(() {
-      _useSystemTray = value;
+      useSystemTray = value;
+      if (value) {
+        TrayService.shouldMinimiseToTrayOnClose = minimizeToTrayOnClose;
+      }
     });
   }
 
   Future<void> _toggleMinimizeToTray(bool value) async {
     await SettingsService.instance.setMinimizeToTrayOnClose(value);
     setState(() {
-      _minimizeToTrayOnClose = value;
+      minimizeToTrayOnClose = value;
       TrayService.shouldMinimiseToTrayOnClose = value;
     });
   }
@@ -52,154 +54,163 @@ class _HomeScreenState extends State<HomeScreen> {
       await StartupService.disable();
     }
     setState(() {
-      _launchOnStartup = value;
+      launchOnStartup = value;
     });
   }
 
   @override
   Widget build(BuildContext context) {
     final identity = IdentityService.instance.identity;
+    final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('VaultTheSpire')),
-      body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Welcome to VaultTheSpire',
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton.icon(
-              onPressed: () => Navigator.of(
-                context,
-              ).push(MaterialPageRoute(builder: (_) => const TorrentsScreen())),
-              icon: const Icon(Icons.storage),
-              label: const Text('Open Torrents'),
-            ),
-            const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: () => Navigator.of(
-                context,
-              ).push(MaterialPageRoute(builder: (_) => const MessagesScreen())),
-              icon: const Icon(Icons.chat),
-              label: const Text('Open Messaging'),
-            ),
-            const SizedBox(height: 16),
-            Card(
-              elevation: 1,
-              color: Theme.of(context).colorScheme.secondary.withAlpha(20),
-              child: Padding(
-                padding: const EdgeInsets.all(14),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: const [
-                    Text('Quick start', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                    SizedBox(height: 8),
-                    Text('1. Enable system tray and toggle "Minimize to tray".'),
-                    Text('2. Add torrents or import .torrent files in Torrents view.'),
-                    Text('3. Open Messaging and send encrypted messages locally.'),
-                    Text('4. Keep app open; closing to tray keeps background state.'),
-                  ],
+      body: Row(
+        children: [
+          Container(
+            width: 260,
+            color: theme.colorScheme.surfaceContainerHighest,
+            padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('VaultTheSpire', style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 14),
+                TextButton.icon(
+                  icon: const Icon(Icons.storage),
+                  label: const Text('Torrents'),
+                  style: TextButton.styleFrom(alignment: Alignment.centerLeft),
+                  onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TorrentsScreen())),
                 ),
-              ),
+                TextButton.icon(
+                  icon: const Icon(Icons.chat),
+                  label: const Text('Messaging'),
+                  style: TextButton.styleFrom(alignment: Alignment.centerLeft),
+                  onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MessagesScreen())),
+                ),
+                const Divider(height: 26),
+                Text('Connected', style: theme.textTheme.labelMedium),
+                const SizedBox(height: 6),
+                const Text('quizthespire.com', style: TextStyle(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 14),
+                Text('Identity', style: theme.textTheme.labelMedium),
+                const SizedBox(height: 6),
+                Text(identity != null ? identity.nodeId : 'No node'),
+                const SizedBox(height: 10),
+                const Spacer(),
+                const Divider(),
+                const SizedBox(height: 8),
+                const Text('Welcome to the VaultTheSpire Discord-style client.', style: TextStyle(fontSize: 12)),
+                const SizedBox(height: 8),
+              ],
             ),
-            const SizedBox(height: 16),
-            const Text('Core identity and peer state are initialized.'),
-            const SizedBox(height: 16),
-            if (identity == null)
-              const Text('Identity was not found. Please restart the app.')
-            else ...[
-              Text('Node ID: ${identity.nodeId}'),
-              const SizedBox(height: 12),
-              Text(
-                'Public Key (short): ${identity.publicKeyBase64.substring(0, 16)}...',
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Private Key (short): ${identity.privateKeyBase64.substring(0, 16)}...',
-              ),
-            ],
-            const SizedBox(height: 24),
-            Card(
-              elevation: 2,
-              child: Padding(
-                padding: const EdgeInsets.all(12),
+          ),
+          Expanded(
+            child: Container(
+              color: theme.colorScheme.surface,
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(18),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Text(
-                      'Desktop behavior',
-                      style: TextStyle(fontWeight: FontWeight.bold),
+                    Text('Dashboard', style: theme.textTheme.headlineMedium),
+                    const SizedBox(height: 10),
+                    Card(
+                      elevation: 2,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Quick actions', style: TextStyle(fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 10),
+                            Wrap(
+                              spacing: 12,
+                              runSpacing: 8,
+                              children: [
+                                ElevatedButton.icon(
+                                  icon: const Icon(Icons.storage),
+                                  label: const Text('Torrents'),
+                                  onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const TorrentsScreen())),
+                                ),
+                                ElevatedButton.icon(
+                                  icon: const Icon(Icons.chat),
+                                  label: const Text('Messaging'),
+                                  onPressed: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MessagesScreen())),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                    SwitchListTile(
-                      title: const Text('Enable system tray icon'),
-                      value: _useSystemTray,
-                      onChanged: (value) async {
-                        await _toggleSystemTray(value);
-                        if (value) {
-                          await TrayService(
-                            shouldMinimiseToTray: () => _minimizeToTrayOnClose,
-                            onTrayShow: () => windowManager.show(),
-                            onTrayQuit: () => windowManager.destroy(),
-                          ).init();
-                        }
-                      },
+                    const SizedBox(height: 14),
+                    Card(
+                      elevation: 2,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            const Text('Desktop settings', style: TextStyle(fontWeight: FontWeight.bold)),
+                            SwitchListTile(
+                              title: const Text('Enable system tray icon'),
+                              value: useSystemTray,
+                              onChanged: _toggleSystemTray,
+                            ),
+                            SwitchListTile(
+                              title: const Text('Minimize to tray on close'),
+                              value: minimizeToTrayOnClose,
+                              onChanged: useSystemTray ? _toggleMinimizeToTray : null,
+                            ),
+                            SwitchListTile(
+                              title: const Text('Launch on startup'),
+                              value: launchOnStartup,
+                              onChanged: _toggleLaunchOnStartup,
+                            ),
+                            SwitchListTile(
+                              title: const Text('Use dark theme'),
+                              value: ThemeService.instance.themeMode == ThemeMode.dark,
+                              onChanged: (dark) async {
+                                await ThemeService.instance.setThemeMode(dark ? ThemeMode.dark : ThemeMode.light);
+                                setState(() {});
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
-                    SwitchListTile(
-                      title: const Text('Minimize to tray on close'),
-                      value: _minimizeToTrayOnClose,
-                      onChanged: _useSystemTray ? _toggleMinimizeToTray : null,
-                    ),
-                    SwitchListTile(
-                      title: const Text('Use dark theme'),
-                      value: ThemeService.instance.themeMode == ThemeMode.dark,
-                      onChanged: (dark) async {
-                        await ThemeService.instance.setThemeMode(dark ? ThemeMode.dark : ThemeMode.light);
-                        setState(() {});
-                      },
-                    ),
-                    SwitchListTile(
-                      title: const Text('Launch on startup'),
-                      value: _launchOnStartup,
-                      onChanged: _toggleLaunchOnStartup,
+                    const SizedBox(height: 14),
+                    Card(
+                      elevation: 2,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text('Data status', style: TextStyle(fontWeight: FontWeight.bold)),
+                            const SizedBox(height: 8),
+                            FutureBuilder<int>(
+                              future: TorrentService.instance.allTorrents().then((list) => list.length),
+                              builder: (context, snapshot) {
+                                if (snapshot.connectionState == ConnectionState.waiting) {
+                                  return const Text('Loading Torrent state...');
+                                }
+                                if (snapshot.hasError) {
+                                  return Text('DB error: ${snapshot.error}');
+                                }
+                                return Text('Torrents in DB: ${snapshot.data ?? 0}');
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
                     ),
                   ],
                 ),
               ),
             ),
-            const SizedBox(height: 24),
-            const Text(
-              'Connected service: https://quizthespire.com/',
-              style: TextStyle(color: Colors.blue),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'VaultTheSpire is the desktop client for QuizTheSpire services.\nUsers can manage encrypted torrents and messaging built on quizthespire API.',
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              'Next work: implement DHT + peer wire + torrents engine.',
-            ),
-            const SizedBox(height: 24),
-            const Text('Local DB status:'),
-            FutureBuilder(
-              future: TorrentService.instance.allTorrents(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Text('Loading torrents...');
-                }
-                if (snapshot.hasError) {
-                  return Text('DB error: ${snapshot.error}');
-                }
-                final torrents = snapshot.data as List?;
-                return Text('Torrents in DB: ${torrents?.length ?? 0}');
-              },
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
