@@ -255,8 +255,9 @@ class _HomeScreenState extends State<HomeScreen> {
                           server.id,
                           newName,
                         );
-                        if (selectedServer?.id == server.id)
+                        if (selectedServer?.id == server.id) {
                           selectedServer = server.copyWith(name: newName);
+                        }
                         setState(() {});
                       }
                     }
