@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:vault_the_spire/screens/chat_screen.dart';
 import 'package:vault_the_spire/screens/messages_screen.dart';
 import 'package:vault_the_spire/screens/torrents_screen.dart';
 import 'package:vault_the_spire/services/identity_service.dart';
@@ -219,6 +220,14 @@ class _HomeScreenState extends State<HomeScreen> {
                         setState(() {
                           selectedChannelId = channel.id;
                         });
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => ChatScreen(
+                              server: selectedServer!,
+                              channelId: channel.id,
+                            ),
+                          ),
+                        );
                       },
                     ),
                   ),

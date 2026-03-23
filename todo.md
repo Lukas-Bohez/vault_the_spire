@@ -61,3 +61,13 @@
 - [ ] Set up staged rollout (e.g. 10% → 50% → 100%) for first release
 - [ ] Respond to early user reviews promptly
 - [ ] Monitor Android Vitals for crashes and ANRs post-launch
+
+## 9. In-app feature roadmap (next sprints)
+- [ ] Auto-open channel chat pane when selecting a channel on the server sidebar
+- [ ] Persist server list + channels in local encrypted DB (SQLCipher)
+- [ ] Persist chat messages in local encrypted DB (SQLCipher)
+- [ ] Add proper invite join flow with 1-click import + validation error UX
+- [ ] Add server/channel create/delete and rename UI actions
+- [ ] Add ephemeral private DMs + @ mentions
+- [ ] Add dark theme and high contrast test coverage
+- [ ] Add unit tests for server/chat service and widget integration

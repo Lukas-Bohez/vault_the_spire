@@ -25,12 +25,20 @@ class ServerService {
   }
 
   bool joinServer(String inviteCode) {
-    // shim: accept any code that matches a server id.
+    // inviteCode currently equals a server id; in future support real invite tokens.
     final server = _servers.firstWhere(
       (s) => s.id == inviteCode,
       orElse: () => ServerModel(id: '', name: '', channels: []),
     );
-    return server.id.isNotEmpty;
+    if (server.id.isEmpty) return false;
+
+    // Already known server from local list: success.
+    final exists = _servers.any((s) => s.id == server.id);
+    if (!exists) {
+      _servers.add(server);
+    }
+
+    return true;
   }
 
   String generateInvite(ServerModel server) => server.id;
