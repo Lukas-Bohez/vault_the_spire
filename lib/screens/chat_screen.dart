@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:vault_the_spire/models/chat_message.dart';
 import 'package:vault_the_spire/models/server.dart';
 import 'package:vault_the_spire/services/chat_service.dart';
+import 'package:vault_the_spire/services/sound_service.dart';
 
 class ChatScreen extends StatefulWidget {
   final ServerModel server;
@@ -79,15 +80,20 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
                 IconButton(
                   icon: const Icon(Icons.send),
-                  onPressed: () {
+                  onPressed: () async {
                     final text = _controller.text.trim();
                     if (text.isEmpty) return;
-                    ChatService.instance.sendMessage(
+                    await ChatService.instance.sendMessage(
                       widget.server.id,
                       widget.channelId,
                       'you',
                       text,
                     );
+                    if (ChatService.instance.messageMentions('you', text)) {
+                      await SoundService.instance.playMention();
+                    } else {
+                      await SoundService.instance.playSend();
+                    }
                     _controller.clear();
                     setState(() {});
                   },

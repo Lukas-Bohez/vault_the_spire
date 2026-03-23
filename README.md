@@ -70,6 +70,15 @@ Use it for:
 ### Tagline
 **"Vault The Spire: Share privately, share securely, share without compromise."**
 
+### Sound design
+- Skeuomorphic feedback sounds added for UI events:
+  - click/open actions
+  - channel creation / server join
+  - message send
+  - mention highlight
+
+- Sounds are stored in `assets/sounds/` and played with `audioplayers`.
+
 ### Social pitch
 > Built on open standards (BitTorrent + DHT + WebRTC) with encrypted vault overlays and contact QR onboarding. No ads, no telemetry, no hidden publisher keys. Run it on Windows/macOS/Linux/Android/iOS.
 

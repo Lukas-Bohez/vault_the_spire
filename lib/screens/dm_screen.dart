@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:vault_the_spire/models/chat_message.dart';
 import 'package:vault_the_spire/services/chat_service.dart';
+import 'package:vault_the_spire/services/sound_service.dart';
 
 class DMScreen extends StatefulWidget {
   final String user;
@@ -29,6 +30,12 @@ class _DMScreenState extends State<DMScreen> {
       widget.peer,
       text,
     );
+    if (ChatService.instance.messageMentions(widget.user, text) ||
+        ChatService.instance.messageMentions(widget.peer, text)) {
+      await SoundService.instance.playMention();
+    } else {
+      await SoundService.instance.playSend();
+    }
     _controller.clear();
     setState(() {});
   }

@@ -3,6 +3,7 @@ import 'package:vault_the_spire/screens/chat_screen.dart';
 import 'package:vault_the_spire/screens/dm_screen.dart';
 import 'package:vault_the_spire/screens/messages_screen.dart';
 import 'package:vault_the_spire/screens/torrents_screen.dart';
+import 'package:vault_the_spire/services/sound_service.dart';
 import 'package:vault_the_spire/services/identity_service.dart';
 import 'package:vault_the_spire/services/settings_service.dart';
 import 'package:vault_the_spire/services/theme_service.dart';
@@ -149,7 +150,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       overflow: TextOverflow.ellipsis,
                     ),
                     selected: selectedServer?.id == server.id,
-                    onTap: () {
+                    onTap: () async {
+                      await SoundService.instance.playClick();
                       setState(() {
                         selectedServer = server;
                         selectedChannelId = server.channels.isNotEmpty
@@ -237,6 +239,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 ElevatedButton(
                   onPressed: () async {
+                    await SoundService.instance.playNotification();
                     final success = await ServerService.instance.joinServer(
                       _inviteCodeController.text.trim(),
                     );
@@ -264,7 +267,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
                 ElevatedButton(
-                  onPressed: () {
+                  onPressed: () async {
+                    await SoundService.instance.playNotification();
                     if (_serverNameController.text.trim().isEmpty) return;
                     final server = ServerService.instance.createServer(
                       name: _serverNameController.text.trim(),
@@ -301,6 +305,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   ElevatedButton(
                     onPressed: () async {
+                      await SoundService.instance.playClick();
                       final name = _channelNameController.text.trim();
                       if (name.isEmpty || selectedServer == null) return;
                       final updated = await ServerService.instance.addChannel(
