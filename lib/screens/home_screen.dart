@@ -6,8 +6,10 @@ import 'package:vault_the_spire/services/chat_service.dart';
 import 'package:vault_the_spire/services/theme_service.dart';
 import 'package:vault_the_spire/services/tray_service.dart';
 import 'package:vault_the_spire/services/server_service.dart';
+import 'package:vault_the_spire/models/chat_message.dart';
 import 'package:vault_the_spire/models/server.dart';
 import 'package:vault_the_spire/services/startup_service.dart';
+import 'package:vault_the_spire/constants.dart';
 import 'package:vault_the_spire/services/torrent_service.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -28,6 +30,9 @@ class _HomeScreenState extends State<HomeScreen> {
   String? selectedChannelId;
   int _mobileNavIndex = 0;
   String _selectedDmPeer = '';
+  String _dmSearchQuery = '';
+  String _selectedThreadMessageId = '';
+  ChatMessage? _dmReplyTarget;
   bool _inVoiceChannel = false;
   String _voiceChannelServer = '';
   final Set<String> _dmContacts = <String>{};
@@ -529,42 +534,130 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(height: 10),
           if (_dmContacts.isNotEmpty)
-            Container(
-              padding: const EdgeInsets.symmetric(vertical: 6),
-              child: Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: _dmContacts.map((peer) {
-                  final unread = _dmUnread[peer] ?? 0;
-                  return ActionChip(
-                    label: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(peer),
-                        if (unread > 0) ...[
-                          const SizedBox(width: 4),
-                          CircleAvatar(
-                            radius: 8,
-                            backgroundColor: theme.colorScheme.primary,
-                            child: Text(
-                              '$unread',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onPrimary,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextField(
+                  decoration: const InputDecoration(
+                    hintText: 'Search contacts',
+                    isDense: true,
+                    border: OutlineInputBorder(),
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 8,
                     ),
-                    onPressed: () {
-                      setState(() {
-                        _selectedDmPeer = peer;
-                        _markDmRead(peer);
-                      });
+                  ),
+                  onChanged: (value) => setState(() {
+                    _dmSearchQuery = value.toLowerCase();
+                  }),
+                ),
+                const SizedBox(height: 6),
+                Container(
+                  height: 140,
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surfaceContainerHighest,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Builder(
+                    builder: (context) {
+                      final filtered = _dmContacts
+                          .where(
+                            (peer) =>
+                                peer.toLowerCase().contains(_dmSearchQuery),
+                          )
+                          .toList();
+                      if (filtered.isEmpty) {
+                        return Center(
+                          child: Text(
+                            'No matching contacts.',
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        );
+                      }
+                      return ListView.builder(
+                        itemCount: filtered.length,
+                        itemBuilder: (context, index) {
+                          final peer = filtered[index];
+                          final unread = _dmUnread[peer] ?? 0;
+                          final selected = peer == _selectedDmPeer;
+                          final peerTyping = ChatService.instance.isUserTyping(
+                            peer,
+                          );
+                          return Container(
+                            margin: const EdgeInsets.symmetric(vertical: 2),
+                            decoration: BoxDecoration(
+                              color: selected
+                                  ? theme.colorScheme.primaryContainer
+                                  : Colors.transparent,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: ListTile(
+                              dense: true,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                              ),
+                              leading: Stack(
+                                alignment: Alignment.bottomRight,
+                                children: [
+                                  CircleAvatar(
+                                    radius: 14,
+                                    backgroundImage: AssetImage(kAppFavicon192),
+                                  ),
+                                  if (peerTyping)
+                                    Container(
+                                      width: 8,
+                                      height: 8,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        color: Colors.green,
+                                        border: Border.all(
+                                          color: theme.colorScheme.surface,
+                                          width: 1.2,
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              title: Text(peer),
+                              subtitle: peerTyping
+                                  ? const Text(
+                                      'typing...',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        color: Colors.green,
+                                      ),
+                                    )
+                                  : null,
+                              trailing: unread > 0
+                                  ? CircleAvatar(
+                                      radius: 10,
+                                      backgroundColor:
+                                          theme.colorScheme.primary,
+                                      child: Text(
+                                        '$unread',
+                                        style: theme.textTheme.bodySmall
+                                            ?.copyWith(
+                                              color:
+                                                  theme.colorScheme.onPrimary,
+                                            ),
+                                      ),
+                                    )
+                                  : null,
+                              onTap: () {
+                                setState(() {
+                                  _selectedDmPeer = peer;
+                                  _markDmRead(peer);
+                                });
+                              },
+                            ),
+                          );
+                        },
+                      );
                     },
-                  );
-                }).toList(),
-              ),
+                  ),
+                ),
+              ],
             ),
           if (_selectedDmPeer.isEmpty)
             const Text('Select a peer to start a direct conversation.')
@@ -589,48 +682,150 @@ class _HomeScreenState extends State<HomeScreen> {
                   if (messages.isEmpty) {
                     return const Center(child: Text('No direct messages yet.'));
                   }
-                  return ListView.builder(
-                    controller: _dmChatScrollController,
-                    padding: const EdgeInsets.all(8),
-                    itemCount: messages.length,
-                    itemBuilder: (context, index) {
-                      final m = messages[index];
-                      final isMe = m.author == 'you';
-                      return Align(
-                        alignment: isMe
-                            ? Alignment.centerRight
-                            : Alignment.centerLeft,
-                        child: Card(
-                          color: isMe
-                              ? theme.colorScheme.primaryContainer
-                              : theme.colorScheme.secondaryContainer,
-                          child: Padding(
-                            padding: const EdgeInsets.all(12),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  m.author,
-                                  style: theme.textTheme.labelSmall,
+
+                  final threadRoots = messages
+                      .where(
+                        (m) => messages.any(
+                          (reply) => reply.replyToMessageId == m.id,
+                        ),
+                      )
+                      .toList();
+
+                  return Column(
+                    children: [
+                      Expanded(
+                        child: ListView.builder(
+                          controller: _dmChatScrollController,
+                          padding: const EdgeInsets.all(8),
+                          itemCount: messages.length,
+                          itemBuilder: (context, index) {
+                            final m = messages[index];
+                            final isMe = m.author == 'you';
+                            return Align(
+                              alignment: isMe
+                                  ? Alignment.centerRight
+                                  : Alignment.centerLeft,
+                              child: Card(
+                                color: isMe
+                                    ? theme.colorScheme.primaryContainer
+                                    : theme.colorScheme.secondaryContainer,
+                                shape: RoundedRectangleBorder(
+                                  side: m.id == _selectedThreadMessageId
+                                      ? BorderSide(
+                                          color: theme.colorScheme.primary,
+                                          width: 2,
+                                        )
+                                      : BorderSide.none,
+                                  borderRadius: BorderRadius.circular(12),
                                 ),
-                                const SizedBox(height: 4),
-                                Text(m.text),
-                                const SizedBox(height: 4),
-                                Text(
-                                  '${m.timestamp.hour.toString().padLeft(2, '0')}:${m.timestamp.minute.toString().padLeft(2, '0')}',
-                                  style: theme.textTheme.bodySmall,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(12),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        m.author,
+                                        style: theme.textTheme.labelSmall,
+                                      ),
+                                      const SizedBox(height: 4),
+                                      if (m.replyToMessageId != null)
+                                        Text(
+                                          'Replying to ${messages.firstWhere((msg) => msg.id == m.replyToMessageId, orElse: () => m).author}',
+                                          style: theme.textTheme.bodySmall,
+                                        ),
+                                      Text(m.text),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        '${m.timestamp.hour.toString().padLeft(2, '0')}:${m.timestamp.minute.toString().padLeft(2, '0')}',
+                                        style: theme.textTheme.bodySmall,
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ],
-                            ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      if (threadRoots.isNotEmpty) ...[
+                        const Divider(),
+                        Container(
+                          height: 160,
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Text(
+                                'Threads',
+                                style: theme.textTheme.titleSmall,
+                              ),
+                              Expanded(
+                                child: ListView.builder(
+                                  itemCount: threadRoots.length,
+                                  itemBuilder: (context, index) {
+                                    final thread = threadRoots[index];
+                                    return ListTile(
+                                      dense: true,
+                                      title: Text(
+                                        thread.text,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      subtitle: Text(
+                                        '${messages.where((m) => m.replyToMessageId == thread.id).length} replies',
+                                        style: theme.textTheme.bodySmall,
+                                      ),
+                                      selected:
+                                          thread.id == _selectedThreadMessageId,
+                                      onTap: () {
+                                        setState(() {
+                                          _selectedThreadMessageId = thread.id;
+                                        });
+                                      },
+                                    );
+                                  },
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                      );
-                    },
+                      ],
+                    ],
                   );
                 },
               ),
             ),
           const SizedBox(height: 8),
+          if (_dmReplyTarget != null) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primaryContainer.withAlpha(50),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Replying to ${_dmReplyTarget!.author}: ${_dmReplyTarget!.text}',
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 18),
+                    onPressed: () {
+                      setState(() {
+                        _dmReplyTarget = null;
+                      });
+                    },
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
           Row(
             children: [
               Expanded(
@@ -653,6 +848,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           'you',
                           _selectedDmPeer,
                           text,
+                          replyToMessageId: _dmReplyTarget?.id,
                         );
                         if (ChatService.instance.messageMentions(
                           _selectedDmPeer,
@@ -662,6 +858,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         } else {
                           await SoundService.instance.playSend();
                         }
+                        _dmReplyTarget = null;
                         _dmMessageController.clear();
                         setState(() {});
                         _scrollToEnd(_dmChatScrollController);

@@ -114,6 +114,7 @@ class AppDatabase {
         text TEXT NOT NULL,
         timestamp INTEGER NOT NULL,
         edited_at INTEGER,
+        reply_to TEXT,
         reactions TEXT,
         FOREIGN KEY(server_id) REFERENCES servers(id) ON DELETE CASCADE
       );
@@ -133,6 +134,9 @@ class AppDatabase {
     if (oldVersion < 3) {
       await db.execute('''
         ALTER TABLE chat_messages ADD COLUMN edited_at INTEGER;
+      ''');
+      await db.execute('''
+        ALTER TABLE chat_messages ADD COLUMN reply_to TEXT;
       ''');
       await db.execute('''
         ALTER TABLE chat_messages ADD COLUMN reactions TEXT;

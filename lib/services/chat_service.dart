@@ -19,8 +19,9 @@ class ChatService {
     String serverId,
     String channelId,
     String author,
-    String text,
-  ) async {
+    String text, {
+    String? replyToMessageId,
+  }) async {
     final msg = ChatMessage(
       id: _uuid.v4(),
       serverId: serverId,
@@ -28,6 +29,7 @@ class ChatService {
       author: author,
       text: text,
       timestamp: DateTime.now(),
+      replyToMessageId: replyToMessageId,
       reactions: {},
     );
     await ChatDao.instance.insertChatMessage(msg);
@@ -62,9 +64,20 @@ class ChatService {
     return await ChatDao.instance.getMessagesFor('_dm', channel);
   }
 
-  Future<void> sendDirectMessage(String from, String to, String text) async {
+  Future<void> sendDirectMessage(
+    String from,
+    String to,
+    String text, {
+    String? replyToMessageId,
+  }) async {
     final channel = dmChannelId(from, to);
-    await sendMessage('_dm', channel, from, text);
+    await sendMessage(
+      '_dm',
+      channel,
+      from,
+      text,
+      replyToMessageId: replyToMessageId,
+    );
   }
 
   Future<void> addReaction(String messageId, String emoji) async {
@@ -80,6 +93,7 @@ class ChatService {
       author: msg.author,
       text: msg.text,
       timestamp: msg.timestamp,
+      replyToMessageId: msg.replyToMessageId,
       editedAt: DateTime.now(),
       reactions: newReactions,
     );
@@ -97,6 +111,7 @@ class ChatService {
       author: msg.author,
       text: newText,
       timestamp: msg.timestamp,
+      replyToMessageId: msg.replyToMessageId,
       editedAt: DateTime.now(),
       reactions: msg.reactions,
     );

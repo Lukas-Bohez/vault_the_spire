@@ -7,6 +7,7 @@ class ChatMessage {
   final String author;
   final String text;
   final DateTime timestamp;
+  final String? replyToMessageId;
   final DateTime? editedAt;
   final Map<String, int> reactions;
 
@@ -17,6 +18,7 @@ class ChatMessage {
     required this.author,
     required this.text,
     required this.timestamp,
+    this.replyToMessageId,
     this.editedAt,
     this.reactions = const {},
   });
@@ -30,6 +32,7 @@ class ChatMessage {
       'text': text,
       'timestamp': timestamp.millisecondsSinceEpoch,
       'edited_at': editedAt?.millisecondsSinceEpoch,
+      'reply_to': replyToMessageId,
       'reactions': reactions.isNotEmpty ? jsonEncode(reactions) : null,
     };
   }
@@ -45,6 +48,7 @@ class ChatMessage {
       editedAt: map['edited_at'] != null
           ? DateTime.fromMillisecondsSinceEpoch(map['edited_at'] as int)
           : null,
+      replyToMessageId: map['reply_to'] as String?,
       reactions: map['reactions'] != null
           ? (jsonDecode(map['reactions'] as String) as Map<String, dynamic>)
                 .map((k, v) => MapEntry(k, v as int))

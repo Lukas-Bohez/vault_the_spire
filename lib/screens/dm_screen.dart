@@ -19,6 +19,7 @@ class DMScreen extends StatefulWidget {
 class _DMScreenState extends State<DMScreen> {
   final _controller = TextEditingController();
   Timer? _typingTimer;
+  ChatMessage? _replyTarget;
   @override
   void initState() {
     super.initState();
@@ -43,11 +44,16 @@ class _DMScreenState extends State<DMScreen> {
     });
 
     if (text.isEmpty) return;
-    await ChatService.instance.sendDirectMessage(
+    await ChatService.instance.sendMessage(
+      '_dm',
+      ChatService.dmChannelId(widget.user, widget.peer),
       widget.user,
-      widget.peer,
       text,
+      replyToMessageId: _replyTarget?.id,
     );
+    _replyTarget = null;
+    _controller.clear();
+
     if (ChatService.instance.messageMentions(widget.user, text) ||
         ChatService.instance.messageMentions(widget.peer, text)) {
       await SoundService.instance.playMention();
@@ -136,6 +142,11 @@ class _DMScreenState extends State<DMScreen> {
                                   onTap: () => Navigator.of(ctx).pop('edit'),
                                 ),
                                 ListTile(
+                                  leading: const Icon(Icons.repeat),
+                                  title: const Text('Reply'),
+                                  onTap: () => Navigator.of(ctx).pop('reply'),
+                                ),
+                                ListTile(
                                   leading: const Icon(Icons.delete),
                                   title: const Text('Delete'),
                                   onTap: () => Navigator.of(ctx).pop('delete'),
@@ -145,7 +156,6 @@ class _DMScreenState extends State<DMScreen> {
                           },
                         );
                         if (action == 'react') {
-                          // ignore: use_build_context_synchronously
                           final emoji = await showModalBottomSheet<String>(
                             context: parentContext,
                             builder: (ctx) {
@@ -171,11 +181,14 @@ class _DMScreenState extends State<DMScreen> {
                             if (!mounted) return;
                             setState(() {});
                           }
+                        } else if (action == 'reply') {
+                          setState(() {
+                            _replyTarget = m;
+                          });
                         } else if (action == 'edit') {
                           final editController = TextEditingController(
                             text: m.text,
                           );
-                          // ignore: use_build_context_synchronously
                           final edited = await showDialog<String>(
                             context: parentContext,
                             builder: (ctx) {
@@ -211,7 +224,6 @@ class _DMScreenState extends State<DMScreen> {
                             setState(() {});
                           }
                         } else if (action == 'delete') {
-                          // ignore: use_build_context_synchronously
                           final confirm = await showDialog<bool>(
                             context: parentContext,
                             builder: (ctx) => AlertDialog(
@@ -246,27 +258,55 @@ class _DMScreenState extends State<DMScreen> {
             child: Row(
               children: [
                 Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    decoration: const InputDecoration(
-                      hintText: 'Type a direct message',
-                    ),
-                    onChanged: (value) {
-                      ChatService.instance.setTypingStatus(
-                        widget.user,
-                        value.isNotEmpty,
-                      );
-                      if (value.isNotEmpty) {
-                        _typingTimer?.cancel();
-                        _typingTimer = Timer(const Duration(seconds: 5), () {
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (_replyTarget != null)
+                        GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _replyTarget = null;
+                            });
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 4,
+                              horizontal: 8,
+                            ),
+                            color: Colors.grey.shade200,
+                            child: Text(
+                              'Replying to ${_replyTarget!.author} • tap to cancel',
+                            ),
+                          ),
+                        ),
+                      TextField(
+                        controller: _controller,
+                        decoration: InputDecoration(
+                          hintText: _replyTarget != null
+                              ? 'Replying to ${_replyTarget!.author}'
+                              : 'Type a direct message',
+                        ),
+                        onChanged: (value) {
                           ChatService.instance.setTypingStatus(
                             widget.user,
-                            false,
+                            value.isNotEmpty,
                           );
-                          if (mounted) setState(() {});
-                        });
-                      }
-                    },
+                          if (value.isNotEmpty) {
+                            _typingTimer?.cancel();
+                            _typingTimer = Timer(
+                              const Duration(seconds: 5),
+                              () {
+                                ChatService.instance.setTypingStatus(
+                                  widget.user,
+                                  false,
+                                );
+                                if (mounted) setState(() {});
+                              },
+                            );
+                          }
+                        },
+                      ),
+                    ],
                   ),
                 ),
                 IconButton(icon: const Icon(Icons.send), onPressed: _send),

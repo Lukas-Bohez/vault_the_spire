@@ -7,6 +7,7 @@ import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
+import 'package:vault_the_spire/constants.dart';
 
 class TrayService with TrayListener, WindowListener {
   static bool enabled = false;
@@ -50,7 +51,7 @@ class TrayService with TrayListener, WindowListener {
         'flutter_assets',
         'assets',
         'icons',
-        'app_icon.ico',
+        p.basename(kAppIconIco),
       );
       final png = p.join(
         exeDir,
@@ -58,11 +59,11 @@ class TrayService with TrayListener, WindowListener {
         'flutter_assets',
         'assets',
         'icons',
-        'favicon-192x192.png',
+        p.basename(kAppFavicon192),
       );
       iconPath = File(ico).existsSync() ? ico : png;
     } else {
-      iconPath = 'assets/icons/favicon-192x192.png';
+      iconPath = kAppFavicon192;
     }
 
     try {
