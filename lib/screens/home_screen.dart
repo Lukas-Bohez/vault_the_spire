@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:vault_the_spire/screens/chat_screen.dart';
+import 'package:vault_the_spire/screens/dm_screen.dart';
 import 'package:vault_the_spire/screens/messages_screen.dart';
 import 'package:vault_the_spire/screens/torrents_screen.dart';
 import 'package:vault_the_spire/services/identity_service.dart';
@@ -27,12 +28,14 @@ class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _serverNameController = TextEditingController();
   final TextEditingController _inviteCodeController = TextEditingController();
   final TextEditingController _channelNameController = TextEditingController();
+  final TextEditingController _dmPeerController = TextEditingController();
 
   @override
   void dispose() {
     _serverNameController.dispose();
     _inviteCodeController.dispose();
     _channelNameController.dispose();
+    _dmPeerController.dispose();
     super.dispose();
   }
 
@@ -313,6 +316,35 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: const Text('Add channel'),
                   ),
                 ],
+                const SizedBox(height: 10),
+                const Divider(),
+                const SizedBox(height: 8),
+                Text('Direct messages', style: theme.textTheme.labelMedium),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: _dmPeerController,
+                  decoration: const InputDecoration(
+                    labelText: 'Peer user ID',
+                    isDense: true,
+                    hintText: 'username',
+                  ),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    final peer = _dmPeerController.text.trim();
+                    if (peer.isEmpty) return;
+                    if (!mounted) return;
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => DMScreen(
+                          user: 'you',
+                          peer: peer,
+                        ),
+                      ),
+                    );
+                  },
+                  child: const Text('Open DM'),
+                ),
                 const SizedBox(height: 10),
                 const Divider(),
                 const SizedBox(height: 8),

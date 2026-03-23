@@ -31,4 +31,29 @@ class ChatService {
     );
     await ChatDao.instance.insertChatMessage(msg);
   }
+
+  static String dmChannelId(String userA, String userB) {
+    final sorted = [userA.trim(), userB.trim()]..sort();
+    return 'dm-${sorted[0]}-${sorted[1]}';
+  }
+
+  Future<List<ChatMessage>> directMessagesBetween(
+    String userA,
+    String userB,
+  ) async {
+    final channel = dmChannelId(userA, userB);
+    return await ChatDao.instance.getMessagesFor('_dm', channel);
+  }
+
+  Future<void> sendDirectMessage(String from, String to, String text) async {
+    final channel = dmChannelId(from, to);
+    await sendMessage('_dm', channel, from, text);
+  }
+
+  bool messageMentions(String userId, String text) {
+    final mentionToken = '@${userId.trim()}';
+    return text
+        .split(RegExp(r'\s+'))
+        .any((part) => part.trim() == mentionToken);
+  }
 }

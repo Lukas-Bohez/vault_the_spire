@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:uuid/uuid.dart';
 import 'package:vault_the_spire/db/server_dao.dart';
 import 'package:vault_the_spire/models/server.dart';
@@ -33,9 +35,17 @@ class ServerService {
   }
 
   Future<bool> joinServer(String inviteCode) async {
-    // inviteCode currently equals a server id; in future support real invite tokens.
+    // allow direct server id or JSON invite token.
+    String serverId = inviteCode;
+
+    if (inviteCode.startsWith('{') || inviteCode.startsWith('ey')) {
+      final decoded = _decodeInvite(inviteCode);
+      if (decoded == null) return false;
+      serverId = decoded.id;
+    }
+
     final existing = _servers.firstWhere(
-      (s) => s.id == inviteCode,
+      (s) => s.id == serverId,
       orElse: () => ServerModel(id: '', name: '', channels: []),
     );
 
@@ -43,11 +53,52 @@ class ServerService {
       return true;
     }
 
-    final server = await ServerDao.instance.getServerById(inviteCode);
-    if (server == null) return false;
+    final dbServer = await ServerDao.instance.getServerById(serverId);
+    if (dbServer != null) {
+      _servers.add(dbServer);
+      return true;
+    }
 
-    _servers.add(server);
-    return true;
+    final decoded = _decodeInvite(inviteCode);
+    if (decoded != null) {
+      _servers.add(decoded);
+      await ServerDao.instance.insertServer(decoded);
+      return true;
+    }
+
+    return false;
+  }
+
+  String reformatInvite(ServerModel server) => jsonEncode({
+    'id': server.id,
+    'name': server.name,
+    'description': server.description,
+  });
+
+  String encodeInvite(ServerModel server) {
+    return base64Url.encode(utf8.encode(reformatInvite(server)));
+  }
+
+  ServerModel? _decodeInvite(String invite) {
+    try {
+      String jsonString = invite;
+      if (!invite.startsWith('{')) {
+        jsonString = utf8.decode(base64Url.decode(invite));
+      }
+      final data = jsonDecode(jsonString) as Map<String, dynamic>;
+      final id = data['id'] as String?;
+      if (id == null || id.isEmpty) return null;
+      return ServerModel(
+        id: id,
+        name: data['name'] as String? ?? 'Invitation',
+        description: data['description'] as String? ?? '',
+        channels: [
+          ChannelModel(id: _uuid.v4(), name: 'general', isVoice: false),
+        ],
+      );
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> updateServer(ServerModel server) async {
@@ -113,4 +164,7 @@ class ServerService {
   }
 
   String generateInvite(ServerModel server) => server.id;
+
+  ServerModel? decodeInvite(String invite) => _decodeInvite(invite);
 }
+
