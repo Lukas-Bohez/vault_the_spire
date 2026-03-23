@@ -147,7 +147,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
                                       )
                                     : null,
                                 selected: _selectedRecipient == peer,
-                                selectedTileColor: Theme.of(context).colorScheme.primary.withOpacity(0.2),
+                                selectedTileColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
                                 onTap: () => _selectConversation(peer),
                               );
                             },

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 class ChatMessage {
   final String id;
   final String serverId;
@@ -5,6 +7,8 @@ class ChatMessage {
   final String author;
   final String text;
   final DateTime timestamp;
+  final DateTime? editedAt;
+  final Map<String, int> reactions;
 
   ChatMessage({
     required this.id,
@@ -13,6 +17,8 @@ class ChatMessage {
     required this.author,
     required this.text,
     required this.timestamp,
+    this.editedAt,
+    this.reactions = const {},
   });
 
   Map<String, dynamic> toMap() {
@@ -23,6 +29,8 @@ class ChatMessage {
       'author': author,
       'text': text,
       'timestamp': timestamp.millisecondsSinceEpoch,
+      'edited_at': editedAt?.millisecondsSinceEpoch,
+      'reactions': reactions.isNotEmpty ? jsonEncode(reactions) : null,
     };
   }
 
@@ -34,6 +42,13 @@ class ChatMessage {
       author: map['author'] as String,
       text: map['text'] as String,
       timestamp: DateTime.fromMillisecondsSinceEpoch(map['timestamp'] as int),
+      editedAt: map['edited_at'] != null
+          ? DateTime.fromMillisecondsSinceEpoch(map['edited_at'] as int)
+          : null,
+      reactions: map['reactions'] != null
+          ? (jsonDecode(map['reactions'] as String) as Map<String, dynamic>)
+                .map((k, v) => MapEntry(k, v as int))
+          : {},
     );
   }
 }

@@ -23,7 +23,7 @@ class AppDatabase {
     final dbPath = await _getDatabasePath();
     _database = await openDatabase(
       dbPath,
-      version: 2,
+      version: 3,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onConfigure: (db) async {
@@ -90,19 +90,11 @@ class AppDatabase {
         protocol TEXT NOT NULL DEFAULT 'local'
       );
     ''');
+
+    await _createChatTables(db);
   }
 
-  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    if (oldVersion < 2) {
-      await db.execute('''
-        ALTER TABLE torrents ADD COLUMN max_seed_ratio REAL;
-      ''');
-      await db.execute('''
-        ALTER TABLE torrents ADD COLUMN delete_after_ratio_reached INTEGER DEFAULT 0;
-      ''');
-    }
-  }
-
+  Future<void> _createChatTables(Database db) async {
     await db.execute('''
       CREATE TABLE servers (
         id TEXT PRIMARY KEY,
@@ -121,9 +113,31 @@ class AppDatabase {
         author TEXT NOT NULL,
         text TEXT NOT NULL,
         timestamp INTEGER NOT NULL,
+        edited_at INTEGER,
+        reactions TEXT,
         FOREIGN KEY(server_id) REFERENCES servers(id) ON DELETE CASCADE
       );
     ''');
+  }
+
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await db.execute('''
+        ALTER TABLE torrents ADD COLUMN max_seed_ratio REAL;
+      ''');
+      await db.execute('''
+        ALTER TABLE torrents ADD COLUMN delete_after_ratio_reached INTEGER DEFAULT 0;
+      ''');
+    }
+
+    if (oldVersion < 3) {
+      await db.execute('''
+        ALTER TABLE chat_messages ADD COLUMN edited_at INTEGER;
+      ''');
+      await db.execute('''
+        ALTER TABLE chat_messages ADD COLUMN reactions TEXT;
+      ''');
+    }
   }
 
   Future<void> close() async {

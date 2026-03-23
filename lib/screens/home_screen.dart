@@ -78,6 +78,49 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  Future<void> _renameServer(BuildContext context, ServerModel server) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final newName = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        final tmp = TextEditingController(text: server.name);
+        return AlertDialog(
+          title: const Text('Rename server'),
+          content: TextField(controller: tmp),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(tmp.text.trim()),
+              child: const Text('Rename'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (!mounted) return;
+
+    if (newName != null && newName.isNotEmpty) {
+      try {
+        await ServerService.instance.renameServer(server.id, newName);
+        if (selectedServer?.id == server.id) {
+          selectedServer = server.copyWith(name: newName);
+        }
+        setState(() {});
+        messenger.showSnackBar(
+          SnackBar(content: Text('Server renamed to: $newName')),
+        );
+      } catch (error) {
+        messenger.showSnackBar(
+          SnackBar(content: Text('Failed to rename server: $error')),
+        );
+      }
+    }
+  }
+
   Future<void> _toggleMinimizeToTray(bool value) async {
     await SettingsService.instance.setMinimizeToTrayOnClose(value);
     setState(() {
@@ -212,11 +255,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 },
                 trailing: PopupMenuButton<String>(
                   onSelected: (value) async {
+                    final messenger = ScaffoldMessenger.of(context);
+                    final currentContext = context;
                     if (value == 'invite') {
                       final inviteCode = ServerService.instance.generateInvite(
                         server,
                       );
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      messenger.showSnackBar(
                         SnackBar(content: Text('Invite code: $inviteCode')),
                       );
                     }
@@ -227,39 +272,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         selectedChannelId = null;
                       }
                       setState(() {});
-                    }
-                    if (value == 'rename') {
-                      final newName = await showDialog<String>(
-                        context: context,
-                        builder: (context) {
-                          final tmp = TextEditingController(text: server.name);
-                          return AlertDialog(
-                            title: const Text('Rename server'),
-                            content: TextField(controller: tmp),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.of(context).pop(),
-                                child: const Text('Cancel'),
-                              ),
-                              TextButton(
-                                onPressed: () =>
-                                    Navigator.of(context).pop(tmp.text.trim()),
-                                child: const Text('Rename'),
-                              ),
-                            ],
-                          );
-                        },
-                      );
-                      if (newName != null && newName.isNotEmpty) {
-                        await ServerService.instance.renameServer(
-                          server.id,
-                          newName,
-                        );
-                        if (selectedServer?.id == server.id) {
-                          selectedServer = server.copyWith(name: newName);
-                        }
-                        setState(() {});
-                      }
+                    } else if (value == 'rename') {
+                      await _renameServer(currentContext, server);
                     }
                   },
                   itemBuilder: (context) => [
@@ -325,7 +339,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   selectedServer = server;
                   selectedChannelId = server.channels.first.id;
                 });
-                ScaffoldMessenger.of(context).showSnackBar(
+                if (!mounted) return;
+                final messenger = ScaffoldMessenger.of(context);
+                messenger.showSnackBar(
                   SnackBar(
                     content: Text(
                       'Created server: ${server.name} (invite: ${server.id})',

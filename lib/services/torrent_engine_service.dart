@@ -11,6 +11,8 @@ class TorrentEngineStatus {
   final double progress;
   final String state;
   final int peers;
+  final double downloadSpeed;
+  final double uploadSpeed;
 
   TorrentEngineStatus({
     required this.torrentId,
@@ -19,6 +21,8 @@ class TorrentEngineStatus {
     required this.progress,
     required this.state,
     required this.peers,
+    required this.downloadSpeed,
+    required this.uploadSpeed,
   });
 }
 
@@ -128,6 +132,8 @@ class TorrentEngineService {
 
       final total = latest.totalSize ?? 0;
       final progress = total > 0 ? newDownloaded / total : 0.0;
+      final downloadSpeed = (newDownloaded - latest.bytesDown) / 2.0;
+      final uploadSpeed = (newUploaded - latest.bytesUp) / 2.0;
       _statusController.add(
         TorrentEngineStatus(
           torrentId: torrentId,
@@ -136,6 +142,8 @@ class TorrentEngineService {
           progress: progress,
           state: 'downloading',
           peers: 8,
+          downloadSpeed: downloadSpeed,
+          uploadSpeed: uploadSpeed,
         ),
       );
     });
@@ -149,6 +157,8 @@ class TorrentEngineService {
         progress: 0.0,
         state: 'starting',
         peers: 0,
+        downloadSpeed: 0.0,
+        uploadSpeed: 0.0,
       ),
     );
   }
@@ -167,6 +177,8 @@ class TorrentEngineService {
         progress: 0.0,
         state: 'paused',
         peers: 0,
+        downloadSpeed: 0.0,
+        uploadSpeed: 0.0,
       ),
     );
   }

@@ -20,6 +20,18 @@ class TorrentModel {
   final double? maxSeedRatio;
   final bool deleteAfterRatioReached;
 
+  double get progress {
+    if (totalPieces == null || totalPieces == 0) {
+      return 0.0;
+    }
+    final have = piecesHave?.split(',').where((e) => e == '1').length ?? 0;
+    return have / totalPieces!;
+  }
+
+  int get havePieces {
+    return piecesHave?.split(',').where((e) => e == '1').length ?? 0;
+  }
+
   TorrentModel({
     required this.id,
     required this.name,

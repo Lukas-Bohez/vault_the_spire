@@ -32,8 +32,30 @@ class ChatDao {
     return rows.map((r) => ChatMessage.fromMap(r)).toList();
   }
 
+  Future<ChatMessage?> getMessageById(String id) async {
+    final db = await _db;
+    final rows = await db.query(
+      'chat_messages',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return ChatMessage.fromMap(rows.first);
+  }
+
   Future<void> deleteMessage(String id) async {
     final db = await _db;
     await db.delete('chat_messages', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<void> updateMessage(ChatMessage message) async {
+    final db = await _db;
+    await db.update(
+      'chat_messages',
+      message.toMap(),
+      where: 'id = ?',
+      whereArgs: [message.id],
+    );
   }
 }

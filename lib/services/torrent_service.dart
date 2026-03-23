@@ -122,7 +122,6 @@ class TorrentService {
       throw StateError('Torrent not found: $id');
     }
 
-    double suggestedRatio = existing.maxSeedRatio ?? 0.0;
     bool shouldDelete = existing.deleteAfterRatioReached;
     String updatedStatus = existing.status ?? 'downloading';
 

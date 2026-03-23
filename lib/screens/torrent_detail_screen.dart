@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:vault_the_spire/models/torrent.dart';
 import 'package:vault_the_spire/services/torrent_engine_service.dart';
 
@@ -14,14 +15,45 @@ class TorrentDetailScreen extends StatefulWidget {
 class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
   @override
   Widget build(BuildContext context) {
-    final piecesCount = widget.torrent.totalPieces ?? 0;
-    final haveCount =
-        widget.torrent.piecesHave?.split(',').where((e) => e == '1').length ??
-        0;
-    final progress = piecesCount > 0 ? (haveCount / piecesCount) : 0.0;
+    final haveCount = widget.torrent.havePieces;
+    final progress = widget.torrent.progress;
 
     return Scaffold(
-      appBar: AppBar(title: Text(widget.torrent.name)),
+      appBar: AppBar(
+        title: Text(widget.torrent.name),
+        actions: [
+          if (widget.torrent.magnetLink != null)
+            IconButton(
+              tooltip: 'Copy magnet link',
+              icon: const Icon(Icons.link),
+              onPressed: () async {
+                final messenger = ScaffoldMessenger.of(context);
+                await Clipboard.setData(
+                  ClipboardData(text: widget.torrent.magnetLink!),
+                );
+                if (!mounted) return;
+                messenger.showSnackBar(
+                  const SnackBar(content: Text('Magnet link copied')),
+                );
+              },
+            ),
+          if (widget.torrent.vaultLink != null)
+            IconButton(
+              tooltip: 'Copy vault link',
+              icon: const Icon(Icons.copy),
+              onPressed: () async {
+                final messenger = ScaffoldMessenger.of(context);
+                await Clipboard.setData(
+                  ClipboardData(text: widget.torrent.vaultLink!),
+                );
+                if (!mounted) return;
+                messenger.showSnackBar(
+                  const SnackBar(content: Text('Vault link copied')),
+                );
+              },
+            ),
+        ],
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -72,12 +104,13 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
               },
             ),
             const SizedBox(height: 16),
-            Text('Pieces: $haveCount / $piecesCount'),
+            Text('Pieces: $haveCount / ${widget.torrent.totalPieces ?? 0}'),
             const SizedBox(height: 16),
-            if (torrent.type == 'vault' && torrent.vaultLink != null) ...[
+            if (widget.torrent.type == 'vault' &&
+                widget.torrent.vaultLink != null) ...[
               const Text('Vault link:'),
               SelectableText(
-                torrent.vaultLink!,
+                widget.torrent.vaultLink!,
                 style: const TextStyle(color: Colors.blueAccent),
               ),
             ],
