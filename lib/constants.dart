@@ -1,5 +1,7 @@
 const String kBaseUrl = 'https://quizthespire.com/vault/api';
 
+const String kPrivacyPolicyUrl = 'https://quizthespire.com/privacy-policy';
+
 const int kDefaultTorrentPort = 6881;
 
 const bool kTorrentFeatureEnabled = bool.fromEnvironment(

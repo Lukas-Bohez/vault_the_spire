@@ -974,6 +974,34 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ],
             const SizedBox(height: 10),
+            const Divider(),
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.privacy_tip),
+              title: const Text('Privacy Policy'),
+              subtitle: const Text(kPrivacyPolicyUrl),
+              trailing: IconButton(
+                icon: const Icon(Icons.copy),
+                tooltip: 'Copy privacy policy URL',
+                onPressed: () {
+                  Clipboard.setData(
+                    const ClipboardData(text: kPrivacyPolicyUrl),
+                  );
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Privacy policy URL copied')),
+                  );
+                },
+              ),
+              onTap: () {
+                Clipboard.setData(
+                  const ClipboardData(text: kPrivacyPolicyUrl),
+                );
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Privacy policy URL copied')),
+                );
+              },
+            ),
+            const SizedBox(height: 10),
           ],
         ),
       ),
