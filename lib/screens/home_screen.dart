@@ -7,7 +7,6 @@ import 'package:flutter/services.dart';
 import 'package:vault_the_spire/services/sound_service.dart';
 import 'package:vault_the_spire/services/identity_service.dart';
 import 'package:vault_the_spire/services/settings_service.dart';
-import 'package:vault_the_spire/screens/browser_screen.dart';
 import 'package:vault_the_spire/services/chat_service.dart';
 import 'package:vault_the_spire/services/theme_service.dart';
 import 'package:vault_the_spire/services/tray_service.dart';
@@ -985,18 +984,7 @@ class _HomeScreenState extends State<HomeScreen> {
               icon: const Icon(Icons.info_outline),
               label: const Text('Open About / Data Safety'),
             ),
-            const SizedBox(height: 10),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => const BrowserScreen(),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.web),
-              label: const Text('Open Integrated Browser'),
-            ),
+            // Removed integrated browser quick action (now in dedicated tab)
             const SizedBox(height: 10),
           ],
         ),

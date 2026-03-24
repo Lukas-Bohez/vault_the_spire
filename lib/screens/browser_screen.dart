@@ -174,6 +174,34 @@ class _BrowserScreenState extends State<BrowserScreen> {
         _captureCrashDump('WebView2 LoadError ${error.name}', null);
       });
 
+      controller.webMessage.listen((message) async {
+        if (message is String && _isTorrentOrMagnetUrl(message)) {
+          await _handleTorrentOrMagnetUrl(message);
+          await controller.stop();
+          setState(() {
+            _showHomeScreen = true;
+          });
+        }
+      });
+
+      await controller.addScriptToExecuteOnDocumentCreated('''
+        document.addEventListener('click', function(event) {
+          var target = event.target;
+          while (target && target.tagName !== 'A') {
+            target = target.parentElement;
+          }
+          if (!target || target.tagName !== 'A') return;
+          var href = target.getAttribute('href');
+          if (!href) return;
+          if (href.startsWith('magnet:') || href.endsWith('.torrent')) {
+            event.preventDefault();
+            if (window.chrome && chrome.webview) {
+              chrome.webview.postMessage(href);
+            }
+          }
+        }, true);
+      ''');
+
       await controller.initialize();
 
       if (!_showHomeScreen) {
@@ -441,6 +469,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
   Widget _buildBrowserContent(ThemeData theme) {
     return Column(
       children: [
+        _buildBrowserTopBar(theme),
         if (Platform.isWindows ? _windowsIsLoading : _isLoading)
           LinearProgressIndicator(
             value: Platform.isWindows ? null : _progress,
@@ -557,6 +586,65 @@ class _BrowserScreenState extends State<BrowserScreen> {
                       : WebViewWidget(controller: _webViewController!))),
         ),
       ],
+    );
+  }
+
+  Widget _buildBrowserTopBar(ThemeData theme) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _addressController,
+              textInputAction: TextInputAction.go,
+              onSubmitted: _navigateTo,
+              decoration: const InputDecoration(
+                hintText: 'Enter URL or magnet link',
+                border: OutlineInputBorder(),
+                isDense: true,
+                contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              ),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: (Platform.isWindows ? _windowsCanGoBack : _canGoBack)
+                ? () async {
+                    if (Platform.isWindows) {
+                      await _windowsWebViewController?.goBack();
+                    } else {
+                      await _webViewController?.goBack();
+                      await _refreshNavigationState();
+                    }
+                  }
+                : null,
+          ),
+          IconButton(
+            icon: const Icon(Icons.arrow_forward),
+            onPressed: (Platform.isWindows ? _windowsCanGoForward : _canGoForward)
+                ? () async {
+                    if (Platform.isWindows) {
+                      await _windowsWebViewController?.goForward();
+                    } else {
+                      await _webViewController?.goForward();
+                      await _refreshNavigationState();
+                    }
+                  }
+                : null,
+          ),
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () async {
+              if (Platform.isWindows) {
+                await _windowsWebViewController?.reload();
+              } else {
+                await _webViewController?.reload();
+              }
+            },
+          ),
+        ],
+      ),
     );
   }
 
