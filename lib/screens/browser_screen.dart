@@ -1,4 +1,5 @@
 ﻿import 'dart:async';
+import 'dart:ffi';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -7,14 +8,21 @@ import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_windows/webview_windows.dart' as webview_windows;
+import 'package:win32/win32.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../services/settings_service.dart';
 import '../services/torrent_service.dart';
 
 class BrowserScreen extends StatefulWidget {
   final String initialUrl;
+  final bool inTab;
 
-  const BrowserScreen({super.key, this.initialUrl = 'https://duckduckgo.com/'});
+  const BrowserScreen({
+    super.key,
+    this.initialUrl = 'https://duckduckgo.com/',
+    this.inTab = false,
+  });
 
   @override
   State<BrowserScreen> createState() => _BrowserScreenState();
@@ -24,6 +32,13 @@ class _BrowserScreenState extends State<BrowserScreen> {
   static bool _windowsWebViewEnvironmentInitialized = false;
 
   final TextEditingController _addressController = TextEditingController();
+
+  // Browser controls.
+  late String _homeUrl;
+  bool _showHomeScreen = true;
+  late List<String> _favorites;
+  bool _showHistory = false;
+  final List<String> _history = [];
 
   // Flutter WebView for non-Windows platforms (or fallback).
   WebViewController? _webViewController;
@@ -43,7 +58,13 @@ class _BrowserScreenState extends State<BrowserScreen> {
   @override
   void initState() {
     super.initState();
-    _addressController.text = widget.initialUrl;
+
+    _homeUrl = SettingsService.instance.browserHomeUrl;
+    _favorites = List<String>.from(SettingsService.instance.browserFavorites);
+    _addressController.text = widget.initialUrl.isNotEmpty
+        ? widget.initialUrl
+        : _homeUrl;
+
     if (Platform.isWindows) {
       _initWindowsWebView();
     } else {
@@ -67,12 +88,14 @@ class _BrowserScreenState extends State<BrowserScreen> {
           onPageStarted: (url) {
             setState(() {
               _isLoading = true;
+              _showHomeScreen = false;
             });
           },
           onPageFinished: (url) async {
             _addressController.text = url;
             setState(() {
               _isLoading = false;
+              _showHomeScreen = false;
             });
             _refreshNavigationState();
           },
@@ -90,8 +113,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
             }
           },
         ),
-      )
-      ..loadRequest(Uri.parse(widget.initialUrl));
+      );
 
     _webViewController = controller;
   }
@@ -117,11 +139,19 @@ class _BrowserScreenState extends State<BrowserScreen> {
         if (_isTorrentOrMagnetUrl(url)) {
           await _handleTorrentOrMagnetUrl(url);
           await controller.stop();
+          setState(() {
+            _showHomeScreen = true;
+          });
           return;
         }
 
         setState(() {
           _addressController.text = url;
+          _showHomeScreen = false;
+          _history.insert(0, '${DateTime.now().toIso8601String()} $url');
+          if (_history.length > 100) {
+            _history.removeRange(100, _history.length);
+          }
         });
       });
 
@@ -146,10 +176,12 @@ class _BrowserScreenState extends State<BrowserScreen> {
 
       await controller.initialize();
 
-      if (_isTorrentOrMagnetUrl(widget.initialUrl)) {
-        await _handleTorrentOrMagnetUrl(widget.initialUrl);
-      } else {
-        await controller.loadUrl(widget.initialUrl);
+      if (!_showHomeScreen) {
+        if (_isTorrentOrMagnetUrl(widget.initialUrl)) {
+          await _handleTorrentOrMagnetUrl(widget.initialUrl);
+        } else {
+          await controller.loadUrl(widget.initialUrl);
+        }
       }
 
       if (mounted) {
@@ -207,8 +239,59 @@ class _BrowserScreenState extends State<BrowserScreen> {
       if (kDebugMode) {
         debugPrint('WebView crash dump saved to ${file.path}');
       }
+
+      if (Platform.isWindows) {
+        await _captureWindowsMiniDump(reason);
+      }
     } catch (e) {
       if (kDebugMode) debugPrint('Failed to write crash dump: $e');
+    }
+  }
+
+  Future<void> _captureWindowsMiniDump(String reason) async {
+    try {
+      final directory = await getApplicationSupportDirectory();
+      final filename =
+          'webview_crash_${DateTime.now().toIso8601String().replaceAll(':', '-')}.dmp';
+      final path = '${directory.path}${Platform.pathSeparator}$filename';
+
+      final hFile = CreateFile(TEXT(path), GENERIC_WRITE, 0,
+          Pointer<SECURITY_ATTRIBUTES>.fromAddress(0), CREATE_ALWAYS,
+          FILE_ATTRIBUTE_NORMAL, NULL);
+      if (hFile == INVALID_HANDLE_VALUE) {
+        if (kDebugMode) {
+          debugPrint('Could not create dump file at $path');
+        }
+        return;
+      }
+
+      final process = GetCurrentProcess();
+      final pid = GetCurrentProcessId();
+      final dbghelp = DynamicLibrary.open('Dbghelp.dll');
+
+      final miniDumpWriteDump = dbghelp.lookupFunction<
+          Int32 Function(IntPtr, Uint32, IntPtr, Uint32, IntPtr, IntPtr, IntPtr),
+          int Function(int, int, int, int, int, int, int)>('MiniDumpWriteDump');
+
+      const int MiniDumpWithDataSegs = 0x00000001;
+      const int MiniDumpWithHandleData = 0x00000004;
+      const int dumpType = MiniDumpWithDataSegs | MiniDumpWithHandleData;
+
+      final success = miniDumpWriteDump(process, pid, hFile, dumpType, 0, 0, 0);
+
+      CloseHandle(hFile);
+
+      if (success == 0) {
+        if (kDebugMode) {
+          debugPrint('MiniDumpWriteDump failed: ${GetLastError()}');
+        }
+      } else {
+        if (kDebugMode) {
+          debugPrint('MiniDump written to $path for reason: $reason');
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('Failed to capture mini dump: $e');
     }
   }
 
@@ -298,13 +381,29 @@ class _BrowserScreenState extends State<BrowserScreen> {
       return;
     }
 
+    _showHomeScreen = false;
+
     if (Platform.isWindows && _windowsWebViewController != null) {
       await _windowsWebViewController?.loadUrl(url);
+      setState(() {
+        _showHomeScreen = false;
+        _history.insert(0, '${DateTime.now().toIso8601String()} $url');
+        if (_history.length > 100) {
+          _history.removeRange(100, _history.length);
+        }
+      });
       return;
     }
 
     await _webViewController?.loadRequest(Uri.parse(url));
     await _refreshNavigationState();
+    setState(() {
+      _showHomeScreen = false;
+      _history.insert(0, '${DateTime.now().toIso8601String()} $url');
+      if (_history.length > 100) {
+        _history.removeRange(100, _history.length);
+      }
+    });
   }
 
   Future<void> _refreshNavigationState() async {
@@ -339,8 +438,137 @@ class _BrowserScreenState extends State<BrowserScreen> {
     super.dispose();
   }
 
+  Widget _buildBrowserContent(ThemeData theme) {
+    return Column(
+      children: [
+        if (Platform.isWindows ? _windowsIsLoading : _isLoading)
+          LinearProgressIndicator(
+            value: Platform.isWindows ? null : _progress,
+            minHeight: 3,
+          ),
+        Expanded(
+          child: _showHomeScreen
+              ? SingleChildScrollView(
+                  physics: const BouncingScrollPhysics(),
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text('Home', style: theme.textTheme.headlineMedium),
+                          Row(
+                            children: [
+                              TextButton(
+                                onPressed: () {
+                                  setState(() {
+                                    _showHistory = false;
+                                  });
+                                },
+                                child: const Text('Favorites'),
+                              ),
+                              TextButton(
+                                onPressed: () {
+                                  setState(() {
+                                    _showHistory = true;
+                                  });
+                                },
+                                child: const Text('History'),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      if (_showHistory)
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: _history.map((entry) {
+                            return ListTile(
+                              dense: true,
+                              title: Text(entry,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 12)),
+                              onTap: () {
+                                final url = entry.split(' ').last;
+                                _navigateTo(url);
+                              },
+                            );
+                          }).toList(),
+                        )
+                      else
+                        Wrap(
+                          spacing: 12,
+                          runSpacing: 12,
+                          children: _favorites.map((url) {
+                            return InputChip(
+                              label: ConstrainedBox(
+                                constraints: const BoxConstraints(maxWidth: 180),
+                                child: Text(url,
+                                    overflow: TextOverflow.ellipsis,
+                                    softWrap: false),
+                              ),
+                              onPressed: () {
+                                _navigateTo(url);
+                              },
+                              deleteIcon: const Icon(Icons.close),
+                              onDeleted: () async {
+                                setState(() {
+                                  _favorites.remove(url);
+                                });
+                                await SettingsService.instance
+                                    .setBrowserFavorites(_favorites);
+                              },
+                            );
+                          }).toList(),
+                        ),
+                      const SizedBox(height: 20),
+                      const Text('Quick links',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        children: [
+                          'https://www.startpage.com/',
+                          'https://www.duckduckgo.com/',
+                          'https://news.ycombinator.com/',
+                          'https://www.wikipedia.org/',
+                        ].map((url) {
+                          return ElevatedButton(
+                            onPressed: () {
+                              _navigateTo(url);
+                            },
+                            child: Text(url.replaceAll('https://', ''),
+                                overflow: TextOverflow.ellipsis),
+                          );
+                        }).toList(),
+                      ),
+                    ],
+                  ),
+                )
+              : (Platform.isWindows
+                  ? (_windowsWebViewController == null
+                      ? const Center(child: CircularProgressIndicator())
+                      : webview_windows.Webview(_windowsWebViewController!))
+                  : (_webViewController == null
+                      ? const Center(child: CircularProgressIndicator())
+                      : WebViewWidget(controller: _webViewController!))),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    Widget content = _buildBrowserContent(theme);
+
+    if (widget.inTab) {
+      return content;
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: SizedBox(
@@ -394,6 +622,50 @@ class _BrowserScreenState extends State<BrowserScreen> {
             },
           ),
           IconButton(
+            icon: const Icon(Icons.home),
+            onPressed: () async {
+              _showHomeScreen = true;
+              _addressController.text = _homeUrl;
+              await _navigateTo(_homeUrl);
+            },
+            tooltip: 'Go home',
+          ),
+          IconButton(
+            icon: const Icon(Icons.home_filled),
+            onPressed: () async {
+              final current = _addressController.text.trim();
+              if (current.isEmpty) return;
+              await SettingsService.instance.setBrowserHomeUrl(current);
+              setState(() {
+                _homeUrl = current;
+              });
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Home URL updated')),
+                );
+              }
+            },
+            tooltip: 'Set current page as home',
+          ),
+          IconButton(
+            icon: Icon(_favorites.contains(_addressController.text.trim())
+                ? Icons.star
+                : Icons.star_border),
+            onPressed: () async {
+              final url = _addressController.text.trim();
+              if (url.isEmpty) return;
+              setState(() {
+                if (_favorites.contains(url)) {
+                  _favorites.remove(url);
+                } else {
+                  _favorites.add(url);
+                }
+              });
+              await SettingsService.instance.setBrowserFavorites(_favorites);
+            },
+            tooltip: 'Toggle favorite',
+          ),
+          IconButton(
             icon: const Icon(Icons.open_in_new),
             onPressed: _openExternally,
           ),
@@ -412,13 +684,111 @@ class _BrowserScreenState extends State<BrowserScreen> {
               minHeight: 3,
             ),
           Expanded(
-            child: Platform.isWindows
-                ? (_windowsWebViewController == null
-                    ? const Center(child: CircularProgressIndicator())
-                    : webview_windows.Webview(_windowsWebViewController!))
-                : (_webViewController == null
-                    ? const Center(child: CircularProgressIndicator())
-                    : WebViewWidget(controller: _webViewController!)),
+            child: _showHomeScreen
+                ? SingleChildScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text('Home', style: theme.textTheme.headlineMedium),
+                            Row(
+                              children: [
+                                TextButton(
+                                  onPressed: () {
+                                    setState(() {
+                                      _showHistory = false;
+                                    });
+                                  },
+                                  child: const Text('Favorites'),
+                                ),
+                                TextButton(
+                                  onPressed: () {
+                                    setState(() {
+                                      _showHistory = true;
+                                    });
+                                  },
+                                  child: const Text('History'),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        if (_showHistory)
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: _history.map((entry) {
+                              return ListTile(
+                                dense: true,
+                                title: Text(entry,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(fontSize: 12)),
+                                onTap: () {
+                                  final url = entry.split(' ').last;
+                                  _navigateTo(url);
+                                },
+                              );
+                            }).toList(),
+                          )
+                        else
+                          Wrap(
+                            spacing: 12,
+                            runSpacing: 12,
+                            children: _favorites.map((url) {
+                            return InputChip(
+                              label: ConstrainedBox(
+                                constraints: const BoxConstraints(maxWidth: 180),
+                                child: Text(url,
+                                    overflow: TextOverflow.ellipsis,
+                                    softWrap: false),
+                              ),
+                              onPressed: () {
+                                _navigateTo(url);
+                              },
+                              deleteIcon: const Icon(Icons.close),
+                              onDeleted: () async {
+                                setState(() {
+                                  _favorites.remove(url);
+                                });
+                                await SettingsService.instance.setBrowserFavorites(_favorites);
+                              },
+                            );
+                          }).toList(),
+                        ),
+                        const SizedBox(height: 20),
+                        const Text('Quick links', style: TextStyle(fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 12,
+                          runSpacing: 12,
+                          children: [
+                            'https://www.startpage.com/',
+                            'https://www.duckduckgo.com/',
+                            'https://news.ycombinator.com/',
+                            'https://www.wikipedia.org/',
+                          ].map((url) {
+                            return ElevatedButton(
+                              onPressed: () {
+                                _navigateTo(url);
+                              },
+                              child: Text(url.replaceAll('https://', ''), overflow: TextOverflow.ellipsis),
+                            );
+                          }).toList(),
+                        ),
+                      ],
+                    ),
+                  )
+                : (Platform.isWindows
+                    ? (_windowsWebViewController == null
+                        ? const Center(child: CircularProgressIndicator())
+                        : webview_windows.Webview(_windowsWebViewController!))
+                    : (_webViewController == null
+                        ? const Center(child: CircularProgressIndicator())
+                        : WebViewWidget(controller: _webViewController!))),
           ),
         ],
       ),

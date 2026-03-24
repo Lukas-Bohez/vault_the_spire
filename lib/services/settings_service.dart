@@ -8,6 +8,9 @@ class SettingsService {
   static const _kUsePersistentSidebar = 'use_persistent_sidebar';
   static const _kDownloadDestination = 'download_destination';
   static const _kTorrentSortMode = 'torrent_sort_mode';
+  static const _kBrowserHomeUrl = 'browser_home_url';
+  static const _kBrowserFavorites = 'browser_favorites';
+
 
   static final SettingsService instance = SettingsService._();
 
@@ -20,6 +23,12 @@ class SettingsService {
   bool usePersistentSidebar = false;
   String downloadDestination = '';
   int torrentSortMode = 0; // 0=reputation, 1=seeders, 2=leechers
+  String browserHomeUrl = 'https://www.startpage.com/';
+  List<String> browserFavorites = <String>[
+    'https://www.startpage.com/',
+    'https://news.ycombinator.com/',
+    'https://www.wikipedia.org/',
+  ];
 
 
   Future<void> load() async {
@@ -31,6 +40,8 @@ class SettingsService {
     usePersistentSidebar = prefs.getBool(_kUsePersistentSidebar) ?? false;
     downloadDestination = prefs.getString(_kDownloadDestination) ?? '';
     torrentSortMode = prefs.getInt(_kTorrentSortMode) ?? 0;
+    browserHomeUrl = prefs.getString(_kBrowserHomeUrl) ?? browserHomeUrl;
+    browserFavorites = prefs.getStringList(_kBrowserFavorites) ?? browserFavorites;
   }
 
   Future<void> setUseSystemTray(bool value) async {
@@ -73,5 +84,17 @@ class SettingsService {
     torrentSortMode = value;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_kTorrentSortMode, value);
+  }
+
+  Future<void> setBrowserHomeUrl(String url) async {
+    browserHomeUrl = url;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kBrowserHomeUrl, url);
+  }
+
+  Future<void> setBrowserFavorites(List<String> list) async {
+    browserFavorites = list;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_kBrowserFavorites, list);
   }
 }

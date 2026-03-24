@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:vault_the_spire/services/sound_service.dart';
 import 'package:vault_the_spire/services/identity_service.dart';
 import 'package:vault_the_spire/services/settings_service.dart';
+import 'package:vault_the_spire/screens/browser_screen.dart';
 import 'package:vault_the_spire/services/chat_service.dart';
 import 'package:vault_the_spire/services/theme_service.dart';
 import 'package:vault_the_spire/services/tray_service.dart';
@@ -28,7 +29,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-enum MainView { dashboard, torrents, messages, server }
+enum MainView { dashboard, torrents, messages, server, browser }
 
 enum TorrentSortMode { reputation, seeders, leechers }
 
@@ -359,6 +360,7 @@ class _HomeScreenState extends State<HomeScreen> {
       },
       {'icon': Icons.chat, 'label': 'Messages', 'view': MainView.messages},
       {'icon': Icons.cloud, 'label': 'Servers', 'view': MainView.server},
+      {'icon': Icons.web, 'label': 'Browser', 'view': MainView.browser},
     ];
 
 
@@ -420,6 +422,8 @@ class _HomeScreenState extends State<HomeScreen> {
         return _buildMessagesArea(theme);
       case MainView.server:
         return _buildServerChatArea(theme);
+      case MainView.browser:
+        return _buildBrowserArea(theme);
     }
   }
 
@@ -1940,6 +1944,13 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  Widget _buildBrowserArea(ThemeData theme) {
+    return BrowserScreen(
+      inTab: true,
+      initialUrl: SettingsService.instance.browserHomeUrl,
+    );
+  }
+
   Widget _buildMainArea(ThemeData theme) {
     return Column(
       children: [
@@ -1971,36 +1982,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       style: TextStyle(fontWeight: FontWeight.bold),
                     ),
                     const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 8,
-                      children: [
-                        ElevatedButton.icon(
-                          icon: const Icon(Icons.storage),
-                          label: const Text('Torrents'),
-                          onPressed: () => setState(() {
-                            _mobileNavIndex = 1;
-                          }),
-                        ),
-                        ElevatedButton.icon(
-                          icon: const Icon(Icons.chat),
-                          label: const Text('Messaging'),
-                          onPressed: () => setState(() {
-                            _mobileNavIndex = 2;
-                          }),
-                        ),
-                        ElevatedButton.icon(
-                          icon: const Icon(Icons.web),
-                          label: const Text('Browser'),
-                          onPressed: () {
-                            Navigator.of(context).push(
-                              MaterialPageRoute(
-                                builder: (_) => const BrowserScreen(),
-                              ),
-                            );
-                          },
-                        ),
-                      ],
+                    const Text(
+                      'Use the tabs above to switch between dashboard, torrents, messages, servers, and browser.',
                     ),
                   ],
                 ),
