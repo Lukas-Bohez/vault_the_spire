@@ -100,6 +100,14 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
                     Text('Downloaded: ${status.downloaded}'),
                     Text('Uploaded: ${status.uploaded}'),
                     Text('Peers: ${status.peers}'),
+                    if (status.peerAddresses.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4.0),
+                        child: Text(
+                          'Connected: ${status.peerAddresses.join(', ')}',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                      ),
                     Text(
                       'Progress engine: ${(status.progress * 100).toStringAsFixed(1)}%',
                     ),

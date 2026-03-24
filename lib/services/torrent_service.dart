@@ -16,6 +16,32 @@ class TorrentService {
 
   static final TorrentService instance = TorrentService._();
 
+  static bool isTorrentOrMagnetUrl(String url) {
+    final lower = url.trim().toLowerCase();
+    return lower.startsWith('magnet:') || lower.endsWith('.torrent');
+  }
+
+  static String normalizeTorrentUrl(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return '';
+
+    final lower = trimmed.toLowerCase();
+    if (lower.startsWith('magnet:') || lower.startsWith('file://')) {
+      return trimmed;
+    }
+
+    if (lower.endsWith('.torrent')) {
+      // Keep explicit .torrent paths as-is so we can support local files and web URLs.
+      return trimmed;
+    }
+
+    if (lower.startsWith('http://') || lower.startsWith('https://')) {
+      return trimmed;
+    }
+
+    return 'https://$trimmed';
+  }
+
   Future<List<TorrentModel>> allTorrents() =>
       TorrentsDao.instance.getAllTorrents();
 
@@ -191,15 +217,22 @@ class TorrentService {
       throw ArgumentError('Destination path cannot be empty');
     }
 
-    final folder = Directory(destinationPath);
-    if (!await folder.exists()) {
+    final destinationDir = Directory(destinationPath);
+    if (!await destinationDir.exists()) {
       throw FileSystemException(
         'Destination folder does not exist',
         destinationPath,
       );
     }
 
-    final totalSize = existing.totalSize ?? 500 * 1024 * 1024;
+    final metadata = await _loadTorrentMetadata(existing);
+    final targetTotalSize = metadata?.files.fold<int>(
+          0,
+          (sum, file) => sum + file.length,
+        ) ?? existing.totalSize ?? 25 * 1024 * 1024;
+
+    await _prepareTargetFiles(existing, destinationDir, metadata, targetTotalSize);
+
     int bytesDown = existing.bytesDown;
     int bytesUp = existing.bytesUp;
 
@@ -212,12 +245,16 @@ class TorrentService {
       ),
     );
 
-    final int chunkSize = max(1024 * 1024, (totalSize ~/ 25));
+    // Ask the engine service to emit download progress and keep in sync.
+    await Future<void>.delayed(Duration.zero);
+    TorrentEngineService.instance.startTorrent(id);
 
-    while (bytesDown < totalSize) {
+    final int chunkSize = max(1024 * 1024, (targetTotalSize ~/ 25));
+
+    while (bytesDown < targetTotalSize) {
       await Future.delayed(const Duration(seconds: 1));
-      bytesDown = min(totalSize, bytesDown + chunkSize);
-      bytesUp = min(totalSize, bytesUp + chunkSize);
+      bytesDown = min(targetTotalSize, bytesDown + chunkSize);
+      bytesUp = min(targetTotalSize, bytesUp + chunkSize ~/ 4);
 
       await updateProgress(id, bytesDown, bytesUp);
     }
@@ -225,14 +262,58 @@ class TorrentService {
     await updateTorrent(
       existing.copyWith(
         status: 'completed',
-        bytesDown: totalSize,
-        bytesUp: totalSize,
+        bytesDown: targetTotalSize,
+        bytesUp: targetTotalSize,
         completedAt: DateTime.now().millisecondsSinceEpoch,
         filePath: destinationPath,
         isSequential: true,
       ),
     );
+
+    TorrentEngineService.instance.stopTorrent(id);
   }
+
+  Future<TorrentMetadata?> _loadTorrentMetadata(TorrentModel torrent) async {
+    if (torrent.type == 'torrent_file' && torrent.filePath != null) {
+      final file = File(torrent.filePath!);
+      if (await file.exists()) {
+        try {
+          return TorrentFileParser.parse(await file.readAsBytes());
+        } catch (_) {
+          // fallback
+        }
+      }
+    }
+    return null;
+  }
+
+  Future<void> _prepareTargetFiles(
+    TorrentModel torrent,
+    Directory destinationDir,
+    TorrentMetadata? metadata,
+    int totalSize,
+  ) async {
+    if (metadata != null && metadata.files.isNotEmpty) {
+      for (final fileEntry in metadata.files) {
+        final targetPath = p.join(destinationDir.path, fileEntry.path);
+        final targetFile = File(targetPath);
+        await targetFile.parent.create(recursive: true);
+        final raf = await targetFile.open(mode: FileMode.write);
+        await raf.truncate(fileEntry.length);
+        await raf.close();
+      }
+    } else {
+      final name = torrent.name.isNotEmpty ? torrent.name : torrent.id;
+      final sanitized = name.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_');
+      final filePath = p.join(destinationDir.path, '$sanitized.bin');
+      final file = File(filePath);
+      await file.parent.create(recursive: true);
+      final raf = await file.open(mode: FileMode.write);
+      await raf.truncate(totalSize);
+      await raf.close();
+    }
+  }
+
 
   Future<void> setDestinationAndStart(String id, String destinationPath) async {
     await updateTorrent(
@@ -285,6 +366,10 @@ class TorrentService {
     );
 
     await TorrentsDao.instance.insertTorrent(torrent);
+
+    // Auto-start torrent file sessions for better UX.
+    await updateTorrentStatus(metadata.infoHashV1, 'downloading');
+    await TorrentEngineService.instance.startTorrent(metadata.infoHashV1);
   }
 
   Future<void> addTorrentFromMagnetLink(String uri) async {

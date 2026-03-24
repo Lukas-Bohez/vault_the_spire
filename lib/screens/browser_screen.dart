@@ -367,8 +367,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
   }
 
   bool _isTorrentOrMagnetUrl(String url) {
-    final lower = url.trim().toLowerCase();
-    return lower.startsWith('magnet:') || lower.endsWith('.torrent');
+    return TorrentService.isTorrentOrMagnetUrl(url);
   }
 
   Future<void> _handleTorrentOrMagnetUrl(String url) async {
@@ -395,34 +394,65 @@ class _BrowserScreenState extends State<BrowserScreen> {
           return;
         }
 
-        final uri = Uri.parse(url);
-        final client = HttpClient();
         try {
-          final request = await client.getUrl(uri);
-          final response = await request.close();
-          if (response.statusCode != HttpStatus.ok) {
-            throw HttpException('Failed to download torrent file', uri: uri);
+          String localPath = url;
+
+          if (url.toLowerCase().startsWith('file://')) {
+            localPath = Uri.parse(url).toFilePath();
           }
 
-          final fileBytes = await consolidateHttpClientResponseBytes(response);
+          final torrentFile = File(localPath);
+          if (await torrentFile.exists()) {
+            await TorrentService.instance.addTorrentFromTorrentFile(localPath);
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Torrent file added from local path: $localPath')),
+              );
+            }
+            return;
+          }
 
-          final filename = uri.pathSegments.isNotEmpty
-              ? uri.pathSegments.last
-              : 'downloaded.torrent';
-          final tempFile = File(
-            '${Directory.systemTemp.path}${Platform.pathSeparator}vault_the_spire_${DateTime.now().millisecondsSinceEpoch}_$filename',
-          );
-          await tempFile.writeAsBytes(fileBytes);
-          await TorrentService.instance.addTorrentFromTorrentFile(tempFile.path);
+          // If not a local file, download from HTTP/HTTPS.
+          final uri = Uri.parse(url);
+          if (uri.isScheme('http') || uri.isScheme('https')) {
+            final client = HttpClient();
+            try {
+              final request = await client.getUrl(uri);
+              final response = await request.close();
+              if (response.statusCode != HttpStatus.ok) {
+                throw HttpException('Failed to download torrent file', uri: uri);
+              }
+
+              final fileBytes = await consolidateHttpClientResponseBytes(response);
+              final filename = uri.pathSegments.isNotEmpty
+                  ? uri.pathSegments.last
+                  : 'downloaded.torrent';
+              final tempFile = File(
+                '${Directory.systemTemp.path}${Platform.pathSeparator}vault_the_spire_${DateTime.now().millisecondsSinceEpoch}_$filename',
+              );
+              await tempFile.writeAsBytes(fileBytes);
+              await TorrentService.instance.addTorrentFromTorrentFile(tempFile.path);
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Torrent file added from URL: ${uri.toString()}')),
+                );
+              }
+            } finally {
+              client.close(force: true);
+            }
+            return;
+          }
+
+          // Not valid URI as file or HTTP.
+          throw FormatException('Cannot handle torrent URL: $url');
+        } on Exception catch (e) {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Torrent file added from URL: ${uri.toString()}')),
+              SnackBar(content: Text('Failed to add torrent file: $e')),
             );
           }
-        } finally {
-          client.close(force: true);
+          return;
         }
-        return;
       }
     } catch (e) {
       if (mounted) {
@@ -434,12 +464,11 @@ class _BrowserScreenState extends State<BrowserScreen> {
   }
 
   String _normalizeUrl(String value) {
-    final trimmed = value.trim();
-    if (trimmed.isEmpty) return '';
-    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-      return trimmed;
+    final normalized = TorrentService.normalizeTorrentUrl(value);
+    if (TorrentService.isTorrentOrMagnetUrl(normalized)) {
+      return normalized;
     }
-    return 'https://';
+    return normalized;
   }
 
   Future<void> _navigateTo(String value) async {

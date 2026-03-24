@@ -29,6 +29,12 @@ Vault The Spire was built around the principle that private communications and f
 - E2E encryption (X25519 key agreement + ratchet session)
 - Docker-less, auth-less, and telemetry-free architecture.
 
+### Torrent behavior (updated)
+
+- Magnet links are now imported and auto-started using a simulated torrent engine that updates progress and status.
+- `.torrent` file inputs are supported from local paths (`file://` and direct filesystem path) and HTTP/HTTPS downloads.
+- Engine logic handles both piece-based torrent metadata and magnet-only stub torrents (with fallback progress load simulation).
+
 ## Quickstart
 
 ### End-user install (recommended)
