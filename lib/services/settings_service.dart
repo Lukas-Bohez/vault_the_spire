@@ -1,7 +1,4 @@
-import 'dart:convert';
-
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:vault_the_spire/models/torrent.dart';
 
 class SettingsService {
   static const _kUseSystemTray = 'use_system_tray';
