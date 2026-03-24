@@ -18,6 +18,7 @@ import 'package:vault_the_spire/services/startup_service.dart';
 import 'package:vault_the_spire/constants.dart';
 import 'package:vault_the_spire/services/torrent_engine_service.dart';
 import 'package:vault_the_spire/services/torrent_service.dart';
+import 'package:vault_the_spire/screens/about_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -993,13 +994,24 @@ class _HomeScreenState extends State<HomeScreen> {
                 },
               ),
               onTap: () {
-                Clipboard.setData(
-                  const ClipboardData(text: kPrivacyPolicyUrl),
-                );
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Privacy policy URL copied')),
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const AboutScreen(),
+                  ),
                 );
               },
+            ),
+            const SizedBox(height: 10),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const AboutScreen(),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.info_outline),
+              label: const Text('Open About / Data Safety'),
             ),
             const SizedBox(height: 10),
           ],
