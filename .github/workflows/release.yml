@@ -210,17 +210,18 @@ jobs:
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "No Android signing secrets set, building with debug keys"
-            exit 0
+            echo "❌ ANDROID_KEYSTORE_BASE64 secret is required for release builds"
+            exit 1
           fi
           set -euo pipefail
-          echo "$KEYSTORE_BASE64" | base64 --decode > android/app/release.keystore
+          echo "$KEYSTORE_BASE64" | base64 --decode > android/release.keystore
           cat > android/key.properties <<EOF
           storePassword=$KEYSTORE_PASSWORD
           keyPassword=$KEY_PASSWORD
           keyAlias=$KEY_ALIAS
           storeFile=release.keystore
           EOF
+          echo "✅ Keystore configured for release signing"
 
       - name: Install dependencies
         run: flutter pub get
@@ -235,9 +236,19 @@ jobs:
         run: |
           mkdir -p android-builds
           cp build/app/outputs/flutter-apk/app-release.apk \
-             android-builds/${{ env.OUTPUT_NAME }}.apk || true
+             android-builds/${{ env.OUTPUT_NAME }}-android.apk
           cp build/app/outputs/bundle/release/app-release.aab \
-             android-builds/${{ env.OUTPUT_NAME }}.aab || true
+             android-builds/${{ env.OUTPUT_NAME }}-android.aab
+
+      - name: Upload to Google Play
+        if: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != '' }}
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.example.vault_the_spire
+          releaseFiles: android-builds/${{ env.OUTPUT_NAME }}-android.aab
+          track: internal
+          status: completed
 
       - uses: actions/upload-artifact@v6
         with:
