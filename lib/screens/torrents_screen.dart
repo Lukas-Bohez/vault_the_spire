@@ -599,17 +599,31 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
                               final messenger = ScaffoldMessenger.of(context);
                               try {
                                 if (value == 'pause') {
+                                  TorrentEngineService.instance.stopTorrent(
+                                    torrent.id,
+                                  );
                                   await TorrentService.instance
                                       .updateTorrentStatus(
-                                        torrent.id,
-                                        'paused',
-                                      );
+                                    torrent.id,
+                                    'paused',
+                                  );
                                 } else if (value == 'resume') {
                                   await TorrentService.instance
                                       .updateTorrentStatus(
-                                        torrent.id,
-                                        'downloading',
-                                      );
+                                    torrent.id,
+                                    'downloading',
+                                  );
+                                  await TorrentEngineService.instance
+                                      .startTorrent(torrent.id);
+                                } else if (value == 'stop') {
+                                  TorrentEngineService.instance.stopTorrent(
+                                    torrent.id,
+                                  );
+                                  await TorrentService.instance
+                                      .updateTorrentStatus(
+                                    torrent.id,
+                                    'paused',
+                                  );
                                 } else if (value == 'set_ratio') {
                                   final ratioController = TextEditingController(
                                     text:
@@ -660,20 +674,6 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
                                       await _refresh();
                                     }
                                   }
-                                } else if (value == 'start') {
-                                  await TorrentEngineService.instance
-                                      .startTorrent(torrent.id);
-                                  await _refresh();
-                                } else if (value == 'stop') {
-                                  TorrentEngineService.instance.stopTorrent(
-                                    torrent.id,
-                                  );
-                                  await TorrentService.instance
-                                      .updateTorrentStatus(
-                                        torrent.id,
-                                        'paused',
-                                      );
-                                  await _refresh();
                                 } else if (value == 'toggle_delete') {
                                   await TorrentService.instance
                                       .setDeleteAfterRatioReached(
@@ -765,55 +765,53 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
                                 );
                               }
                             },
-                            itemBuilder: (_) => [
-                              PopupMenuItem(
-                                value: 'start',
-                                child: Text('Start download'),
-                              ),
-                              PopupMenuItem(
-                                value: 'stop',
-                                child: Text('Stop download'),
-                              ),
-                              PopupMenuItem(
-                                value: 'pause',
-                                child: Text('Pause'),
-                              ),
-                              PopupMenuItem(
-                                value: 'resume',
-                                child: Text('Resume'),
-                              ),
-                              PopupMenuItem(
-                                value: 'set_ratio',
-                                child: Text('Set seed ratio limit'),
-                              ),
-                              PopupMenuItem(
-                                value: 'toggle_delete',
-                                child: Text(
-                                  torrent.deleteAfterRatioReached
-                                      ? 'Disable delete after ratio'
-                                      : 'Enable delete after ratio',
+                            itemBuilder: (_) {
+                              final isDownloading = torrent.status == 'downloading';
+                              return <PopupMenuEntry<String>>[
+                                if (isDownloading)
+                                  const PopupMenuItem<String>(
+                                    value: 'pause',
+                                    child: Text('Pause'),
+                                  )
+                                else
+                                  const PopupMenuItem<String>(
+                                    value: 'resume',
+                                    child: Text('Resume'),
+                                  ),
+                                const PopupMenuItem<String>(
+                                  value: 'stop',
+                                  child: Text('Stop'),
                                 ),
-                              ),
-                              PopupMenuItem(
-                                value: 'copy_magnet',
-                                child: Text('Copy magnet link'),
-                              ),
-                              PopupMenuItem(
-                                value: 'copy_id',
-                                child: Text('Copy torrent ID'),
-                              ),
-                              PopupMenuItem(
-                                value: 'open',
-                                child: Text('Open folder'),
-                              ),
-                              const PopupMenuDivider(),
-                              PopupMenuItem(
-                                value: 'remove',
-                                child: Text('Remove'),
-                              ),
-                            ],
+                                const PopupMenuItem<String>(
+                                  value: 'set_ratio',
+                                  child: Text('Set seed ratio limit'),
+                                ),
+                                const PopupMenuItem<String>(
+                                  value: 'toggle_delete',
+                                  child: Text('Toggle delete after ratio'),
+                                ),
+                                const PopupMenuItem<String>(
+                                  value: 'copy_magnet',
+                                  child: Text('Copy magnet link'),
+                                ),
+                                const PopupMenuItem<String>(
+                                  value: 'copy_id',
+                                  child: Text('Copy torrent ID'),
+                                ),
+                                const PopupMenuItem<String>(
+                                  value: 'open',
+                                  child: Text('Open folder'),
+                                ),
+                                const PopupMenuDivider(),
+                                const PopupMenuItem<String>(
+                                  value: 'remove',
+                                  child: Text('Remove'),
+                                ),
+                              ];
+                            },
                             icon: const Icon(Icons.more_vert),
                           ),
+
                           onTap: () {
                             Navigator.of(context).push(
                               MaterialPageRoute(

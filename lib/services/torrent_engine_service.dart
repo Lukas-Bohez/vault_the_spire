@@ -82,7 +82,23 @@ class TorrentEngineService {
           torrentId,
           'completed',
         );
-        stopTorrent(torrentId);
+
+        final latestCompleted = await TorrentService.instance.getTorrentById(torrentId);
+        _runningDownloads.remove(torrentId)?.cancel();
+
+        _statusController.add(
+          TorrentEngineStatus(
+            torrentId: torrentId,
+            downloaded: latestCompleted?.bytesDown ?? 0,
+            uploaded: latestCompleted?.bytesUp ?? 0,
+            progress: latestCompleted?.progress ?? 1.0,
+            state: 'completed',
+            peers: 0,
+            downloadSpeed: 0.0,
+            uploadSpeed: 0.0,
+          ),
+        );
+
         return;
       }
 
@@ -163,24 +179,29 @@ class TorrentEngineService {
     );
   }
 
-  void stopTorrent(String torrentId) {
+  void stopTorrent(String torrentId) async {
     final timer = _runningDownloads.remove(torrentId);
     if (timer != null) {
       timer.cancel();
     }
-    TorrentService.instance.updateTorrentStatus(torrentId, 'paused');
-    _statusController.add(
-      TorrentEngineStatus(
-        torrentId: torrentId,
-        downloaded: 0,
-        uploaded: 0,
-        progress: 0.0,
-        state: 'paused',
-        peers: 0,
-        downloadSpeed: 0.0,
-        uploadSpeed: 0.0,
-      ),
-    );
+
+    final currentTorrent = await TorrentService.instance.getTorrentById(torrentId);
+    if (currentTorrent != null) {
+      await TorrentService.instance.updateTorrentStatus(torrentId, 'paused');
+
+      _statusController.add(
+        TorrentEngineStatus(
+          torrentId: torrentId,
+          downloaded: currentTorrent.bytesDown,
+          uploaded: currentTorrent.bytesUp,
+          progress: currentTorrent.progress,
+          state: 'paused',
+          peers: 0,
+          downloadSpeed: 0.0,
+          uploadSpeed: 0.0,
+        ),
+      );
+    }
   }
 
   void stopAll() {

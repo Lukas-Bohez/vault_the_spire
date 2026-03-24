@@ -9,6 +9,7 @@ import 'package:vault_the_spire/bittorrent/magnet_link.dart';
 import 'package:vault_the_spire/bittorrent/torrent_file.dart';
 import 'package:vault_the_spire/db/torrents_dao.dart';
 import 'package:vault_the_spire/models/torrent.dart';
+import 'package:vault_the_spire/services/torrent_engine_service.dart';
 
 class TorrentService {
   TorrentService._();
@@ -319,6 +320,8 @@ class TorrentService {
     );
 
     await TorrentsDao.instance.insertTorrent(torrent);
+    await updateTorrent(torrent.copyWith(status: 'downloading'));
+    await TorrentEngineService.instance.startTorrent(infoHash);
   }
 
   static String createMagnetLink(

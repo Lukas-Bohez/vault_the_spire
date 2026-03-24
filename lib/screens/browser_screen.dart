@@ -138,8 +138,8 @@ class _BrowserScreenState extends State<BrowserScreen> {
         if (!mounted) return;
 
         if (_isTorrentOrMagnetUrl(url)) {
-          await _handleTorrentOrMagnetUrl(url);
           await controller.stop();
+          await _handleTorrentOrMagnetUrl(url);
           setState(() {
             _showHomeScreen = true;
           });
@@ -192,6 +192,17 @@ class _BrowserScreenState extends State<BrowserScreen> {
 
       try {
         await controller.addScriptToExecuteOnDocumentCreated('''
+        function _vaultHandleTorrentProtocol(url) {
+          if (!url) return false;
+          if (url.startsWith('magnet:') || url.endsWith('.torrent')) {
+            if (window.chrome && chrome.webview) {
+              chrome.webview.postMessage(url);
+            }
+            return true;
+          }
+          return false;
+        }
+
         document.addEventListener('click', function(event) {
           var target = event.target;
           while (target && target.tagName !== 'A') {
@@ -200,13 +211,34 @@ class _BrowserScreenState extends State<BrowserScreen> {
           if (!target || target.tagName !== 'A') return;
           var href = target.getAttribute('href');
           if (!href) return;
-          if (href.startsWith('magnet:') || href.endsWith('.torrent')) {
+          if (_vaultHandleTorrentProtocol(href)) {
             event.preventDefault();
-            if (window.chrome && chrome.webview) {
-              chrome.webview.postMessage(href);
-            }
           }
         }, true);
+
+        var originalOpen = window.open;
+        window.open = function(url, name, specs) {
+          if (_vaultHandleTorrentProtocol(String(url))) {
+            return null;
+          }
+          return originalOpen.apply(this, arguments);
+        };
+
+        var originalAssign = window.location.assign;
+        window.location.assign = function(url) {
+          if (_vaultHandleTorrentProtocol(String(url))) {
+            return;
+          }
+          return originalAssign.apply(this, arguments);
+        };
+
+        var originalReplace = window.location.replace;
+        window.location.replace = function(url) {
+          if (_vaultHandleTorrentProtocol(String(url))) {
+            return;
+          }
+          return originalReplace.apply(this, arguments);
+        };
       ''');
       } catch (e) {
         if (kDebugMode) {
@@ -312,9 +344,9 @@ class _BrowserScreenState extends State<BrowserScreen> {
           Int32 Function(IntPtr, Uint32, IntPtr, Uint32, IntPtr, IntPtr, IntPtr),
           int Function(int, int, int, int, int, int, int)>('MiniDumpWriteDump');
 
-      const int MiniDumpWithDataSegs = 0x00000001;
-      const int MiniDumpWithHandleData = 0x00000004;
-      const int dumpType = MiniDumpWithDataSegs | MiniDumpWithHandleData;
+      const int miniDumpWithDataSegs = 0x00000001;
+      const int miniDumpWithHandleData = 0x00000004;
+      const int dumpType = miniDumpWithDataSegs | miniDumpWithHandleData;
 
       final success = miniDumpWriteDump(process, pid, hFile, dumpType, 0, 0, 0);
 
@@ -734,15 +766,15 @@ class _BrowserScreenState extends State<BrowserScreen> {
             onPressed: () async {
               final current = _addressController.text.trim();
               if (current.isEmpty) return;
+              final messenger = ScaffoldMessenger.of(context);
               await SettingsService.instance.setBrowserHomeUrl(current);
+              if (!mounted) return;
               setState(() {
                 _homeUrl = current;
               });
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Home URL updated')),
-                );
-              }
+              messenger.showSnackBar(
+                const SnackBar(content: Text('Home URL updated')),
+              );
             },
             tooltip: 'Set current page as home',
           ),
