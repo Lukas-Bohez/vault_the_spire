@@ -100,6 +100,19 @@ class _HomeScreenState extends State<HomeScreen> {
     minimizeToTrayOnClose = SettingsService.instance.minimizeToTrayOnClose;
     launchOnStartup = SettingsService.instance.launchOnStartup;
     usePersistentSidebar = SettingsService.instance.usePersistentSidebar;
+    _downloadDestination = SettingsService.instance.downloadDestination;
+    _discoveredTorrents = List<TorrentModel>.from(
+      SettingsService.instance.discoveredTorrents,
+    );
+    _isMinerActive = SettingsService.instance.autoMiningActive;
+    _autoDownloadDiscovered = SettingsService.instance.autoDownloadDiscovered;
+    _sortMode = TorrentSortMode.values[
+      SettingsService.instance.torrentSortMode.clamp(
+        0,
+        TorrentSortMode.values.length - 1,
+      ),
+    ];
+    _minSeeders = SettingsService.instance.minSeeders;
 
     if (IdentityService.instance.identity != null) {
       _identityNameController.text =
@@ -237,6 +250,7 @@ class _HomeScreenState extends State<HomeScreen> {
         setState(() {
           _downloadDestination = result;
         });
+        await SettingsService.instance.setDownloadDestination(result);
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Destination set: $_downloadDestination')),
@@ -571,12 +585,27 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _performMiningSweep() async {
-    final currentSearch = _torrentSearchQuery.isNotEmpty
-        ? _torrentSearchQuery
-        : 'trending';
-    final discovered = await TorrentService.instance.discoverTorrentsOnline(
-      currentSearch,
-    );
+    List<TorrentModel> discovered = [];
+    final query = _torrentSearchQuery.trim();
+
+    if (query.isNotEmpty) {
+      discovered = await TorrentService.instance.discoverTorrentsOnline(query);
+    } else {
+      final known = await TorrentService.instance.allTorrents();
+      if (known.isNotEmpty) {
+        for (final torrent in known) {
+          final results = await TorrentService.instance.discoverTorrentsOnline(
+            torrent.name,
+          );
+          discovered.addAll(results);
+        }
+      } else {
+        discovered = await TorrentService.instance.discoverTorrentsOnline(
+          'trending',
+        );
+      }
+    }
+
     for (final torrent in discovered) {
       try {
         await TorrentService.instance.addTorrent(torrent);
@@ -602,21 +631,15 @@ class _HomeScreenState extends State<HomeScreen> {
         return acc;
       });
     });
+
+    await SettingsService.instance.setDiscoveredTorrents(_discoveredTorrents);
   }
 
   void _toggleMiner(bool value) {
     setState(() {
       _isMinerActive = value;
-      if (!value) {
-        _torrentMiningTimer?.cancel();
-      } else {
-        _torrentMiningTimer ??= Timer.periodic(const Duration(seconds: 20), (
-          _,
-        ) async {
-          await _performMiningSweep();
-        });
-      }
     });
+    SettingsService.instance.setAutoMiningActive(value);
   }
 
   Widget _buildServerPanel(ThemeData theme, {bool inDrawer = false}) {
@@ -966,6 +989,34 @@ class _HomeScreenState extends State<HomeScreen> {
     return '${size.toStringAsFixed(1)} ${suffixes[index]}';
   }
 
+  Widget _buildDownloadDestinationCard(ThemeData theme) {
+    return Card(
+      elevation: 1,
+      color: theme.colorScheme.surfaceContainerHighest,
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                _downloadDestination.isEmpty
+                    ? 'No download destination selected'
+                    : 'Download destination: $_downloadDestination',
+                style: theme.textTheme.bodySmall,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 8),
+            ElevatedButton(
+              onPressed: _chooseDownloadDirectory,
+              child: const Text('Choose folder'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildLocalTorrentTab(ThemeData theme) {
     return FutureBuilder<List<dynamic>>(
       future: _torrentSearchQuery.isEmpty
@@ -999,6 +1050,13 @@ class _HomeScreenState extends State<HomeScreen> {
           onRefresh: _refreshLocalTorrents,
           child: Column(
             children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                child: _buildDownloadDestinationCard(theme),
+              ),
               Padding(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 12,
@@ -1038,6 +1096,9 @@ class _HomeScreenState extends State<HomeScreen> {
                           setState(() {
                             _sortMode = value;
                           });
+                          SettingsService.instance.setTorrentSortMode(
+                            TorrentSortMode.values.indexOf(value),
+                          );
                         }
                       },
                       items: TorrentSortMode.values
@@ -1232,6 +1293,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     _discoveredTorrents = discovered;
                     _onlineDiscoveryLoading = false;
                   });
+                  await SettingsService.instance.setDiscoveredTorrents(
+                    _discoveredTorrents,
+                  );
                 },
                 icon: _onlineDiscoveryLoading
                     ? const SizedBox(
@@ -1245,6 +1309,8 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
           const SizedBox(height: 14),
+          _buildDownloadDestinationCard(theme),
+          const SizedBox(height: 8),
           Card(
             elevation: 1,
             color: theme.colorScheme.surfaceContainerHighest,
@@ -1253,25 +1319,6 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          _downloadDestination.isEmpty
-                              ? 'No download destination selected'
-                              : 'Download destination: $_downloadDestination',
-                          style: theme.textTheme.bodySmall,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      ElevatedButton(
-                        onPressed: _chooseDownloadDirectory,
-                        child: const Text('Choose folder'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
                   Row(
                     children: [
                       const Text('Sort by:'),
@@ -1283,6 +1330,9 @@ class _HomeScreenState extends State<HomeScreen> {
                             setState(() {
                               _sortMode = value;
                             });
+                            SettingsService.instance.setTorrentSortMode(
+                              TorrentSortMode.values.indexOf(value),
+                            );
                           }
                         },
                         items: TorrentSortMode.values
@@ -1304,7 +1354,9 @@ class _HomeScreenState extends State<HomeScreen> {
                           value: _minSeeders.toDouble(),
                           label: '$_minSeeders',
                           onChanged: (value) {
-                            setState(() => _minSeeders = value.toInt());
+                            final int newValue = value.toInt();
+                            setState(() => _minSeeders = newValue);
+                            SettingsService.instance.setMinSeeders(newValue);
                           },
                         ),
                       ),
@@ -1314,21 +1366,50 @@ class _HomeScreenState extends State<HomeScreen> {
                   Row(
                     children: [
                       const Text('Auto mining'),
-                      const Spacer(),
-                      Switch(value: _isMinerActive, onChanged: _toggleMiner),
                       const SizedBox(width: 8),
+                      Switch(value: _isMinerActive, onChanged: _toggleMiner),
+                      const SizedBox(width: 24),
                       const Text('Auto download'),
-                      const SizedBox(width: 4),
+                      const SizedBox(width: 8),
                       Switch(
                         value: _autoDownloadDiscovered,
-                        onChanged: (v) =>
-                            setState(() => _autoDownloadDiscovered = v),
+                        onChanged: (v) {
+                          setState(() => _autoDownloadDiscovered = v);
+                          SettingsService.instance.setAutoDownloadDiscovered(v);
+                        },
                       ),
                     ],
                   ),
                 ],
               ),
             ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Run mining sweep now'),
+                  onPressed: () async {
+                    await _performMiningSweep();
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.clear_all),
+                  label: const Text('Clear discovered'),
+                  onPressed: () async {
+                    setState(() => _discoveredTorrents.clear());
+                    await SettingsService.instance.setDiscoveredTorrents(
+                      _discoveredTorrents,
+                    );
+                  },
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 14),
           if (_downloadDestination.isEmpty)
@@ -1374,6 +1455,9 @@ class _HomeScreenState extends State<HomeScreen> {
                           setState(() {
                             _discoveredTorrents.remove(torrent);
                           });
+                          await SettingsService.instance.setDiscoveredTorrents(
+                            _discoveredTorrents,
+                          );
                           messenger.showSnackBar(
                             SnackBar(content: Text('Added ${torrent.name}.')),
                           );
