@@ -110,7 +110,7 @@ class _HomeScreenState extends State<HomeScreen> {
       SettingsService.instance.torrentSortMode.clamp(
         0,
         TorrentSortMode.values.length - 1,
-      ),
+      )
     ];
     _minSeeders = SettingsService.instance.minSeeders;
 
