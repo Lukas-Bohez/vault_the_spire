@@ -16,6 +16,7 @@ class TorrentEngineStatus {
   final double progress;
   final String state;
   final int peers;
+  final List<String> peerAddresses;
   final double downloadSpeed;
   final double uploadSpeed;
   final int seeders;
@@ -30,6 +31,7 @@ class TorrentEngineStatus {
     required this.peers,
     required this.downloadSpeed,
     required this.uploadSpeed,
+    this.peerAddresses = const [],
     this.seeders = 0,
     this.leechers = 0,
   });
@@ -225,10 +227,13 @@ class TorrentEngineService {
 
   void _emit(String torrentId, dt.TorrentTask task, String state) {
     final downloaded = task.downloaded ?? 0;
-    final uploaded =
-        0; // dtorrent_task_v2 does not expose task.uploaded on this version
+    final uploaded = 0; // dtorrent_task_v2 does not expose task.uploaded on this version
     final dlSpeed = task.currentDownloadSpeed;
     final ulSpeed = task.uploadSpeed;
+    final peerAddresses = task.activePeers
+            ?.map((peer) => '${peer.address.address}:${peer.address.port}')
+            .toList() ??
+        [];
 
     _statusController.add(
       TorrentEngineStatus(
@@ -238,6 +243,7 @@ class TorrentEngineService {
         progress: task.progress,
         state: state,
         peers: task.connectedPeersNumber,
+        peerAddresses: peerAddresses,
         downloadSpeed: dlSpeed,
         uploadSpeed: ulSpeed,
       ),

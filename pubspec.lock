@@ -74,7 +74,7 @@ packages:
     source: hosted
     version: "4.3.0"
   b_encode_decode:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: b_encode_decode
       sha256: "4982fd1b21b967ddb606d80b68b4fb9fdcbc5eb0f4e1248d4ddaf789b020c24d"

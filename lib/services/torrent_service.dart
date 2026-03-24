@@ -276,6 +276,7 @@ class TorrentService {
     }
   }
 
+  // ignore: unused_element
   Future<TorrentMetadata?> _loadTorrentMetadata(TorrentModel torrent) async {
     if (torrent.type == 'torrent_file' && torrent.filePath != null) {
       final file = File(torrent.filePath!);
@@ -290,6 +291,7 @@ class TorrentService {
     return null;
   }
 
+  // ignore: unused_element
   Future<void> _prepareTargetFiles(
     TorrentModel torrent,
     Directory destinationDir,
