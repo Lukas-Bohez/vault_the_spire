@@ -19,6 +19,7 @@ import 'package:vault_the_spire/constants.dart';
 import 'package:vault_the_spire/services/torrent_engine_service.dart';
 import 'package:vault_the_spire/services/torrent_service.dart';
 import 'package:vault_the_spire/screens/about_screen.dart';
+import 'package:vault_the_spire/screens/browser_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -979,6 +980,18 @@ class _HomeScreenState extends State<HomeScreen> {
               },
               icon: const Icon(Icons.info_outline),
               label: const Text('Open About / Data Safety'),
+            ),
+            const SizedBox(height: 10),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const BrowserScreen(),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.web),
+              label: const Text('Open Integrated Browser'),
             ),
             const SizedBox(height: 10),
           ],
