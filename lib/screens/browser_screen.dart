@@ -3,8 +3,10 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:webview_flutter/webview_flutter.dart';
+import 'package:webview_windows/webview_windows.dart' as webview_windows;
 import 'package:url_launcher/url_launcher.dart';
 
 import '../services/torrent_service.dart';
@@ -19,19 +21,34 @@ class BrowserScreen extends StatefulWidget {
 }
 
 class _BrowserScreenState extends State<BrowserScreen> {
+  static bool _windowsWebViewEnvironmentInitialized = false;
+
   final TextEditingController _addressController = TextEditingController();
+
+  // Flutter WebView for non-Windows platforms (or fallback).
   WebViewController? _webViewController;
   bool _isLoading = true;
   double _progress = 0.0;
   bool _canGoBack = false;
   bool _canGoForward = false;
+
+  // Windows WebView2 controller path.
+  webview_windows.WebviewController? _windowsWebViewController;
+  bool _windowsCanGoBack = false;
+  bool _windowsCanGoForward = false;
+  bool _windowsIsLoading = true;
+
   Timer? _memoryPollTimer;
 
   @override
   void initState() {
     super.initState();
     _addressController.text = widget.initialUrl;
-    _initWebView();
+    if (Platform.isWindows) {
+      _initWindowsWebView();
+    } else {
+      _initWebView();
+    }
     _startMemoryMonitor();
   }
 
@@ -79,6 +96,80 @@ class _BrowserScreenState extends State<BrowserScreen> {
     _webViewController = controller;
   }
 
+  Future<void> _initWindowsWebView() async {
+    try {
+      if (!_windowsWebViewEnvironmentInitialized) {
+        try {
+          await webview_windows.WebviewController.initializeEnvironment();
+        } on PlatformException catch (e) {
+          if (e.code != 'environment_already_initialized') {
+            rethrow;
+          }
+        }
+        _windowsWebViewEnvironmentInitialized = true;
+      }
+
+      final controller = webview_windows.WebviewController();
+
+      controller.url.listen((url) async {
+        if (!mounted) return;
+
+        if (_isTorrentOrMagnetUrl(url)) {
+          await _handleTorrentOrMagnetUrl(url);
+          await controller.stop();
+          return;
+        }
+
+        setState(() {
+          _addressController.text = url;
+        });
+      });
+
+      controller.loadingState.listen((state) {
+        if (!mounted) return;
+        setState(() {
+          _windowsIsLoading = state == webview_windows.LoadingState.loading;
+        });
+      });
+
+      controller.historyChanged.listen((history) {
+        if (!mounted) return;
+        setState(() {
+          _windowsCanGoBack = history.canGoBack;
+          _windowsCanGoForward = history.canGoForward;
+        });
+      });
+
+      controller.onLoadError.listen((error) {
+        _captureCrashDump('WebView2 LoadError ${error.name}', null);
+      });
+
+      await controller.initialize();
+
+      if (_isTorrentOrMagnetUrl(widget.initialUrl)) {
+        await _handleTorrentOrMagnetUrl(widget.initialUrl);
+      } else {
+        await controller.loadUrl(widget.initialUrl);
+      }
+
+      if (mounted) {
+        setState(() {
+          _windowsWebViewController = controller;
+        });
+      }
+    } catch (e, st) {
+      var reason = 'Windows WebView initialization failed: $e';
+      if (e is PlatformException &&
+          e.code == 'environment_already_initialized') {
+        reason = 'Windows WebView environment already initialized';
+      }
+      if (kDebugMode) {
+        debugPrint(reason);
+        debugPrint(st.toString());
+      }
+      _captureCrashDump(reason);
+    }
+  }
   Future<void> _startMemoryMonitor() async {
     if (!Platform.isWindows) return; // focus on WebView2 Windows crash-dump target
 
@@ -201,10 +292,27 @@ class _BrowserScreenState extends State<BrowserScreen> {
     final url = _normalizeUrl(value);
     if (url.isEmpty) return;
     _addressController.text = url;
+
+    if (_isTorrentOrMagnetUrl(url)) {
+      await _handleTorrentOrMagnetUrl(url);
+      return;
+    }
+
+    if (Platform.isWindows && _windowsWebViewController != null) {
+      await _windowsWebViewController?.loadUrl(url);
+      return;
+    }
+
     await _webViewController?.loadRequest(Uri.parse(url));
+    await _refreshNavigationState();
   }
 
   Future<void> _refreshNavigationState() async {
+    if (Platform.isWindows && _windowsWebViewController != null) {
+      // History updates are pushed via historyChanged stream.
+      return;
+    }
+
     if (_webViewController == null) return;
     final canGoBack = await _webViewController!.canGoBack();
     final canGoForward = await _webViewController!.canGoForward();
@@ -226,6 +334,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
   @override
   void dispose() {
     _memoryPollTimer?.cancel();
+    _windowsWebViewController?.dispose();
     _addressController.dispose();
     super.dispose();
   }
@@ -250,15 +359,39 @@ class _BrowserScreenState extends State<BrowserScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.arrow_back),
-            onPressed: _canGoBack ? () => _webViewController?.goBack() : null,
+            onPressed: (Platform.isWindows ? _windowsCanGoBack : _canGoBack)
+                ? () async {
+                    if (Platform.isWindows) {
+                      await _windowsWebViewController?.goBack();
+                    } else {
+                      await _webViewController?.goBack();
+                      await _refreshNavigationState();
+                    }
+                  }
+                : null,
           ),
           IconButton(
             icon: const Icon(Icons.arrow_forward),
-            onPressed: _canGoForward ? () => _webViewController?.goForward() : null,
+            onPressed: (Platform.isWindows ? _windowsCanGoForward : _canGoForward)
+                ? () async {
+                    if (Platform.isWindows) {
+                      await _windowsWebViewController?.goForward();
+                    } else {
+                      await _webViewController?.goForward();
+                      await _refreshNavigationState();
+                    }
+                  }
+                : null,
           ),
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () => _webViewController?.reload(),
+            onPressed: () async {
+              if (Platform.isWindows) {
+                await _windowsWebViewController?.reload();
+              } else {
+                await _webViewController?.reload();
+              }
+            },
           ),
           IconButton(
             icon: const Icon(Icons.open_in_new),
@@ -273,12 +406,19 @@ class _BrowserScreenState extends State<BrowserScreen> {
       ),
       body: Column(
         children: [
-          if (_isLoading)
-            LinearProgressIndicator(value: _progress, minHeight: 3),
+          if (Platform.isWindows ? _windowsIsLoading : _isLoading)
+            LinearProgressIndicator(
+              value: Platform.isWindows ? null : _progress,
+              minHeight: 3,
+            ),
           Expanded(
-            child: _webViewController == null
-                ? const Center(child: CircularProgressIndicator())
-                : WebViewWidget(controller: _webViewController!),
+            child: Platform.isWindows
+                ? (_windowsWebViewController == null
+                    ? const Center(child: CircularProgressIndicator())
+                    : webview_windows.Webview(_windowsWebViewController!))
+                : (_webViewController == null
+                    ? const Center(child: CircularProgressIndicator())
+                    : WebViewWidget(controller: _webViewController!)),
           ),
         ],
       ),
