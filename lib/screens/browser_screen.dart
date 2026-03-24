@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -24,12 +25,14 @@ class _BrowserScreenState extends State<BrowserScreen> {
   double _progress = 0.0;
   bool _canGoBack = false;
   bool _canGoForward = false;
+  Timer? _memoryPollTimer;
 
   @override
   void initState() {
     super.initState();
     _addressController.text = widget.initialUrl;
     _initWebView();
+    _startMemoryMonitor();
   }
 
   void _initWebView() {
@@ -64,8 +67,9 @@ class _BrowserScreenState extends State<BrowserScreen> {
             return NavigationDecision.navigate;
           },
           onWebResourceError: (error) {
+            _captureCrashDump('WebResourceError', error);
             if (kDebugMode) {
-              debugPrint('Web resource error:  ()');
+              debugPrint('Web resource error: ${error.description}');
             }
           },
         ),
@@ -73,6 +77,48 @@ class _BrowserScreenState extends State<BrowserScreen> {
       ..loadRequest(Uri.parse(widget.initialUrl));
 
     _webViewController = controller;
+  }
+
+  Future<void> _startMemoryMonitor() async {
+    if (!Platform.isWindows) return; // focus on WebView2 Windows crash-dump target
+
+    _memoryPollTimer = Timer.periodic(const Duration(seconds: 8), (_) async {
+      try {
+        final rssBytes = ProcessInfo.currentRss;
+        if (rssBytes > 1200 * 1024 * 1024) {
+          await _captureCrashDump('HighMemoryUsage (RSS ${rssBytes ~/ (1024 * 1024)}MB)');
+        }
+      } catch (e) {
+        if (kDebugMode) debugPrint('Memory monitor failed: $e');
+      }
+    });
+  }
+
+  Future<void> _captureCrashDump(String reason, [WebResourceError? error]) async {
+    try {
+      final directory = await getApplicationSupportDirectory();
+      final file = File('${directory.path}${Platform.pathSeparator}webview_crash_dump.log');
+      final now = DateTime.now();
+
+      final lines = <String>[
+        '--- Crash dump @ $now ---',
+        'Reason: $reason',
+        'Platform: ${Platform.operatingSystem} ${Platform.operatingSystemVersion}',
+        'Memory RSS: ${ProcessInfo.currentRss} bytes',
+        'Available virtual memory: ${ProcessInfo.maxRss} bytes',
+        if (error != null) 'WebResourceError: ${error.description} (${error.errorCode})',
+        'Current URL: ${_addressController.text}',
+        '-------------------------',
+      ];
+
+      await file.writeAsString('${lines.join('\n')}\n', mode: FileMode.append);
+
+      if (kDebugMode) {
+        debugPrint('WebView crash dump saved to ${file.path}');
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('Failed to write crash dump: $e');
+    }
   }
 
   bool _isTorrentOrMagnetUrl(String url) {
@@ -179,6 +225,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
 
   @override
   void dispose() {
+    _memoryPollTimer?.cancel();
     _addressController.dispose();
     super.dispose();
   }

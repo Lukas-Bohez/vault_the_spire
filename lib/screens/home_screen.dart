@@ -1989,6 +1989,17 @@ class _HomeScreenState extends State<HomeScreen> {
                             _mobileNavIndex = 2;
                           }),
                         ),
+                        ElevatedButton.icon(
+                          icon: const Icon(Icons.web),
+                          label: const Text('Browser'),
+                          onPressed: () {
+                            Navigator.of(context).push(
+                              MaterialPageRoute(
+                                builder: (_) => const BrowserScreen(),
+                              ),
+                            );
+                          },
+                        ),
                       ],
                     ),
                   ],
