@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
@@ -233,44 +234,55 @@ class TorrentService {
 
     await _prepareTargetFiles(existing, destinationDir, metadata, targetTotalSize);
 
-    int bytesDown = existing.bytesDown;
-    int bytesUp = existing.bytesUp;
-
     await updateTorrent(
       existing.copyWith(
         status: 'downloading',
         filePath: destinationPath,
-        bytesDown: bytesDown,
-        bytesUp: bytesUp,
+        bytesDown: existing.bytesDown,
+        bytesUp: existing.bytesUp,
       ),
     );
 
-    // Ask the engine service to emit download progress and keep in sync.
-    await Future<void>.delayed(Duration.zero);
-    TorrentEngineService.instance.startTorrent(id);
+    await TorrentEngineService.instance.startTorrent(id);
 
-    final int chunkSize = max(1024 * 1024, (targetTotalSize ~/ 25));
+    final completer = Completer<void>();
+    StreamSubscription<TorrentEngineStatus>? subscription;
+    subscription = TorrentEngineService.instance.statusStream
+        .where((status) => status.torrentId == id)
+        .listen((status) async {
+      if (status.state == 'completed') {
+        if (!completer.isCompleted) completer.complete();
+      } else if (status.state == 'error') {
+        if (!completer.isCompleted) {
+          completer.completeError(StateError('Download failed for torrent $id'));
+        }
+      }
 
-    while (bytesDown < targetTotalSize) {
-      await Future.delayed(const Duration(seconds: 1));
-      bytesDown = min(targetTotalSize, bytesDown + chunkSize);
-      bytesUp = min(targetTotalSize, bytesUp + chunkSize ~/ 4);
+      if (status.downloaded > 0) {
+        await updateProgress(id, status.downloaded, status.uploaded);
+      }
+    });
 
-      await updateProgress(id, bytesDown, bytesUp);
+    try {
+      await completer.future.timeout(
+        const Duration(hours: 12),
+        onTimeout: () => throw TimeoutException('Torrent download timed out'),
+      );
+    } finally {
+      await subscription?.cancel();
+      TorrentEngineService.instance.stopTorrent(id);
     }
 
-    await updateTorrent(
-      existing.copyWith(
-        status: 'completed',
-        bytesDown: targetTotalSize,
-        bytesUp: targetTotalSize,
-        completedAt: DateTime.now().millisecondsSinceEpoch,
-        filePath: destinationPath,
-        isSequential: true,
-      ),
-    );
-
-    TorrentEngineService.instance.stopTorrent(id);
+    final completed = await getTorrentById(id);
+    if (completed != null) {
+      await updateTorrent(
+        completed.copyWith(
+          status: 'completed',
+          completedAt: DateTime.now().millisecondsSinceEpoch,
+          isSequential: true,
+        ),
+      );
+    }
   }
 
   Future<TorrentMetadata?> _loadTorrentMetadata(TorrentModel torrent) async {

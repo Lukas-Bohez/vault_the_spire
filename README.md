@@ -31,9 +31,9 @@ Vault The Spire was built around the principle that private communications and f
 
 ### Torrent behavior (updated)
 
-- Magnet links are now imported and auto-started using a simulated torrent engine that updates progress and status.
+- Magnet links and `.torrent` files are now managed by a real BitTorrent backend via `aria2` JSON-RPC when available.
 - `.torrent` file inputs are supported from local paths (`file://` and direct filesystem path) and HTTP/HTTPS downloads.
-- Engine logic handles both piece-based torrent metadata and magnet-only stub torrents (with fallback progress load simulation).
+- Engine logic still retains fallback simulated progress for environments where `aria2` is unavailable, but uses real peer sessions and speeds when `aria2` is running.
 
 ## Quickstart
 

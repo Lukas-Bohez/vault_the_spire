@@ -4,12 +4,15 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'package:path_provider/path_provider.dart';
+
 import 'package:collection/collection.dart';
 import 'package:vault_the_spire/bittorrent/bencode.dart';
 import 'package:vault_the_spire/bittorrent/magnet_link.dart';
 import 'package:vault_the_spire/bittorrent/peer_wire.dart';
 import 'package:vault_the_spire/bittorrent/torrent_file.dart';
 import 'package:vault_the_spire/models/torrent.dart';
+import 'package:vault_the_spire/services/aria2_service.dart';
 import 'package:vault_the_spire/services/torrent_service.dart';
 
 class TorrentEngineStatus {
@@ -104,7 +107,9 @@ class TorrentEngineService {
 
       final requestUri = uri.replace(query: query);
       final request = await HttpClient().getUrl(requestUri);
-      final response = await request.close().timeout(const Duration(seconds: 8));
+      final response = await request.close().timeout(
+        const Duration(seconds: 8),
+      );
       if (response.statusCode != HttpStatus.ok) return [];
 
       final bytesBuilder = BytesBuilder();
@@ -117,7 +122,6 @@ class TorrentEngineService {
 
       final peersValue = decoded['peers'];
       final peers = <Map<String, dynamic>>[];
-
 
       if (peersValue is Uint8List) {
         for (var i = 0; i + 6 <= peersValue.length; i += 6) {
@@ -175,28 +179,51 @@ class TorrentEngineService {
         final host = peer['host'] as String;
         final port = peer['port'] as int;
 
-        final socket = await Socket.connect(host, port, timeout: const Duration(seconds: 5));
+        final socket = await Socket.connect(
+          host,
+          port,
+          timeout: const Duration(seconds: 5),
+        );
         final infoHash = _hexToBytes(torrent.id);
         final peerId = _buildPeerId();
         socket.add(PeerWireMessage.buildHandshake(infoHash, peerId));
 
         final response = await socket.first.timeout(const Duration(seconds: 5));
         if (PeerWireMessage.isHandshake(Uint8List.fromList(response))) {
-          final remoteHandshake = PeerWireMessage.parseHandshake(Uint8List.fromList(response));
-          if (const ListEquality<int>().equals(remoteHandshake.infoHash, infoHash)) {
+          final remoteHandshake = PeerWireMessage.parseHandshake(
+            Uint8List.fromList(response),
+          );
+          if (const ListEquality<int>().equals(
+            remoteHandshake.infoHash,
+            infoHash,
+          )) {
             _peerSockets[torrent.id] = socket;
             socket.add(PeerWireMessage.interested().encode());
 
             socket.listen(
               (data) async {
                 try {
-                  final message = PeerWireMessage.decode(Uint8List.fromList(data));
+                  final message = PeerWireMessage.decode(
+                    Uint8List.fromList(data),
+                  );
                   if (message.id == 7 && message.payload.length >= 8) {
-                    final pieceIndex = ByteData.sublistView(message.payload, 0, 4).getUint32(0);
-                    final begin = ByteData.sublistView(message.payload, 4, 8).getUint32(0);
+                    final pieceIndex = ByteData.sublistView(
+                      message.payload,
+                      0,
+                      4,
+                    ).getUint32(0);
+                    final begin = ByteData.sublistView(
+                      message.payload,
+                      4,
+                      8,
+                    ).getUint32(0);
                     final block = message.payload.sublist(8);
                     if (begin == 0 && block.isNotEmpty) {
-                      await _applyDownloadedPiece(torrent.id, pieceIndex, block);
+                      await _applyDownloadedPiece(
+                        torrent.id,
+                        pieceIndex,
+                        block,
+                      );
                     }
                   }
                 } catch (_) {
@@ -231,7 +258,8 @@ class TorrentEngineService {
 
     final totalPieces = torrent.totalPieces ?? 0;
     final currentMap =
-        (torrent.piecesHave?.split(',') ?? List.filled(totalPieces, '0')).toList();
+        (torrent.piecesHave?.split(',') ?? List.filled(totalPieces, '0'))
+            .toList();
     if (pieceIndex >= 0 && pieceIndex < currentMap.length) {
       currentMap[pieceIndex] = '1';
     }
@@ -266,13 +294,152 @@ class TorrentEngineService {
     }
   }
 
+  final Map<String, String> _aria2Gids = {};
+
   bool isRunning(String torrentId) => _runningDownloads.containsKey(torrentId);
 
-  Future<void> startTorrent(String torrentId) async {
-    if (isRunning(torrentId)) return;
+  Future<String> _resolveDownloadDirectory(TorrentModel torrent) async {
+    if (torrent.filePath != null) {
+      final candidate = Directory(torrent.filePath!);
+      if (await candidate.exists()) {
+        return candidate.path;
+      }
+
+      final file = File(torrent.filePath!);
+      if (await file.exists()) {
+        return file.parent.path;
+      }
+    }
+
+    final defaultDir = await getApplicationDocumentsDirectory();
+    return defaultDir.path;
+  }
+
+  Future<void> _pollAria2Status(String torrentId, String gid) async {
+    final status = await Aria2Service.instance.tellStatusFull(gid);
+    if (status == null) {
+      return;
+    }
+
+    final completedLength =
+        int.tryParse(status['completedLength']?.toString() ?? '0') ?? 0;
+    final totalLength =
+        int.tryParse(status['totalLength']?.toString() ?? '0') ?? 0;
+    final downloadSpeed =
+        double.tryParse(status['downloadSpeed']?.toString() ?? '0') ?? 0.0;
+    final uploadSpeed =
+        double.tryParse(status['uploadSpeed']?.toString() ?? '0') ?? 0.0;
+    final peers = int.tryParse(status['connections']?.toString() ?? '0') ?? 0;
+
+    final aria2State = status['status']?.toString() ?? 'waiting';
+    var state = 'downloading';
+    if (aria2State == 'paused') {
+      state = 'paused';
+    } else if (aria2State == 'complete') {
+      state = 'completed';
+    } else if (aria2State == 'error') {
+      state = 'error';
+    } else if (aria2State == 'waiting') {
+      state = 'queued';
+    }
+
+    final progress = totalLength > 0 ? completedLength / totalLength : 0.0;
 
     final torrent = await TorrentService.instance.getTorrentById(torrentId);
-    if (torrent == null) throw StateError('Torrent not found: $torrentId');
+    if (torrent == null) {
+      stopTorrent(torrentId);
+      return;
+    }
+
+    final isNowComplete = state == 'completed';
+
+    if (completedLength > torrent.bytesDown || uploadSpeed > 0) {
+      await TorrentService.instance.updateProgress(
+        torrentId,
+        completedLength,
+        torrent.bytesUp + uploadSpeed.toInt(),
+      );
+    }
+
+    if (isNowComplete && torrent.status != 'completed') {
+      await TorrentService.instance.updateTorrentStatus(torrentId, 'completed');
+      _runningDownloads.remove(torrentId)?.cancel();
+      _aria2Gids.remove(torrentId);
+    }
+
+    _statusController.add(
+      TorrentEngineStatus(
+        torrentId: torrentId,
+        downloaded: completedLength,
+        uploaded: torrent.bytesUp,
+        progress: progress,
+        state: state,
+        peers: peers,
+        peerAddresses: _peerAddresses(torrentId),
+        downloadSpeed: downloadSpeed,
+        uploadSpeed: uploadSpeed,
+      ),
+    );
+
+    if (isNowComplete) {
+      _runningDownloads.remove(torrentId)?.cancel();
+      _aria2Gids.remove(torrentId);
+    }
+  }
+
+  Future<void> _startAria2Torrent(TorrentModel torrent) async {
+    final downloadDir = await _resolveDownloadDirectory(torrent);
+    String? gid;
+
+    if (torrent.type == 'magnet_link' && torrent.magnetLink != null) {
+      gid = await Aria2Service.instance.addMagnet(
+        torrent.magnetLink!,
+        downloadDirectory: downloadDir,
+      );
+    } else if (torrent.type == 'torrent_file' && torrent.filePath != null) {
+      gid = await Aria2Service.instance.addTorrentFile(
+        torrent.filePath!,
+        downloadDirectory: downloadDir,
+      );
+    } else {
+      throw StateError('Unsupported torrent type for aria2: ${torrent.type}');
+    }
+
+    if (gid == null || gid.isEmpty) {
+      throw StateError('Failed to add torrent to aria2');
+    }
+
+    _aria2Gids[torrent.id] = gid;
+    await TorrentService.instance.updateTorrentStatus(
+      torrent.id,
+      'downloading',
+    );
+
+    final timer = Timer.periodic(const Duration(seconds: 2), (_) async {
+      await _pollAria2Status(torrent.id, gid!);
+    });
+
+    _runningDownloads[torrent.id] = timer;
+    _statusController.add(
+      TorrentEngineStatus(
+        torrentId: torrent.id,
+        downloaded: torrent.bytesDown,
+        uploaded: torrent.bytesUp,
+        progress: torrent.progress,
+        state: 'starting',
+        peers: 0,
+        peerAddresses: const [],
+        downloadSpeed: 0.0,
+        uploadSpeed: 0.0,
+      ),
+    );
+  }
+
+  Future<void> _startSimulatedTorrent(String torrentId) async {
+    final torrent = await TorrentService.instance.getTorrentById(torrentId);
+    if (torrent == null) {
+      throw StateError('Torrent not found: $torrentId');
+    }
 
     _attemptPeerConnections(torrent);
 
@@ -322,7 +489,10 @@ class TorrentEngineService {
         );
 
         if (updatedBytesDown >= total) {
-          await TorrentService.instance.updateTorrentStatus(torrentId, 'completed');
+          await TorrentService.instance.updateTorrentStatus(
+            torrentId,
+            'completed',
+          );
           _runningDownloads.remove(torrentId)?.cancel();
         }
 
@@ -330,7 +500,8 @@ class TorrentEngineService {
       }
 
       final pieceMap =
-          (latest.piecesHave?.split(',') ?? List.filled(latest.totalPieces!, '0'))
+          (latest.piecesHave?.split(',') ??
+                  List.filled(latest.totalPieces!, '0'))
               .map((e) => e == '1')
               .toList();
 
@@ -341,7 +512,9 @@ class TorrentEngineService {
           'completed',
         );
 
-        final latestCompleted = await TorrentService.instance.getTorrentById(torrentId);
+        final latestCompleted = await TorrentService.instance.getTorrentById(
+          torrentId,
+        );
         _runningDownloads.remove(torrentId)?.cancel();
 
         _statusController.add(
@@ -455,10 +628,40 @@ class TorrentEngineService {
     );
   }
 
+  Future<void> startTorrent(String torrentId) async {
+    if (isRunning(torrentId)) return;
+
+    final torrent = await TorrentService.instance.getTorrentById(torrentId);
+    if (torrent == null) throw StateError('Torrent not found: $torrentId');
+
+    if (torrent.status == 'completed') return;
+
+    final aria2Available = await Aria2Service.instance.ensureRunning();
+    if (aria2Available) {
+      try {
+        await _startAria2Torrent(torrent);
+        return;
+      } catch (_) {
+        // Fallback to the simulated engine path if aria2 fails.
+      }
+    }
+
+    await _startSimulatedTorrent(torrentId);
+  }
+
   void stopTorrent(String torrentId) async {
     final timer = _runningDownloads.remove(torrentId);
     if (timer != null) {
       timer.cancel();
+    }
+
+    final gid = _aria2Gids.remove(torrentId);
+    if (gid != null) {
+      try {
+        await Aria2Service.instance.pause(gid);
+      } catch (_) {
+        // ignore pause failures
+      }
     }
 
     final socket = _peerSockets.remove(torrentId);
@@ -466,7 +669,9 @@ class TorrentEngineService {
       await socket.close();
     }
 
-    final currentTorrent = await TorrentService.instance.getTorrentById(torrentId);
+    final currentTorrent = await TorrentService.instance.getTorrentById(
+      torrentId,
+    );
     if (currentTorrent != null) {
       await TorrentService.instance.updateTorrentStatus(torrentId, 'paused');
       _statusController.add(
@@ -494,5 +699,6 @@ class TorrentEngineService {
     }
     _runningDownloads.clear();
     _peerSockets.clear();
+    _aria2Gids.clear();
   }
 }
