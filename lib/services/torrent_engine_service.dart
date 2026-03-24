@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import 'package:collection/collection.dart';
@@ -48,6 +49,8 @@ class TorrentEngineService {
   final StreamController<TorrentEngineStatus> _statusController =
       StreamController.broadcast();
   final Map<String, Socket> _peerSockets = {};
+  final Map<String, Set<int>> _requestedPieces = {};
+  final Map<String, bool> _peerUnchoked = {};
 
   List<String> _peerAddresses(String torrentId) {
     final socket = _peerSockets[torrentId];
@@ -173,6 +176,9 @@ class TorrentEngineService {
   Future<void> _attemptPeerConnections(TorrentModel torrent) async {
     if (_peerSockets.containsKey(torrent.id)) return;
 
+    _requestedPieces[torrent.id] ??= <int>{};
+    _peerUnchoked[torrent.id] = false;
+
     final peers = await _collectPeers(torrent);
     for (final peer in peers) {
       try {
@@ -206,6 +212,22 @@ class TorrentEngineService {
                   final message = PeerWireMessage.decode(
                     Uint8List.fromList(data),
                   );
+
+                  if (message.id == 0) {
+                    _peerUnchoked[torrent.id] = false;
+                    return;
+                  }
+                  if (message.id == 1) {
+                    _peerUnchoked[torrent.id] = true;
+                    return;
+                  }
+
+                  if (message.id == 5) {
+                    // bitfield received -- currently not used, but could be
+                    // to decide available pieces.
+                    return;
+                  }
+
                   if (message.id == 7 && message.payload.length >= 8) {
                     final pieceIndex = ByteData.sublistView(
                       message.payload,
@@ -218,12 +240,15 @@ class TorrentEngineService {
                       8,
                     ).getUint32(0);
                     final block = message.payload.sublist(8);
-                    if (begin == 0 && block.isNotEmpty) {
+
+                    if (block.isNotEmpty) {
                       await _applyDownloadedPiece(
                         torrent.id,
                         pieceIndex,
                         block,
                       );
+
+                      _requestedPieces[torrent.id]?.remove(pieceIndex);
                     }
                   }
                 } catch (_) {
@@ -277,17 +302,30 @@ class TorrentEngineService {
 
     try {
       if (torrent.filePath != null) {
-        final destination = Directory(torrent.filePath!);
-        if (!await destination.exists()) {
-          final file = File(torrent.filePath!);
-          if (await file.exists()) {
-            final offset = (torrent.pieceLength ?? data.length) * pieceIndex;
-            final raf = await file.open(mode: FileMode.write);
-            await raf.setPosition(offset);
-            await raf.writeFrom(data);
-            await raf.close();
+        File outputFile;
+        final candidateDir = Directory(torrent.filePath!);
+
+        if (await candidateDir.exists()) {
+          final name = torrent.name.isNotEmpty ? torrent.name : torrent.id;
+          final sanitized = name.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_');
+          final candidate = p.join(candidateDir.path, '$sanitized.bin');
+          outputFile = File(candidate);
+          if (!await outputFile.exists()) {
+            await outputFile.create(recursive: true);
+          }
+        } else {
+          outputFile = File(torrent.filePath!);
+          if (!await outputFile.exists()) {
+            await outputFile.create(recursive: true);
           }
         }
+
+        final pieceLen = torrent.pieceLength ?? data.length;
+        final offset = pieceLen * pieceIndex;
+        final raf = await outputFile.open(mode: FileMode.write);
+        await raf.setPosition(offset);
+        await raf.writeFrom(data);
+        await raf.close();
       }
     } catch (_) {
       // Ignore filesystem errors
@@ -534,7 +572,10 @@ class TorrentEngineService {
         return;
       }
 
-      if (_peerSockets.containsKey(torrentId)) {
+      final isUnchoked = _peerUnchoked[torrentId] ?? false;
+      final alreadyRequested = _requestedPieces[torrentId]?.contains(nextIndex) ??
+          false;
+      if (_peerSockets.containsKey(torrentId) && isUnchoked && !alreadyRequested) {
         try {
           _peerSockets[torrentId]!.add(
             PeerWireMessage.request(
@@ -543,71 +584,29 @@ class TorrentEngineService {
               latest.pieceLength ?? 16384,
             ).encode(),
           );
+          _requestedPieces[torrentId]?.add(nextIndex);
         } catch (_) {
           // ignore peer request failures
         }
       }
 
-      pieceMap[nextIndex] = true;
-      final updatedPieces = pieceMap.map((e) => e ? '1' : '0').join(',');
-      final perPieceBytes = latest.pieceLength ?? 16384;
-
-      await TorrentService.instance.updateTorrent(
-        TorrentModel(
-          id: latest.id,
-          name: latest.name,
-          type: latest.type,
-          totalSize: latest.totalSize,
-          totalPieces: latest.totalPieces,
-          pieceLength: latest.pieceLength,
-          piecesHave: updatedPieces,
-          status: 'downloading',
-          vaultKey: latest.vaultKey,
-          filePath: latest.filePath,
-          vaultLink: latest.vaultLink,
-          magnetLink: latest.magnetLink,
-          bytesDown: min(
-            latest.bytesDown + perPieceBytes,
-            latest.totalSize ?? latest.bytesDown + perPieceBytes,
-          ),
-          bytesUp: latest.bytesUp + 512,
-          addedAt: latest.addedAt,
-          completedAt: nextIndex == latest.totalPieces! - 1
-              ? DateTime.now().millisecondsSinceEpoch
-              : latest.completedAt,
-          isSequential: latest.isSequential,
-          selectedFiles: latest.selectedFiles,
-          maxSeedRatio: latest.maxSeedRatio,
-          deleteAfterRatioReached: latest.deleteAfterRatioReached,
-        ),
-      );
-
-      final newDownloaded = min(
-        latest.bytesDown + perPieceBytes,
-        latest.totalSize ?? latest.bytesDown + perPieceBytes,
-      );
-      final newUploaded = latest.bytesUp + 512;
-      await TorrentService.instance.updateProgress(
-        torrentId,
-        newDownloaded,
-        newUploaded,
-      );
-
       final total = latest.totalSize ?? 0;
-      final progress = total > 0 ? newDownloaded / total : 0.0;
-      final downloadSpeed = (newDownloaded - latest.bytesDown) / 2.0;
-      final uploadSpeed = (newUploaded - latest.bytesUp) / 2.0;
+      final progress = total > 0 ? latest.bytesDown / total : latest.progress;
+      final currentState = _peerSockets.containsKey(torrentId)
+          ? (isUnchoked ? 'downloading' : 'connecting')
+          : 'queued';
+
       _statusController.add(
         TorrentEngineStatus(
           torrentId: torrentId,
-          downloaded: newDownloaded,
-          uploaded: newUploaded,
+          downloaded: latest.bytesDown,
+          uploaded: latest.bytesUp,
           progress: progress,
-          state: 'downloading',
+          state: currentState,
           peers: _peerSockets.containsKey(torrentId) ? 1 : 0,
           peerAddresses: _peerAddresses(torrentId),
-          downloadSpeed: downloadSpeed,
-          uploadSpeed: uploadSpeed,
+          downloadSpeed: 0.0,
+          uploadSpeed: 0.0,
         ),
       );
     });

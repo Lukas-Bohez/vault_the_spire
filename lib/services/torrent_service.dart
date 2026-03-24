@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:crypto/crypto.dart';
@@ -226,14 +225,6 @@ class TorrentService {
       );
     }
 
-    final metadata = await _loadTorrentMetadata(existing);
-    final targetTotalSize = metadata?.files.fold<int>(
-          0,
-          (sum, file) => sum + file.length,
-        ) ?? existing.totalSize ?? 25 * 1024 * 1024;
-
-    await _prepareTargetFiles(existing, destinationDir, metadata, targetTotalSize);
-
     await updateTorrent(
       existing.copyWith(
         status: 'downloading',
@@ -269,7 +260,7 @@ class TorrentService {
         onTimeout: () => throw TimeoutException('Torrent download timed out'),
       );
     } finally {
-      await subscription?.cancel();
+      await subscription.cancel();
       TorrentEngineService.instance.stopTorrent(id);
     }
 
