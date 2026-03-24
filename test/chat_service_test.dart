@@ -19,4 +19,21 @@ void main() {
     expect(service.messageMentions('bob', 'hello bob'), isFalse);
     expect(service.messageMentions('bob', '@bob'), isTrue);
   });
+
+  test('typing broadcast updates remote typing state', () async {
+    final topic = ChatService.dmSwarmTopic('alice', 'bob');
+    final service = ChatService.instance;
+
+    expect(service.isUserTyping('alice'), isFalse);
+
+    service.broadcastTypingStatus(topic, 'alice', true);
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    expect(service.isUserTyping('alice'), isTrue);
+
+    service.broadcastTypingStatus(topic, 'alice', false);
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+
+    expect(service.isUserTyping('alice'), isFalse);
+  });
 }

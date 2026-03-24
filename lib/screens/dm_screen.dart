@@ -37,17 +37,17 @@ class _DMScreenState extends State<DMScreen> {
 
   Future<void> _send() async {
     final text = _controller.text.trim();
-    ChatService.instance.setTypingStatus(widget.user, false);
+    final topic = ChatService.dmSwarmTopic(widget.user, widget.peer);
+    ChatService.instance.broadcastTypingStatus(topic, widget.user, false);
     _typingTimer?.cancel();
     _typingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() {});
+      if (mounted) setState(() {}); // refresh typing indicator
     });
 
     if (text.isEmpty) return;
-    await ChatService.instance.sendMessage(
-      '_dm',
-      ChatService.dmChannelId(widget.user, widget.peer),
+    await ChatService.instance.sendDirectMessage(
       widget.user,
+      widget.peer,
       text,
       replyToMessageId: _replyTarget?.id,
     );
@@ -287,7 +287,12 @@ class _DMScreenState extends State<DMScreen> {
                               : 'Type a direct message',
                         ),
                         onChanged: (value) {
-                          ChatService.instance.setTypingStatus(
+                          final topic = ChatService.dmSwarmTopic(
+                            widget.user,
+                            widget.peer,
+                          );
+                          ChatService.instance.broadcastTypingStatus(
+                            topic,
                             widget.user,
                             value.isNotEmpty,
                           );
@@ -296,7 +301,8 @@ class _DMScreenState extends State<DMScreen> {
                             _typingTimer = Timer(
                               const Duration(seconds: 5),
                               () {
-                                ChatService.instance.setTypingStatus(
+                                ChatService.instance.broadcastTypingStatus(
+                                  topic,
                                   widget.user,
                                   false,
                                 );
