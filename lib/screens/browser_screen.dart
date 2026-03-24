@@ -52,6 +52,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
   bool _windowsCanGoBack = false;
   bool _windowsCanGoForward = false;
   bool _windowsIsLoading = true;
+  String? _lastLoadError;
 
   Timer? _memoryPollTimer;
 
@@ -172,6 +173,9 @@ class _BrowserScreenState extends State<BrowserScreen> {
 
       controller.onLoadError.listen((error) {
         _captureCrashDump('WebView2 LoadError ${error.name}', null);
+        setState(() {
+          _lastLoadError = '${error.name}: ${error.toString()}';
+        });
       });
 
       controller.webMessage.listen((message) async {
@@ -184,7 +188,10 @@ class _BrowserScreenState extends State<BrowserScreen> {
         }
       });
 
-      await controller.addScriptToExecuteOnDocumentCreated('''
+      await controller.initialize();
+
+      try {
+        await controller.addScriptToExecuteOnDocumentCreated('''
         document.addEventListener('click', function(event) {
           var target = event.target;
           while (target && target.tagName !== 'A') {
@@ -201,8 +208,18 @@ class _BrowserScreenState extends State<BrowserScreen> {
           }
         }, true);
       ''');
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('Could not inject magnet handler script: $e');
+        }
+      }
 
-      await controller.initialize();
+      if (mounted) {
+        setState(() {
+          _windowsWebViewController = controller;
+          _lastLoadError = null;
+        });
+      }
 
       if (!_showHomeScreen) {
         if (_isTorrentOrMagnetUrl(widget.initialUrl)) {
@@ -210,12 +227,6 @@ class _BrowserScreenState extends State<BrowserScreen> {
         } else {
           await controller.loadUrl(widget.initialUrl);
         }
-      }
-
-      if (mounted) {
-        setState(() {
-          _windowsWebViewController = controller;
-        });
       }
     } catch (e, st) {
       var reason = 'Windows WebView initialization failed: $e';
@@ -870,13 +881,33 @@ class _BrowserScreenState extends State<BrowserScreen> {
                       ],
                     ),
                   )
-                : (Platform.isWindows
-                    ? (_windowsWebViewController == null
-                        ? const Center(child: CircularProgressIndicator())
-                        : webview_windows.Webview(_windowsWebViewController!))
-                    : (_webViewController == null
-                        ? const Center(child: CircularProgressIndicator())
-                        : WebViewWidget(controller: _webViewController!))),
+                : _lastLoadError != null
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text('Load error: $_lastLoadError',
+                                  style: const TextStyle(color: Colors.red)),
+                              const SizedBox(height: 12),
+                              ElevatedButton(
+                                onPressed: () {
+                                  _navigateTo(_addressController.text);
+                                },
+                                child: const Text('Retry'),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                    : (Platform.isWindows
+                        ? (_windowsWebViewController == null
+                            ? const Center(child: CircularProgressIndicator())
+                            : webview_windows.Webview(_windowsWebViewController!))
+                        : (_webViewController == null
+                            ? const Center(child: CircularProgressIndicator())
+                            : WebViewWidget(controller: _webViewController!))),
           ),
         ],
       ),
