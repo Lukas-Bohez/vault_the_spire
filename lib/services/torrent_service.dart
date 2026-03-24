@@ -28,43 +28,6 @@ class TorrentService {
     }).toList();
   }
 
-  Future<List<TorrentModel>> discoverTorrentsOnline(String query) async {
-    final trimmed = query.trim();
-    await Future.delayed(const Duration(seconds: 2));
-    if (trimmed.isEmpty) return [];
-    final mockId = DateTime.now().millisecondsSinceEpoch.toString();
-    final random = Random();
-    final sampleNames = [
-      'Ubuntu ISO',
-      'OpenClassroom Linux',
-      'Flutter Dev Bookpack',
-      'Top Hits 2026',
-      'Classic Movie Collection',
-      'Anime Essentials Pack',
-      'Pro Photography Tutorials',
-    ];
-    final selectedName = sampleNames[random.nextInt(sampleNames.length)];
-    final sample = TorrentModel(
-      id: 'online-$mockId',
-      name: '$selectedName - $trimmed',
-      type: 'remote',
-      status: 'available',
-      totalSize: 100 * 1024 * 1024 + random.nextInt(900) * 1024 * 1024,
-      totalPieces: 1024,
-      pieceLength: 256 * 1024,
-      vaultLink: null,
-      magnetLink:
-          'magnet:?xt=urn:btih:$mockId&dn=${Uri.encodeComponent(selectedName)}',
-      bytesDown: 0,
-      bytesUp: 0,
-      addedAt: DateTime.now().millisecondsSinceEpoch,
-      isSequential: false,
-      seeders: 50 + random.nextInt(300),
-      leechers: 5 + random.nextInt(50),
-      reputation: 1.0 + random.nextDouble() * 4.0,
-    );
-    return [sample];
-  }
 
   Future<void> addTorrent(TorrentModel torrent) =>
       TorrentsDao.instance.insertTorrent(torrent);

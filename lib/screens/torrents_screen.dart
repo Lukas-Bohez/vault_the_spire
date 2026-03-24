@@ -26,7 +26,6 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
   late Future<List<TorrentModel>> _futureTorrents;
   String _statusFilter = 'All';
   TorrentSortOption _sortOption = TorrentSortOption.progress;
-  String _searchQuery = '';
   final _magnetController = TextEditingController();
   final Map<String, TorrentEngineStatus> _engineStatuses = {};
   StreamSubscription<TorrentEngineStatus>? _engineSubscription;
@@ -379,22 +378,6 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
               ],
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
-            child: TextField(
-              decoration: const InputDecoration(
-                labelText: 'Search torrents',
-                hintText: 'Type name or part of name',
-                prefixIcon: Icon(Icons.search),
-                border: OutlineInputBorder(),
-              ),
-              onChanged: (value) {
-                setState(() {
-                  _searchQuery = value.trim();
-                });
-              },
-            ),
-          ),
           const SizedBox(height: 8),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -451,15 +434,7 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
                         }
                       }).toList();
 
-                final filteredTorrents = _searchQuery.isEmpty
-                    ? byStatus
-                    : byStatus
-                          .where(
-                            (t) => t.name.toLowerCase().contains(
-                              _searchQuery.toLowerCase(),
-                            ),
-                          )
-                          .toList();
+                final filteredTorrents = byStatus;
 
                 filteredTorrents.sort((a, b) {
                   switch (_sortOption) {
