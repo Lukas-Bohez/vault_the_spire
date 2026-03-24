@@ -10,15 +10,30 @@ class SignalQrImport {
       r'signal\.me/#p/([A-Za-z0-9_\-]+)',
     ).firstMatch(normalized);
     if (signalMatch != null) {
-      final keyB64 = signalMatch.group(1)!;
-      return Contact(
-        id: 'signal_import_${keyB64.substring(0, 8)}',
-        username: 'signal_${keyB64.substring(0, 8)}',
-        publicKey: keyB64,
-        avatarSeed: keyB64.substring(0, 8),
-        displayName: 'Signal contact',
-        importedFrom: 'signal',
-      );
+      final encoded = signalMatch.group(1)!;
+      try {
+        final normalizedBase64 = base64Url.normalize(encoded);
+        final decoded = base64Url.decode(normalizedBase64);
+
+        // Signal uses protobuf-encoded payloads; to avoid unsafe assumptions,
+        // only accept an explicit raw 32-byte X25519 key or a JSON fallback.
+        if (decoded.length == 32) {
+          final publicKey = base64Url.encode(decoded);
+          return Contact(
+            id: 'signal_import_${publicKey.substring(0, 8)}',
+            username: 'signal_${publicKey.substring(0, 8)}',
+            publicKey: publicKey,
+            avatarSeed: publicKey.substring(0, 8),
+            displayName: 'Signal contact',
+            importedFrom: 'signal',
+          );
+        }
+      } catch (_) {
+        // invalid signal payload
+      }
+
+      // No safe decoding path for unknown protobuf formats; reject.
+      return null;
     }
 
     try {

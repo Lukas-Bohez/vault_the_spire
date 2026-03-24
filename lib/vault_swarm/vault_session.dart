@@ -5,22 +5,22 @@ import 'dart:typed_data';
 import 'package:collection/collection.dart';
 import 'package:vault_the_spire/bittorrent/dht.dart';
 import 'package:vault_the_spire/bittorrent/piece_manager.dart';
+import 'package:vault_the_spire/bittorrent/torrent_session.dart';
 import 'package:vault_the_spire/vault_swarm/vault_link.dart';
 import 'package:vault_the_spire/vault_swarm/vault_piece.dart';
 
-class VaultSession {
+class VaultSession extends TorrentSession {
   final VaultLink link;
   final Uint8List key;
-  final PieceManager pieceManager;
 
-  VaultSession._(this.link, this.key, this.pieceManager);
+  VaultSession._(this.link, this.key, PieceManager pieceManager)
+      : super(metadata: null, pieceManager: pieceManager, dhtEngine: null);
 
   static Future<VaultSession> createFromVaultLink(
     String vaultUri,
     Directory appDirectory,
     int totalPieces,
     int pieceLength,
-    DhtEngine dhtEngine,
   ) async {
     final link = VaultLink.parse(vaultUri);
     final decodedKey = base64Url.decode(link.keyBase64);
@@ -35,6 +35,12 @@ class VaultSession {
     );
     await manager.initialize();
     return VaultSession._(link, decodedKey, manager);
+  }
+
+  @override
+  Future<void> onPieceReceived(int index, Uint8List data) async {
+    final decryptedPiece = VaultPiece.decryptPiece(data, key);
+    await pieceManager.writePiece(index, decryptedPiece);
   }
 
   Future<void> storeEncryptedPiece(int index, Uint8List encryptedPiece) async {

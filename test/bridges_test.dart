@@ -1,13 +1,24 @@
+import 'dart:convert';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vault_the_spire/bridges/signal_qr.dart';
 import 'package:vault_the_spire/bridges/telegram_bridge.dart';
 
 void main() {
-  test('Signal QR parse returns contact', () {
-    final qr = 'https://signal.me/#p/abcd1234ABCD5678';
+  test('Signal QR parse returns contact with valid 32-byte key', () {
+    final bytes = List<int>.generate(32, (i) => i);
+    final b64 = base64Url.encode(bytes);
+    final qr = 'https://signal.me/#p/$b64';
+
     final contact = SignalQrImport.tryParse(qr);
     expect(contact, isNotNull);
-    expect(contact!.publicKey, 'abcd1234ABCD5678');
+    expect(contact!.publicKey, b64);
+  });
+
+  test('Signal QR parse rejects non-32-byte protobuf payloads', () {
+    final qr = 'https://signal.me/#p/abcd1234ABCD5678';
+    final contact = SignalQrImport.tryParse(qr);
+    expect(contact, isNull);
   });
 
   test('Telegram channel name extraction', () {

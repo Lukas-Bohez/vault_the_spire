@@ -12,6 +12,7 @@ import 'package:vault_the_spire/platform/notifications_desktop.dart';
 import 'package:vault_the_spire/screens/home_screen.dart';
 import 'package:vault_the_spire/services/identity_service.dart';
 import 'package:vault_the_spire/services/settings_service.dart';
+import 'package:vault_the_spire/services/service_locator.dart';
 import 'package:vault_the_spire/services/startup_service.dart';
 import 'package:vault_the_spire/services/theme_service.dart';
 import 'package:vault_the_spire/services/tray_service.dart';
@@ -42,6 +43,7 @@ Future<void> main() async {
   await runZonedGuarded(
     () async {
       WidgetsFlutterBinding.ensureInitialized();
+      await setupServiceLocator();
       await _initSqlCipherOnAndroid();
       await _requestAndroidPermissions();
 

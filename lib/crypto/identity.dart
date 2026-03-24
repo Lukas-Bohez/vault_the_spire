@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:cryptography/cryptography.dart';
 import 'package:crypto/crypto.dart' as crypto;
@@ -39,8 +40,10 @@ class Identity {
   }
 
   static String _deriveNodeId(List<int> publicKeyBytes) {
-    final digest = crypto.sha256.convert(publicKeyBytes);
-    final nodeIdBytes = digest.bytes.sublist(0, 20);
+    // Avoid direct derivation from the public key to minimize deterministic
+    // node ID fingerprinting risks. Generate a random DHT node ID per session.
+    final random = Random.secure();
+    final nodeIdBytes = List<int>.generate(20, (_) => random.nextInt(256));
     return nodeIdBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
   }
 
