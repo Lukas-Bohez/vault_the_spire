@@ -293,8 +293,23 @@ jobs:
             android-builds/**
           merge-multiple: false
 
+      - name: Verify artifacts
+        run: |
+          echo "== artifact root contents =="
+          ls -la .
+          if [ ! -d artifacts ]; then
+            echo "ERROR: artifacts directory not found. Download likely failed or artifact names changed."
+            exit 1
+          fi
+          echo "== downloaded artifacts contents =="
+          find artifacts -maxdepth 5 -type f -print
+
       - name: Generate checksum manifest
         run: |
+          if [ ! -d artifacts ]; then
+            echo "ERROR: artifacts directory not found during checksum step."
+            exit 1
+          fi
           cd artifacts
           find . -type f | sort | xargs sha256sum > ../SHA256SUMS.txt
           cat ../SHA256SUMS.txt
