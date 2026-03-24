@@ -217,6 +217,7 @@ jobs:
             exit 1
           fi
           set -euo pipefail
+          mkdir -p android
           echo "$KEYSTORE_BASE64" | base64 --decode > android/release.keystore
           cat > android/key.properties <<EOF
           storePassword=$KEYSTORE_PASSWORD
