@@ -17,7 +17,11 @@ class SoundService {
       HapticFeedback.lightImpact();
     }
     try {
-      await _player.play(AssetSource(asset), volume: 0.85);
+      // For desktop (Windows/Linux/macOS), prefer explicit source+resume to avoid
+      // intermittent codec/URL issues seen in older audioplayers versions.
+      await _player.setSource(AssetSource(asset));
+      await _player.setVolume(0.85);
+      await _player.resume();
     } catch (e) {
       // non-fatal, just keep UX moving
       debugPrint('Sound play error: $e');

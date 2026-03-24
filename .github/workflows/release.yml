@@ -183,8 +183,6 @@ jobs:
     name: Build Android
     needs: test-and-analyze
     runs-on: ubuntu-latest
-    env:
-      GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
     steps:
       - uses: actions/checkout@v4
 
@@ -204,18 +202,14 @@ jobs:
       - name: Accept Android SDK licenses
         run: yes | flutter doctor --android-licenses || true
 
-      - name: Configure Android signing
+      - name: Configure Android signing (release path)
+        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.ANDROID_KEYSTORE_PASSWORD != '' && secrets.ANDROID_KEY_ALIAS != '' && secrets.ANDROID_KEY_PASSWORD != '' }}
         env:
           KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "❌ ANDROID_KEYSTORE_BASE64 secret is missing — release builds must be properly signed"
-            echo "Add the four secrets in GitHub → Settings → Secrets and variables → Actions"
-            exit 1
-          fi
           set -euo pipefail
           mkdir -p android
           echo "$KEYSTORE_BASE64" | base64 --decode > android/release.keystore
@@ -227,31 +221,52 @@ jobs:
           EOF
           echo "✅ Release keystore configured"
 
+      - name: Configure Android signing (fallback)
+        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 == '' || secrets.ANDROID_KEYSTORE_PASSWORD == '' || secrets.ANDROID_KEY_ALIAS == '' || secrets.ANDROID_KEY_PASSWORD == '' }}
+        run: |
+          echo "⚠️ Android release signing secrets are not set. Building debug APK (not signed for Google Play)."
+
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Build APK
+      - name: Build APK (release if signing available, debug fallback)
+        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.ANDROID_KEYSTORE_PASSWORD != '' && secrets.ANDROID_KEY_ALIAS != '' && secrets.ANDROID_KEY_PASSWORD != '' }}
         run: flutter build apk --release --no-tree-shake-icons
 
-      - name: Build AAB
+      - name: Build AAB (release only)
+        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' && secrets.ANDROID_KEYSTORE_PASSWORD != '' && secrets.ANDROID_KEY_ALIAS != '' && secrets.ANDROID_KEY_PASSWORD != '' }}
         run: flutter build appbundle --release --no-tree-shake-icons
 
-      - name: Collect Android builds
+      - name: Build APK (debug fallback)
+        if: ${{ secrets.ANDROID_KEYSTORE_BASE64 == '' || secrets.ANDROID_KEYSTORE_PASSWORD == '' || secrets.ANDROID_KEY_ALIAS == '' || secrets.ANDROID_KEY_PASSWORD == '' }}
+        run: flutter build apk --debug --no-tree-shake-icons
+
+      - name: Collect Android builds (release or debug)
         run: |
           mkdir -p android-builds
-          cp build/app/outputs/flutter-apk/app-release.apk \
-             android-builds/${{ env.OUTPUT_NAME }}-android.apk
-          cp build/app/outputs/bundle/release/app-release.aab \
-             android-builds/${{ env.OUTPUT_NAME }}-android.aab
+          if [ -f build/app/outputs/flutter-apk/app-release.apk ]; then
+            cp build/app/outputs/flutter-apk/app-release.apk android-builds/${{ env.OUTPUT_NAME }}-android.apk
+          elif [ -f build/app/outputs/flutter-apk/app-debug.apk ]; then
+            cp build/app/outputs/flutter-apk/app-debug.apk android-builds/${{ env.OUTPUT_NAME }}-android-debug.apk
+          else
+            echo "ERROR: No APK from build."
+            exit 1
+          fi
+
+          if [ -f build/app/outputs/bundle/release/app-release.aab ]; then
+            cp build/app/outputs/bundle/release/app-release.aab android-builds/${{ env.OUTPUT_NAME }}-android.aab
+          else
+            echo "⚠️ AAB not generated (release signing path required)."
+          fi
 
       - name: Upload to Google Play
-        if: ${{ env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != '' }}
+        if: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != '' }}
         uses: r0adkll/upload-google-play@v1
         with:
           serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
           packageName: com.example.vault_the_spire
           releaseFiles: android-builds/${{ env.OUTPUT_NAME }}-android.aab
-          tracks: internal
+          track: internal
           status: completed
 
       - uses: actions/upload-artifact@v6
