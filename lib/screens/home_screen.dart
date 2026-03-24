@@ -464,11 +464,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
       _torrentInputController.clear();
       await SoundService.instance.playNotification();
+      if (!mounted) return;
       setState(() {});
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Torrent added successfully')),
       );
     } catch (error) {
+      if (!mounted) return;
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Failed to add torrent: $error')));
@@ -478,6 +480,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _showSeedingSettings() async {
     final messenger = ScaffoldMessenger.of(context);
     final torrents = await TorrentService.instance.allTorrents();
+    if (!mounted) return;
     if (torrents.isEmpty) {
       messenger.showSnackBar(
         const SnackBar(content: Text('No torrents to configure yet')),
@@ -1003,6 +1006,29 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 child: Row(
                   children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _torrentInputController,
+                        decoration: const InputDecoration(
+                          hintText: 'Magnet link or file path',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    ElevatedButton(
+                      onPressed: _addTorrentFromInput,
+                      child: const Text('Add'),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                child: Row(
+                  children: [
                     const Text('Sort by:'),
                     const SizedBox(width: 8),
                     DropdownButton<TorrentSortMode>(
@@ -1169,7 +1195,6 @@ class _HomeScreenState extends State<HomeScreen> {
         case TorrentSortMode.leechers:
           return b.leechers.compareTo(a.leechers);
         case TorrentSortMode.reputation:
-        default:
           return b.reputation.compareTo(a.reputation);
       }
     });
@@ -1342,16 +1367,19 @@ class _HomeScreenState extends State<HomeScreen> {
                       icon: const Icon(Icons.add),
                       tooltip: 'Add discovered torrent',
                       onPressed: () async {
+                        final messenger = ScaffoldMessenger.of(context);
                         try {
                           await TorrentService.instance.addTorrent(torrent);
+                          if (!mounted) return;
                           setState(() {
                             _discoveredTorrents.remove(torrent);
                           });
-                          ScaffoldMessenger.of(context).showSnackBar(
+                          messenger.showSnackBar(
                             SnackBar(content: Text('Added ${torrent.name}.')),
                           );
                         } catch (_) {
-                          ScaffoldMessenger.of(context).showSnackBar(
+                          if (!mounted) return;
+                          messenger.showSnackBar(
                             SnackBar(
                               content: Text('Already added: ${torrent.name}'),
                             ),
@@ -1363,6 +1391,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       icon: const Icon(Icons.download),
                       tooltip: 'Download torrent',
                       onPressed: () async {
+                        final messenger = ScaffoldMessenger.of(context);
                         if (_downloadDestination.isEmpty) {
                           await _chooseDownloadDirectory();
                           if (_downloadDestination.isEmpty) return;
@@ -1370,7 +1399,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         try {
                           await TorrentService.instance.addTorrent(torrent);
                         } catch (_) {}
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        messenger.showSnackBar(
                           SnackBar(
                             content: Text('Starting download: ${torrent.name}'),
                           ),
@@ -1380,7 +1409,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             .then((_) {
                               if (!mounted) return;
                               setState(() {});
-                              ScaffoldMessenger.of(context).showSnackBar(
+                              messenger.showSnackBar(
                                 SnackBar(
                                   content: Text(
                                     'Download complete: ${torrent.name}',
@@ -1390,7 +1419,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             })
                             .catchError((error) {
                               if (!mounted) return;
-                              ScaffoldMessenger.of(context).showSnackBar(
+                              messenger.showSnackBar(
                                 SnackBar(
                                   content: Text('Download failed: $error'),
                                 ),
@@ -1401,7 +1430,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
               );
-            }).toList(),
+            }),
             const Divider(),
           ],
         ],
