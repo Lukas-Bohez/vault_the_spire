@@ -16,6 +16,7 @@ import 'package:vault_the_spire/models/server.dart';
 import 'package:vault_the_spire/models/torrent.dart';
 import 'package:vault_the_spire/services/startup_service.dart';
 import 'package:vault_the_spire/constants.dart';
+import 'package:vault_the_spire/services/torrent_engine_service.dart';
 import 'package:vault_the_spire/services/torrent_service.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -55,6 +56,9 @@ class _HomeScreenState extends State<HomeScreen> {
   String _downloadDestination = '';
   TorrentSortMode _sortMode = TorrentSortMode.reputation;
   int _minSeeders = 0;
+  bool _autoDownloadDiscovered = false;
+  final Map<String, TorrentEngineStatus> _engineStatuses = {};
+  StreamSubscription<TorrentEngineStatus>? _engineSubscription;
   final Set<String> _dmContacts = <String>{};
   final Map<String, int> _dmUnread = <String, int>{};
   final Map<String, bool> _voiceMuted = <String, bool>{};
@@ -85,6 +89,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _dmChatScrollController.dispose();
     _hotkeyFocusNode.dispose();
     _torrentMiningTimer?.cancel();
+    _engineSubscription?.cancel();
     super.dispose();
   }
 
@@ -110,6 +115,15 @@ class _HomeScreenState extends State<HomeScreen> {
     ) async {
       if (!_isMinerActive) return;
       await _performMiningSweep();
+    });
+
+    _engineSubscription = TorrentEngineService.instance.statusStream.listen((
+      status,
+    ) {
+      if (!mounted) return;
+      setState(() {
+        _engineStatuses[status.torrentId] = status;
+      });
     });
   }
 
@@ -566,7 +580,9 @@ class _HomeScreenState extends State<HomeScreen> {
       } catch (_) {
         // ignore duplicates
       }
-      if (_isMinerActive && _downloadDestination.isNotEmpty) {
+      if (_isMinerActive &&
+          _autoDownloadDiscovered &&
+          _downloadDestination.isNotEmpty) {
         TorrentService.instance
             .downloadTorrent(torrent.id, _downloadDestination)
             .catchError((_) {});
@@ -649,31 +665,13 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
             const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                ElevatedButton(
-                  onPressed: () => setState(() {
-                    _mainView = MainView.dashboard;
-                  }),
-                  child: const Text('Dashboard'),
-                ),
-                ElevatedButton(
-                  onPressed: () => setState(() {
-                    _mainView = MainView.torrents;
-                  }),
-                  child: const Text('Torrents'),
-                ),
-                ElevatedButton(
-                  onPressed: () => setState(() {
-                    _mainView = MainView.messages;
-                  }),
-                  child: const Text('Messages'),
-                ),
-              ],
+            Center(
+              child: Text(
+                'Navigate via top tabs',
+                style: theme.textTheme.bodySmall,
+              ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 12),
             Text('Connected', style: theme.textTheme.labelMedium),
             const SizedBox(height: 6),
             const Text(
@@ -925,10 +923,245 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildTorrentsArea(ThemeData theme) {
+    return DefaultTabController(
+      length: 2,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          TabBar(
+            tabs: const [
+              Tab(text: 'My Torrents'),
+              Tab(text: 'Torrent Search'),
+            ],
+          ),
+          Expanded(
+            child: TabBarView(
+              children: [
+                _buildLocalTorrentTab(theme),
+                _buildDiscoverTorrentTab(theme),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _refreshLocalTorrents() async {
+    setState(() {});
+  }
+
+  String _formatBytes(int? bytes) {
+    if (bytes == null || bytes <= 0) return '0 B';
+    const suffixes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    double size = bytes.toDouble();
+    int index = 0;
+    while (size >= 1024 && index < suffixes.length - 1) {
+      size /= 1024;
+      index++;
+    }
+    return '${size.toStringAsFixed(1)} ${suffixes[index]}';
+  }
+
+  Widget _buildLocalTorrentTab(ThemeData theme) {
+    return FutureBuilder<List<dynamic>>(
+      future: _torrentSearchQuery.isEmpty
+          ? TorrentService.instance.allTorrents()
+          : TorrentService.instance.findTorrents(_torrentSearchQuery),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError) {
+          return Text('Error loading torrents: ${snapshot.error}');
+        }
+        final torrents = snapshot.data ?? [];
+        if (torrents.isEmpty) {
+          return const Center(child: Text('No torrents yet.'));
+        }
+
+        final sortedTorrents = List<TorrentModel>.from(torrents);
+        sortedTorrents.sort((a, b) {
+          switch (_sortMode) {
+            case TorrentSortMode.seeders:
+              return b.seeders.compareTo(a.seeders);
+            case TorrentSortMode.leechers:
+              return b.leechers.compareTo(a.leechers);
+            case TorrentSortMode.reputation:
+              return b.reputation.compareTo(a.reputation);
+          }
+        });
+
+        return RefreshIndicator(
+          onRefresh: _refreshLocalTorrents,
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                child: Row(
+                  children: [
+                    const Text('Sort by:'),
+                    const SizedBox(width: 8),
+                    DropdownButton<TorrentSortMode>(
+                      value: _sortMode,
+                      onChanged: (value) {
+                        if (value != null) {
+                          setState(() {
+                            _sortMode = value;
+                          });
+                        }
+                      },
+                      items: TorrentSortMode.values
+                          .map(
+                            (item) => DropdownMenuItem(
+                              value: item,
+                              child: Text(item.toString().split('.').last),
+                            ),
+                          )
+                          .toList(),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Text('Total torrents: ${sortedTorrents.length}'),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: ListView.builder(
+                  padding: const EdgeInsets.all(12),
+                  itemCount: torrents.length,
+                  itemBuilder: (context, index) {
+                    final torrent = torrents[index];
+                    final progress =
+                        (torrent.totalSize != null && torrent.totalSize! > 0)
+                        ? (torrent.bytesDown / torrent.totalSize!).clamp(
+                            0.0,
+                            1.0,
+                          )
+                        : 0.0;
+                    final engineStatus = _engineStatuses[torrent.id];
+
+                    return Card(
+                      margin: const EdgeInsets.symmetric(vertical: 6),
+                      child: ListTile(
+                        title: Text(torrent.name ?? 'Unnamed'),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${torrent.status ?? 'unknown'} • ${torrent.totalSize != null ? '${(progress * 100).toStringAsFixed(1)}%' : 'No size'}',
+                            ),
+                            if (torrent.totalSize != null)
+                              LinearProgressIndicator(value: progress),
+                            Text('Size: ${_formatBytes(torrent.totalSize)}'),
+                            Text(
+                              'Seeders: ${torrent.seeders}, Leechers: ${torrent.leechers}, Connected: ${engineStatus?.peers ?? 0}',
+                            ),
+                            if (engineStatus != null)
+                              Text(
+                                'DL: ${engineStatus.downloadSpeed.toStringAsFixed(1)} B/s • UL: ${engineStatus.uploadSpeed.toStringAsFixed(1)} B/s • Peer progress: ${(engineStatus.progress * 100).toStringAsFixed(1)}%',
+                              ),
+                          ],
+                        ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (torrent.status != 'downloading' &&
+                                torrent.status != 'completed')
+                              IconButton(
+                                icon: const Icon(Icons.play_arrow),
+                                onPressed: () async {
+                                  if (_downloadDestination.isEmpty) {
+                                    await _chooseDownloadDirectory();
+                                    if (_downloadDestination.isEmpty) return;
+                                  }
+                                  await TorrentService.instance.downloadTorrent(
+                                    torrent.id,
+                                    _downloadDestination,
+                                  );
+                                  setState(() {});
+                                },
+                              ),
+                            if (torrent.status == 'downloading') ...[
+                              IconButton(
+                                icon: const Icon(Icons.pause),
+                                tooltip: 'Pause',
+                                onPressed: () async {
+                                  TorrentEngineService.instance.stopTorrent(
+                                    torrent.id,
+                                  );
+                                  await TorrentService.instance
+                                      .updateTorrentStatus(
+                                        torrent.id,
+                                        'paused',
+                                      );
+                                  setState(() {});
+                                },
+                              ),
+                              const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              ),
+                            ],
+                            if (torrent.status == 'paused' ||
+                                torrent.status == 'queued')
+                              IconButton(
+                                icon: const Icon(Icons.play_arrow),
+                                tooltip: 'Resume',
+                                onPressed: () async {
+                                  if (_downloadDestination.isEmpty) {
+                                    await _chooseDownloadDirectory();
+                                    if (_downloadDestination.isEmpty) return;
+                                  }
+                                  await TorrentService.instance.downloadTorrent(
+                                    torrent.id,
+                                    _downloadDestination,
+                                  );
+                                  setState(() {});
+                                },
+                              ),
+                            IconButton(
+                              icon: const Icon(Icons.delete),
+                              tooltip: 'Remove torrent',
+                              onPressed: () async {
+                                await TorrentService.instance.removeTorrent(
+                                  torrent.id,
+                                );
+                                setState(() {
+                                  // Optionally remove from local list if present
+                                });
+                              },
+                            ),
+                            if (torrent.status == 'completed')
+                              const Icon(
+                                Icons.check_circle,
+                                color: Colors.green,
+                              ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildDiscoverTorrentTab(ThemeData theme) {
     final filteredDiscovered = _discoveredTorrents
         .where((torrent) => torrent.seeders >= _minSeeders)
         .toList();
-
     filteredDiscovered.sort((a, b) {
       switch (_sortMode) {
         case TorrentSortMode.seeders:
@@ -941,40 +1174,11 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     });
 
-    return Container(
-      color: theme.colorScheme.surface,
+    return SingleChildScrollView(
       padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('Torrents', style: theme.textTheme.headlineMedium),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _torrentInputController,
-                  decoration: InputDecoration(
-                    hintText: 'Paste magnet link or .torrent path here',
-                    filled: true,
-                    fillColor: theme.colorScheme.surfaceContainerHighest,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      borderSide: BorderSide.none,
-                    ),
-                  ),
-                  onSubmitted: (_) => _addTorrentFromInput(),
-                ),
-              ),
-              const SizedBox(width: 8),
-              ElevatedButton.icon(
-                onPressed: _addTorrentFromInput,
-                icon: const Icon(Icons.file_upload),
-                label: const Text('Add'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
           Row(
             children: [
               Expanded(
@@ -996,14 +1200,9 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(width: 8),
               ElevatedButton.icon(
                 onPressed: () async {
-                  setState(() {
-                    _onlineDiscoveryLoading = true;
-                  });
+                  setState(() => _onlineDiscoveryLoading = true);
                   final discovered = await TorrentService.instance
                       .discoverTorrentsOnline(_torrentSearchQuery);
-                  for (final torrent in discovered) {
-                    await TorrentService.instance.addTorrent(torrent);
-                  }
                   setState(() {
                     _discoveredTorrents = discovered;
                     _onlineDiscoveryLoading = false;
@@ -1061,12 +1260,14 @@ class _HomeScreenState extends State<HomeScreen> {
                             });
                           }
                         },
-                        items: TorrentSortMode.values.map((item) {
-                          return DropdownMenuItem(
-                            value: item,
-                            child: Text(item.toString().split('.').last),
-                          );
-                        }).toList(),
+                        items: TorrentSortMode.values
+                            .map(
+                              (item) => DropdownMenuItem(
+                                value: item,
+                                child: Text(item.toString().split('.').last),
+                              ),
+                            )
+                            .toList(),
                       ),
                       const SizedBox(width: 16),
                       const Text('Min seeders:'),
@@ -1078,11 +1279,25 @@ class _HomeScreenState extends State<HomeScreen> {
                           value: _minSeeders.toDouble(),
                           label: '$_minSeeders',
                           onChanged: (value) {
-                            setState(() {
-                              _minSeeders = value.toInt();
-                            });
+                            setState(() => _minSeeders = value.toInt());
                           },
                         ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      const Text('Auto mining'),
+                      const Spacer(),
+                      Switch(value: _isMinerActive, onChanged: _toggleMiner),
+                      const SizedBox(width: 8),
+                      const Text('Auto download'),
+                      const SizedBox(width: 4),
+                      Switch(
+                        value: _autoDownloadDiscovered,
+                        onChanged: (v) =>
+                            setState(() => _autoDownloadDiscovered = v),
                       ),
                     ],
                   ),
@@ -1091,49 +1306,13 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
           const SizedBox(height: 14),
-          Wrap(
-            spacing: 10,
-            children: [
-              ElevatedButton(
-                onPressed: () => setState(() {}),
-                child: const Text('Refresh'),
-              ),
-              OutlinedButton(
-                onPressed: _showSeedingSettings,
-                child: const Text('Seeding settings'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Card(
-            elevation: 1,
-            color: theme.colorScheme.surfaceContainerHighest,
-            child: Padding(
-              padding: const EdgeInsets.all(10),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Auto mining',
-                      style: theme.textTheme.bodyMedium,
-                    ),
-                  ),
-                  Text(_isMinerActive ? 'Running' : 'Stopped'),
-                  const SizedBox(width: 8),
-                  Switch(value: _isMinerActive, onChanged: _toggleMiner),
-                ],
-              ),
-            ),
-          ),
           if (_downloadDestination.isEmpty)
-            Padding(
-              padding: const EdgeInsets.only(top: 6, bottom: 4),
-              child: Text(
-                'Choose a destination folder to enable auto-download',
-                style: theme.textTheme.bodySmall,
-              ),
+            Text(
+              'Choose a destination folder to enable downloads',
+              style: theme.textTheme.bodySmall,
             ),
           if (filteredDiscovered.isNotEmpty) ...[
+            const SizedBox(height: 14),
             Text('Discovered Torrents', style: theme.textTheme.titleMedium),
             const SizedBox(height: 8),
             ...filteredDiscovered.map((torrent) {
@@ -1144,21 +1323,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Seeders ${torrent.seeders}, Leechers ${torrent.leechers}, Rep ${torrent.reputation.toStringAsFixed(1)}',
-                      style: theme.textTheme.bodySmall,
+                      'Seeders: ${torrent.seeders}, Leechers: ${torrent.leechers}, Rep ${torrent.reputation.toStringAsFixed(1)}',
                     ),
                     if (torrent.magnetLink != null)
                       Text(
                         torrent.magnetLink!,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          fontSize: 12,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    if (torrent.filePath != null &&
-                        torrent.filePath!.isNotEmpty)
-                      Text(
-                        'Destination: ${torrent.filePath}',
                         style: theme.textTheme.bodySmall?.copyWith(
                           fontSize: 12,
                         ),
@@ -1181,7 +1350,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(content: Text('Added ${torrent.name}.')),
                           );
-                        } catch (e) {
+                        } catch (_) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             SnackBar(
                               content: Text('Already added: ${torrent.name}'),
@@ -1196,21 +1365,16 @@ class _HomeScreenState extends State<HomeScreen> {
                       onPressed: () async {
                         if (_downloadDestination.isEmpty) {
                           await _chooseDownloadDirectory();
-                          if (_downloadDestination.isEmpty) {
-                            return;
-                          }
+                          if (_downloadDestination.isEmpty) return;
                         }
-
                         try {
                           await TorrentService.instance.addTorrent(torrent);
                         } catch (_) {}
-
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text('Starting download: ${torrent.name}'),
                           ),
                         );
-
                         TorrentService.instance
                             .downloadTorrent(torrent.id, _downloadDestination)
                             .then((_) {
@@ -1237,90 +1401,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   ],
                 ),
               );
-            }),
+            }).toList(),
             const Divider(),
           ],
-          FutureBuilder<List<dynamic>>(
-            future: _torrentSearchQuery.isEmpty
-                ? TorrentService.instance.allTorrents()
-                : TorrentService.instance.findTorrents(_torrentSearchQuery),
-            builder: (context, snapshot) {
-              if (snapshot.connectionState == ConnectionState.waiting) {
-                return const Center(child: CircularProgressIndicator());
-              }
-              if (snapshot.hasError) {
-                return Text('Error loading torrents: ${snapshot.error}');
-              }
-              final torrents = snapshot.data ?? [];
-              if (torrents.isEmpty) {
-                return const Center(child: Text('No torrents yet.'));
-              }
-              return Expanded(
-                child: ListView.builder(
-                  itemCount: torrents.length,
-                  itemBuilder: (context, index) {
-                    final torrent = torrents[index];
-                    final progress =
-                        (torrent.totalSize != null && torrent.totalSize! > 0)
-                        ? (torrent.bytesDown / torrent.totalSize!).clamp(
-                            0.0,
-                            1.0,
-                          )
-                        : 0.0;
-                    return ListTile(
-                      title: Text(torrent.name ?? 'Unnamed'),
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(torrent.status ?? 'unknown'),
-                          if (torrent.totalSize != null)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 4.0),
-                              child: LinearProgressIndicator(
-                                value: progress,
-                                minHeight: 6,
-                              ),
-                            ),
-                          if (torrent.totalSize != null)
-                            Text('${(progress * 100).toStringAsFixed(0)}%'),
-                        ],
-                      ),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (torrent.status != 'downloading' &&
-                              torrent.status != 'completed')
-                            IconButton(
-                              icon: const Icon(Icons.play_arrow),
-                              tooltip: 'Start download',
-                              onPressed: () async {
-                                if (_downloadDestination.isEmpty) {
-                                  await _chooseDownloadDirectory();
-                                  if (_downloadDestination.isEmpty) return;
-                                }
-                                await TorrentService.instance.downloadTorrent(
-                                  torrent.id,
-                                  _downloadDestination,
-                                );
-                                setState(() {});
-                              },
-                            ),
-                          if (torrent.status == 'downloading')
-                            const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                          if (torrent.status == 'completed')
-                            const Icon(Icons.check_circle, color: Colors.green),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-              );
-            },
-          ),
         ],
       ),
     );
