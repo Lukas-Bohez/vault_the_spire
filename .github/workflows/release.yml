@@ -189,6 +189,10 @@ jobs:
       KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
       KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
       GOOGLE_PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+    outputs:
+      # Tells the release job which APK filename was actually produced so it
+      # can be included in the GitHub release without ambiguity.
+      apk_name: ${{ steps.collect.outputs.apk_name }}
     steps:
       - uses: actions/checkout@v4
 
@@ -224,41 +228,57 @@ jobs:
 
       - name: Configure Android signing (fallback)
         if: ${{ env.KEYSTORE_BASE64 == '' || env.KEYSTORE_PASSWORD == '' || env.KEY_ALIAS == '' || env.KEY_PASSWORD == '' }}
-        run: |
-          echo "⚠️ Android release signing secrets are not set. Building debug APK (not signed for Google Play)."
+        run: echo "⚠️ Android release signing secrets are not set. Building debug APK (not signed for Google Play)."
 
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Build APK (release if signing available, debug fallback)
+      - name: Build APK — release
         if: ${{ env.KEYSTORE_BASE64 != '' && env.KEYSTORE_PASSWORD != '' && env.KEY_ALIAS != '' && env.KEY_PASSWORD != '' }}
         run: flutter build apk --release --no-tree-shake-icons
 
-      - name: Build AAB (release only)
+      - name: Build AAB — release
         if: ${{ env.KEYSTORE_BASE64 != '' && env.KEYSTORE_PASSWORD != '' && env.KEY_ALIAS != '' && env.KEY_PASSWORD != '' }}
         run: flutter build appbundle --release --no-tree-shake-icons
 
-      - name: Build APK (debug fallback)
+      - name: Build APK — debug fallback
         if: ${{ env.KEYSTORE_BASE64 == '' || env.KEYSTORE_PASSWORD == '' || env.KEY_ALIAS == '' || env.KEY_PASSWORD == '' }}
         run: flutter build apk --debug --no-tree-shake-icons
 
-      - name: Collect Android builds (release or debug)
+      - name: Collect Android builds
+        id: collect
         run: |
+          set -euo pipefail
           mkdir -p android-builds
+
+          # --- APK: prefer release, fall back to debug ---
           if [ -f build/app/outputs/flutter-apk/app-release.apk ]; then
-            cp build/app/outputs/flutter-apk/app-release.apk android-builds/${{ env.OUTPUT_NAME }}-android.apk
+            APK_NAME="${{ env.OUTPUT_NAME }}-android.apk"
+            cp build/app/outputs/flutter-apk/app-release.apk "android-builds/$APK_NAME"
+            echo "✅ Release APK collected: $APK_NAME"
           elif [ -f build/app/outputs/flutter-apk/app-debug.apk ]; then
-            cp build/app/outputs/flutter-apk/app-debug.apk android-builds/${{ env.OUTPUT_NAME }}-android-debug.apk
+            # Keep a consistent name so the release job glob always matches.
+            APK_NAME="${{ env.OUTPUT_NAME }}-android-debug.apk"
+            cp build/app/outputs/flutter-apk/app-debug.apk "android-builds/$APK_NAME"
+            echo "⚠️  Debug APK collected (no signing secrets): $APK_NAME"
           else
-            echo "ERROR: No APK from build."
+            echo "ERROR: No APK found after build step."
             exit 1
           fi
+          # Expose the filename to the release job via job output.
+          echo "apk_name=$APK_NAME" >> "$GITHUB_OUTPUT"
 
+          # --- AAB: release only, not required ---
           if [ -f build/app/outputs/bundle/release/app-release.aab ]; then
-            cp build/app/outputs/bundle/release/app-release.aab android-builds/${{ env.OUTPUT_NAME }}-android.aab
+            cp build/app/outputs/bundle/release/app-release.aab \
+               "android-builds/${{ env.OUTPUT_NAME }}-android.aab"
+            echo "✅ Release AAB collected"
           else
-            echo "⚠️ AAB not generated (release signing path required)."
+            echo "ℹ️  No AAB produced (expected when signing secrets are absent)."
           fi
+
+          echo "== android-builds contents =="
+          ls -lh android-builds/
 
       - name: Upload to Google Play
         if: ${{ env.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON != '' }}
@@ -273,7 +293,7 @@ jobs:
       - uses: actions/upload-artifact@v6
         with:
           name: android-builds
-          path: android-builds
+          path: android-builds/
 
   release:
     name: Publish release
@@ -282,34 +302,50 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Download build artifacts
+      # Download each artifact into its own subdirectory by name. The `name`
+      # parameter is required here; without it download-artifact@v4 downloads
+      # ALL artifacts (including coverage-report) and the multiline `pattern`
+      # filter used previously is not reliably supported.
+      - name: Download Windows artifact
         uses: actions/download-artifact@v4
         with:
-          path: artifacts
-          pattern: |
-            windows-x64/**
-            linux-x64/**
-            macos-x64/**
-            android-builds/**
-          merge-multiple: false
+          name: windows-x64
+          path: artifacts/windows-x64
+
+      - name: Download Linux artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-x64
+          path: artifacts/linux-x64
+
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-x64
+          path: artifacts/macos-x64
+
+      - name: Download Android artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: android-builds
+          path: artifacts/android-builds
 
       - name: Verify artifacts
         run: |
-          echo "== artifact root contents =="
-          ls -la .
-          if [ ! -d artifacts ]; then
-            echo "ERROR: artifacts directory not found. Download likely failed or artifact names changed."
-            exit 1
-          fi
-          echo "== downloaded artifacts contents =="
-          find artifacts -maxdepth 5 -type f -print
+          echo "== downloaded artifacts =="
+          find artifacts -type f | sort
+
+          # Hard-fail if any expected directory is empty or missing.
+          for dir in windows-x64 linux-x64 macos-x64 android-builds; do
+            count=$(find "artifacts/$dir" -type f 2>/dev/null | wc -l)
+            if [ "$count" -eq 0 ]; then
+              echo "ERROR: artifacts/$dir is empty or missing."
+              exit 1
+            fi
+          done
 
       - name: Generate checksum manifest
         run: |
-          if [ ! -d artifacts ]; then
-            echo "ERROR: artifacts directory not found during checksum step."
-            exit 1
-          fi
           cd artifacts
           find . -type f | sort | xargs sha256sum > ../SHA256SUMS.txt
           cat ../SHA256SUMS.txt
