@@ -101,18 +101,26 @@ class _HomeScreenState extends State<HomeScreen> {
     launchOnStartup = SettingsService.instance.launchOnStartup;
     usePersistentSidebar = SettingsService.instance.usePersistentSidebar;
     _downloadDestination = SettingsService.instance.downloadDestination;
-    _discoveredTorrents = List<TorrentModel>.from(
-      SettingsService.instance.discoveredTorrents,
-    );
-    _isMinerActive = SettingsService.instance.autoMiningActive;
-    _autoDownloadDiscovered = SettingsService.instance.autoDownloadDiscovered;
-    _sortMode = TorrentSortMode.values[
-      SettingsService.instance.torrentSortMode.clamp(
-        0,
-        TorrentSortMode.values.length - 1,
-      )
-    ];
-    _minSeeders = SettingsService.instance.minSeeders;
+
+    if (kTorrentFeatureEnabled) {
+      _discoveredTorrents = List<TorrentModel>.from(
+        SettingsService.instance.discoveredTorrents,
+      );
+      _isMinerActive = SettingsService.instance.autoMiningActive;
+      _autoDownloadDiscovered = SettingsService.instance.autoDownloadDiscovered;
+      _sortMode =
+          TorrentSortMode.values[SettingsService.instance.torrentSortMode.clamp(
+            0,
+            TorrentSortMode.values.length - 1,
+          )];
+      _minSeeders = SettingsService.instance.minSeeders;
+    } else {
+      _discoveredTorrents = [];
+      _isMinerActive = false;
+      _autoDownloadDiscovered = false;
+      _sortMode = TorrentSortMode.reputation;
+      _minSeeders = 0;
+    }
 
     if (IdentityService.instance.identity != null) {
       _identityNameController.text =
@@ -123,21 +131,26 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {});
     });
 
-    _torrentMiningTimer = Timer.periodic(const Duration(seconds: 20), (
-      _,
-    ) async {
-      if (!_isMinerActive) return;
-      await _performMiningSweep();
-    });
-
-    _engineSubscription = TorrentEngineService.instance.statusStream.listen((
-      status,
-    ) {
-      if (!mounted) return;
-      setState(() {
-        _engineStatuses[status.torrentId] = status;
+    if (kTorrentFeatureEnabled) {
+      _torrentMiningTimer = Timer.periodic(const Duration(seconds: 20), (
+        _,
+      ) async {
+        if (!_isMinerActive) return;
+        await _performMiningSweep();
       });
-    });
+
+      _engineSubscription = TorrentEngineService.instance.statusStream.listen((
+        status,
+      ) {
+        if (!mounted) return;
+        setState(() {
+          _engineStatuses[status.torrentId] = status;
+        });
+      });
+    } else {
+      _torrentMiningTimer = null;
+      _engineSubscription = null;
+    }
   }
 
   Future<void> _toggleSystemTray(bool value) async {
@@ -372,10 +385,17 @@ class _HomeScreenState extends State<HomeScreen> {
         'label': 'Dashboard',
         'view': MainView.dashboard,
       },
-      {'icon': Icons.storage, 'label': 'Torrents', 'view': MainView.torrents},
       {'icon': Icons.chat, 'label': 'Messages', 'view': MainView.messages},
       {'icon': Icons.cloud, 'label': 'Servers', 'view': MainView.server},
     ];
+
+    if (kTorrentFeatureEnabled) {
+      tabs.insert(1, {
+        'icon': Icons.storage,
+        'label': 'Torrents',
+        'view': MainView.torrents,
+      });
+    }
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -428,6 +448,18 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildMainContent(ThemeData theme) {
     switch (_mainView) {
       case MainView.torrents:
+        if (!kTorrentFeatureEnabled) {
+          return Center(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Text(
+                'Torrent features are disabled in this build.',
+                style: theme.textTheme.titleLarge,
+                textAlign: TextAlign.center,
+              ),
+            ),
+          );
+        }
         return _buildTorrentsArea(theme);
       case MainView.messages:
         return _buildMessagesArea(theme);
