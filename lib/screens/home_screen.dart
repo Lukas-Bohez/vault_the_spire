@@ -439,6 +439,80 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  Future<void> _showCreateTorrentSourceDialog() async {
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Create torrent from'),
+          content: const Text('Choose a file or directory to create torrent.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop('file'),
+              child: const Text('File'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop('directory'),
+              child: const Text('Folder'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(null),
+              child: const Text('Cancel'),
+            ),
+          ],
+        );
+      },
+    );
+    if (choice == 'file') {
+      await _pickFileAndCreateTorrent();
+    } else if (choice == 'directory') {
+      await _pickDirectoryAndCreateTorrent();
+    }
+  }
+
+  Future<void> _pickFileAndCreateTorrent() async {
+    final result = await FilePicker.platform.pickFiles(
+      allowMultiple: false,
+      type: FileType.any,
+    );
+    if (result == null || result.files.isEmpty) return;
+    final path = result.files.single.path;
+    if (path == null) return;
+
+    try {
+      await TorrentService.instance.addTorrentFromPath(path);
+      await _refreshLocalTorrents();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Torrent created from file and added.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to create torrent: $e')),
+      );
+    }
+  }
+
+  Future<void> _pickDirectoryAndCreateTorrent() async {
+    final path = await FilePicker.platform.getDirectoryPath();
+    if (path == null || path.isEmpty) return;
+
+    try {
+      await TorrentService.instance.addTorrentFromPath(path);
+      await _refreshLocalTorrents();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Torrent created from folder and added.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to create torrent: $e')),
+      );
+    }
+  }
+
   Future<void> _addTorrentFromInput() async {
     final text = _torrentInputController.text.trim();
     if (text.isEmpty) return;
@@ -914,23 +988,14 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildTorrentsArea(ThemeData theme) {
-    return DefaultTabController(
-      length: 1,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          const TabBar(
-            tabs: [
-              Tab(text: 'My Torrents'),
-            ],
-          ),
-          Expanded(
-            child: TabBarView(
-              children: [
-                _buildLocalTorrentTab(theme),
-              ],
-            ),
-          ),
+          Text('My Torrents', style: theme.textTheme.headlineSmall),
+          const SizedBox(height: 8),
+          Expanded(child: _buildLocalTorrentTab(theme)),
         ],
       ),
     );
@@ -991,9 +1056,6 @@ class _HomeScreenState extends State<HomeScreen> {
           return Text('Error loading torrents: ${snapshot.error}');
         }
         final torrents = snapshot.data ?? [];
-        if (torrents.isEmpty) {
-          return const Center(child: Text('No torrents yet.'));
-        }
 
         final sortedTorrents = List<TorrentModel>.from(torrents);
         sortedTorrents.sort((a, b) {
@@ -1046,6 +1108,17 @@ class _HomeScreenState extends State<HomeScreen> {
                   horizontal: 12,
                   vertical: 8,
                 ),
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.create_new_folder),
+                  label: const Text('Create torrent from file/folder'),
+                  onPressed: _showCreateTorrentSourceDialog,
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
                 child: Row(
                   children: [
                     const Text('Sort by:'),
@@ -1079,11 +1152,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               Expanded(
-                child: ListView.builder(
-                  padding: const EdgeInsets.all(12),
-                  itemCount: torrents.length,
-                  itemBuilder: (context, index) {
-                    final torrent = torrents[index];
+                child: torrents.isEmpty
+                    ? const Center(child: Text('No torrents yet.'))
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(12),
+                        itemCount: torrents.length,
+                        itemBuilder: (context, index) {
+                          final torrent = torrents[index];
                     final progress =
                         (torrent.totalSize != null && torrent.totalSize! > 0)
                         ? (torrent.bytesDown / torrent.totalSize!).clamp(
