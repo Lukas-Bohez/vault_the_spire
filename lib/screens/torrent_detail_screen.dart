@@ -67,6 +67,10 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
             LinearProgressIndicator(value: progress),
             const SizedBox(height: 8),
             Text('Progress: ${(progress * 100).toStringAsFixed(1)}%'),
+            const SizedBox(height: 8),
+            Text(
+              'Seeders: ${widget.torrent.seeders} • Leechers: ${widget.torrent.leechers}',
+            ),
             const SizedBox(height: 16),
             StreamBuilder<TorrentEngineStatus>(
               stream: TorrentEngineService.instance.statusStream.where(

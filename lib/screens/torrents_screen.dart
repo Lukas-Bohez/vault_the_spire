@@ -577,6 +577,13 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
                                           CrossAxisAlignment.start,
                                       children: [
                                         Text(
+                                          'Seeders: ${torrent.seeders}, Leechers: ${torrent.leechers}, Connected peers: ${status.peers}',
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            color: Colors.grey,
+                                          ),
+                                        ),
+                                        Text(
                                           'DL: ${speedDown.toStringAsFixed(1)} B/s • UL: ${speedUp.toStringAsFixed(1)} B/s • peers: ${status.peers}',
                                           style: const TextStyle(
                                             fontSize: 12,
