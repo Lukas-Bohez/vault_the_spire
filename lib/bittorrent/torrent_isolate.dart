@@ -1,4 +1,3 @@
-import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 
 // Helper functions to shift heavy operations in the bittorrent engine off of the main UI isolate.

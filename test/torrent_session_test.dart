@@ -26,7 +26,7 @@ void main() {
       tempDir,
       dht,
     );
-    expect(session.metadata.name, 'test');
+    expect(session.metadata!.name, 'test');
 
     final statuses = <TorrentStatus>[];
     final sub = session.statusStream.listen(statuses.add);

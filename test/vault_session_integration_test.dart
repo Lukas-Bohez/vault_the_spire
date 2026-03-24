@@ -3,8 +3,10 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vault_the_spire/bittorrent/piece_manager.dart';
+import 'package:vault_the_spire/bittorrent/torrent_file.dart';
 import 'package:vault_the_spire/bittorrent/torrent_session.dart';
 import 'package:vault_the_spire/bittorrent/dht.dart';
+import 'package:vault_the_spire/vault_swarm/vault_piece.dart';
 
 void main() {
   late Directory tempDir;
@@ -80,8 +82,9 @@ void main() {
       dhtEngine: DhtEngine(DhtRoutingTable(DhtEngine.generateNodeId())),
     );
 
-    // Using same bytes; VaultPiece.decryptPiece is in place for real case.
-    await session.onPieceReceived(0, Uint8List.fromList([5, 6]));
+    // Encrypt the input first, because VaultSession.decryptPiece expects an encrypted payload.
+    final encryptedPiece = VaultPiece.encryptPiece(Uint8List.fromList([5, 6]), vaultKey);
+    await session.onPieceReceived(0, encryptedPiece);
     final stored = await pieceManager.readPiece(0);
 
     expect(stored, isNotNull);

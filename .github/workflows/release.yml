@@ -210,18 +210,19 @@ jobs:
           KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "❌ ANDROID_KEYSTORE_BASE64 secret is required for release builds"
+            echo "❌ ANDROID_KEYSTORE_BASE64 secret is missing — release builds must be properly signed"
+            echo "Add the four secrets in GitHub → Settings → Secrets and variables → Actions"
             exit 1
           fi
           set -euo pipefail
-          echo "$KEYSTORE_BASE64" | base64 --decode > android/release.keystore
+          echo "$KEYSTORE_BASE64" | base64 --decode > android/app/release.keystore
           cat > android/key.properties <<EOF
           storePassword=$KEYSTORE_PASSWORD
           keyPassword=$KEY_PASSWORD
           keyAlias=$KEY_ALIAS
           storeFile=release.keystore
           EOF
-          echo "✅ Keystore configured for release signing"
+          echo "✅ Release keystore configured"
 
       - name: Install dependencies
         run: flutter pub get

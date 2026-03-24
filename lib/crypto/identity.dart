@@ -2,7 +2,6 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:cryptography/cryptography.dart';
-import 'package:crypto/crypto.dart' as crypto;
 
 class Identity {
   final String publicKeyBase64;

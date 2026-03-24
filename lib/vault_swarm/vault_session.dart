@@ -3,7 +3,6 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:collection/collection.dart';
-import 'package:vault_the_spire/bittorrent/dht.dart';
 import 'package:vault_the_spire/bittorrent/piece_manager.dart';
 import 'package:vault_the_spire/bittorrent/torrent_session.dart';
 import 'package:vault_the_spire/vault_swarm/vault_link.dart';

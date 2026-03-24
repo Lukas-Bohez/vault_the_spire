@@ -11,7 +11,7 @@ Future<void> setupServiceLocator() async {
   sl.registerLazySingleton<IdentityService>(() => IdentityService.instance);
   sl.registerLazySingleton<SettingsService>(() => SettingsService.instance);
   sl.registerLazySingleton<ThemeService>(() => ThemeService.instance);
-  sl.registerLazySingleton<StartupService>(() => StartupService.instance);
+  sl.registerLazySingleton<StartupService>(() => StartupService());
   sl.registerLazySingleton<TrayService>(() => TrayService(
         shouldMinimiseToTray: () => SettingsService.instance.minimizeToTrayOnClose,
         onTrayShow: () async {

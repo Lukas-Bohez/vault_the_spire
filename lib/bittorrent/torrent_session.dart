@@ -115,14 +115,22 @@ abstract class TorrentSession {
   void dispose() {
     _statusCtrl.close();
   }
+
+  static Future<StandardTorrentSession> openFromTorrentFile(
+    Uint8List torrentData,
+    Directory appDir,
+    DhtEngine dhtEngine,
+  ) async {
+    return StandardTorrentSession.openFromTorrentFile(torrentData, appDir, dhtEngine);
+  }
 }
 
 class StandardTorrentSession extends TorrentSession {
   StandardTorrentSession({
-    required TorrentMetadata metadata,
-    required PieceManager pieceManager,
-    required DhtEngine dhtEngine,
-  }) : super(metadata: metadata, pieceManager: pieceManager, dhtEngine: dhtEngine);
+    required super.metadata,
+    required super.pieceManager,
+    required super.dhtEngine,
+  });
 
   @override
   Future<void> onPieceReceived(int index, Uint8List data) async {
@@ -187,11 +195,11 @@ class VaultTorrentSession extends TorrentSession {
   final Uint8List key;
 
   VaultTorrentSession({
-    required TorrentMetadata metadata,
+    required super.metadata,
     required this.key,
-    required PieceManager pieceManager,
-    DhtEngine? dhtEngine,
-  }) : super(metadata: metadata, pieceManager: pieceManager, dhtEngine: dhtEngine);
+    required super.pieceManager,
+    super.dhtEngine,
+  });
 
   @override
   Future<void> onPieceReceived(int index, Uint8List data) async {

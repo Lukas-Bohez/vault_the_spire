@@ -1,3 +1,6 @@
+import java.io.FileInputStream
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -24,7 +27,7 @@ android {
         applicationId = "com.example.vault_the_spire"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = 21
+        minSdk = flutter.minSdkVersion
         targetSdk = 36 // keep in sync with compileSdk for current plugin requirements
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -32,12 +35,12 @@ android {
 
     signingConfigs {
         create("release") {
-            val keystoreProperties = java.util.Properties().apply {
-                load(java.io.FileInputStream(rootProject.file("key.properties")))
+            val keystoreProperties = Properties().apply {
+                load(FileInputStream(rootProject.file("key.properties")))
             }
             keyAlias = keystoreProperties["keyAlias"] as String
             keyPassword = keystoreProperties["keyPassword"] as String
-            storeFile = keystoreProperties["storeFile"]?.let { file(it as String) }
+            storeFile = keystoreProperties["storeFile"]?.let { file(it.toString()) }
             storePassword = keystoreProperties["storePassword"] as String
         }
     }
