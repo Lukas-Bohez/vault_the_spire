@@ -145,15 +145,25 @@ class AppDatabase {
     }
 
     if (oldVersion < 3) {
-      await db.execute('''
-        ALTER TABLE chat_messages ADD COLUMN edited_at INTEGER;
-      ''');
-      await db.execute('''
-        ALTER TABLE chat_messages ADD COLUMN reply_to TEXT;
-      ''');
-      await db.execute('''
-        ALTER TABLE chat_messages ADD COLUMN reactions TEXT;
-      ''');
+      if (!await _tableExists(db, 'chat_messages')) {
+        await _createChatTables(db);
+      } else {
+        if (!await _columnExists(db, 'chat_messages', 'edited_at')) {
+          await db.execute(
+            'ALTER TABLE chat_messages ADD COLUMN edited_at INTEGER;',
+          );
+        }
+        if (!await _columnExists(db, 'chat_messages', 'reply_to')) {
+          await db.execute(
+            'ALTER TABLE chat_messages ADD COLUMN reply_to TEXT;',
+          );
+        }
+        if (!await _columnExists(db, 'chat_messages', 'reactions')) {
+          await db.execute(
+            'ALTER TABLE chat_messages ADD COLUMN reactions TEXT;',
+          );
+        }
+      }
     }
 
     if (oldVersion < 4) {
@@ -172,7 +182,16 @@ class AppDatabase {
     await _ensureTorrentColumns(db);
   }
 
+  Future<bool> _tableExists(Database db, String table) async {
+    final result = await db.rawQuery(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name=?;",
+      [table],
+    );
+    return result.isNotEmpty;
+  }
+
   Future<bool> _columnExists(Database db, String table, String column) async {
+    if (!await _tableExists(db, table)) return false;
     final result = await db.rawQuery('PRAGMA table_info($table);');
     return result.any((row) => row['name'] == column);
   }
@@ -193,13 +212,19 @@ class AppDatabase {
 
   Future<void> _ensureTorrentColumns(Database db) async {
     if (!await _columnExists(db, 'torrents', 'seeders')) {
-      await db.execute('ALTER TABLE torrents ADD COLUMN seeders INTEGER DEFAULT 0;');
+      await db.execute(
+        'ALTER TABLE torrents ADD COLUMN seeders INTEGER DEFAULT 0;',
+      );
     }
     if (!await _columnExists(db, 'torrents', 'leechers')) {
-      await db.execute('ALTER TABLE torrents ADD COLUMN leechers INTEGER DEFAULT 0;');
+      await db.execute(
+        'ALTER TABLE torrents ADD COLUMN leechers INTEGER DEFAULT 0;',
+      );
     }
     if (!await _columnExists(db, 'torrents', 'reputation')) {
-      await db.execute('ALTER TABLE torrents ADD COLUMN reputation REAL DEFAULT 0.0;');
+      await db.execute(
+        'ALTER TABLE torrents ADD COLUMN reputation REAL DEFAULT 0.0;',
+      );
     }
   }
 
