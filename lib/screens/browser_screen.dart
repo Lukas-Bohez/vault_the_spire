@@ -416,6 +416,13 @@ class _BrowserScreenState extends State<BrowserScreen> {
           final uri = Uri.parse(url);
           if (uri.isScheme('http') || uri.isScheme('https')) {
             final client = HttpClient();
+            client.badCertificateCallback = (cert, host, port) {
+              // Allow local/self-signed certs during development; crucial for bootstrapping
+              // when running behind intercepting proxies or missing system CA chain.
+              // Remove or restrict in production.
+              debugPrint('TLS bad cert for $host:$port - cert=${cert.toString()}');
+              return true;
+            };
             try {
               final request = await client.getUrl(uri);
               final response = await request.close();
