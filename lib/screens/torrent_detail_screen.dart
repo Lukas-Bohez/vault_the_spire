@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:vault_the_spire/models/torrent.dart';
 import 'package:vault_the_spire/services/torrent_engine_service.dart';
+import 'package:vault_the_spire/widgets/connection_status_tile.dart';
 
 class TorrentDetailScreen extends StatefulWidget {
   final TorrentModel torrent;
@@ -91,19 +92,27 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
                   );
                 }
 
+                final statusMessage = getStatusLabel(status);
+                final hasError = status.state.toLowerCase().contains('error') ||
+                    status.state.toLowerCase().contains('failed');
+
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Status: ${status.state}'),
+                    ConnectionStatusTile(
+                      dhtNodes: status.dhtNodes,
+                      peers: status.peers,
+                      downloadSpeed: status.downloadSpeed / 1024,
+                      statusMessage: statusMessage,
+                      hasError: hasError,
+                    ),
+                    const SizedBox(height: 8),
+                    Text('State: ${status.state}'),
                     Text('Type: ${widget.torrent.type}'),
                     Text('Size: ${widget.torrent.totalSize ?? 0} bytes'),
                     Text('Downloaded: ${status.downloaded}'),
                     Text('Uploaded: ${status.uploaded}'),
-                    Text('Peers: ${status.peers}'),
-
-                    Text(
-                      'Progress engine: ${(status.progress * 100).toStringAsFixed(1)}%',
-                    ),
+                    Text('Progress engine: ${(status.progress * 100).toStringAsFixed(1)}%'),
                   ],
                 );
               },
@@ -123,5 +132,23 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
         ),
       ),
     );
+  }
+
+  String getStatusLabel(TorrentEngineStatus status) {
+    if (status.state.toLowerCase().contains('paused')) {
+      return '⏸️ Paused';
+    }
+
+    if (status.downloaded <= 0) {
+      if (status.peers == 0 && status.dhtNodes < 5) {
+        return '🛰️ Bootstrapping DHT... (Checking network)';
+      }
+      if (status.peers == 0) {
+        return '🔍 Searching for peers...';
+      }
+      return '📥 Downloading metadata...';
+    }
+
+    return '🚀 Downloading data...';
   }
 }

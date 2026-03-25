@@ -17,6 +17,7 @@ class TorrentEngineStatus {
   final double progress;
   final String state;
   final int peers;
+  final int dhtNodes;
   final int seeders;
   final int leechers;
   final double downloadSpeed;
@@ -29,6 +30,7 @@ class TorrentEngineStatus {
     required this.progress,
     required this.state,
     required this.peers,
+    required this.dhtNodes,
     required this.downloadSpeed,
     required this.uploadSpeed,
     this.seeders = 0,
@@ -47,7 +49,26 @@ class TorrentEngineService {
   final _statusController = StreamController<TorrentEngineStatus>.broadcast();
   Stream<TorrentEngineStatus> get statusStream => _statusController.stream;
 
+  static const List<String> _fallbackDhtBootstraps = [
+    'router.bittorrent.com:6881',
+    'dht.transmissionbt.com:6881',
+    'router.utorrent.com:6881',
+  ];
+
   bool isRunning(String torrentId) => _tasks.containsKey(torrentId);
+
+  void _addFallbackDhtNodes(dt.TorrentTask task) {
+    for (final node in _fallbackDhtBootstraps) {
+      try {
+        final dynTask = task as dynamic;
+        final uri = Uri.parse('udp://$node');
+        dynTask.addDHTNode(uri);
+      } catch (e) {
+        print('⚠️ Could not add fallback DHT node $node: $e');
+      }
+    }
+  }
+
 
   Future<void> startTorrent(String torrentId, {String? destinationPath}) async {
     if (isRunning(torrentId)) return;
@@ -101,6 +122,9 @@ class TorrentEngineService {
     for (final node in dtModel.nodes) {
       task.addDHTNode(node);
     }
+
+    // Add static fallback DHT bootstraps for resiliency.
+    _addFallbackDhtNodes(task);
 
     await task.start();
 
@@ -198,6 +222,9 @@ class TorrentEngineService {
       task.addDHTNode(node);
     }
 
+    // Add static fallback DHT bootstraps for resiliency.
+    _addFallbackDhtNodes(task);
+
     await task.start();
 
     // Hand off peers already connected during metadata fetch.
@@ -214,17 +241,35 @@ class TorrentEngineService {
   void _wireEvents(String torrentId, dt.TorrentTask task) {
     task.createListener()
       ..on<dt.StateFileUpdated>((_) {
+        print('🔁 [$torrentId] StateFileUpdated');
         _emitStats(torrentId, task, 'downloading');
       })
       ..on<dt.TaskCompleted>((_) async {
+        print('✅ [$torrentId] TaskCompleted');
         _emitStats(torrentId, task, 'completed');
         await TorrentService.instance
             .updateTorrentStatus(torrentId, 'completed');
         _cleanup(torrentId);
       })
       ..on<dt.TaskStopped>((_) {
+        print('⏹️ [$torrentId] TaskStopped');
         _cleanup(torrentId);
       });
+
+    // Optional task-level exception callback if supported by library.
+    try {
+      final dynamicTask = task as dynamic;
+      if (dynamicTask.onException != null) {
+        dynamicTask.onException((e) {
+          print('🛑 [$torrentId] Task exception: $e');
+          if (e is FileSystemException || e.toString().contains('FileSystemException')) {
+            print('⚠️ [$torrentId] FileSystemException detected.');
+          }
+        });
+      }
+    } catch (_) {
+      // ignore - not supported by dtorrent_task API
+    }
   }
 
   void _startPollTimer(String torrentId, dt.TorrentTask task) {
@@ -241,6 +286,14 @@ class TorrentEngineService {
     final dlSpeed = task.currentDownloadSpeed * 1000;
     final ulSpeed = task.uploadSpeed * 1000;
 
+    var dhtNodes = 0;
+    try {
+      final dyn = task as dynamic;
+      dhtNodes = (dyn.dhtNodesNumber ?? dyn.dhtNodeCount ?? 0) as int;
+    } catch (_) {
+      dhtNodes = 0;
+    }
+
     _statusController.add(TorrentEngineStatus(
       torrentId: torrentId,
       downloaded: downloaded,
@@ -248,6 +301,7 @@ class TorrentEngineService {
       progress: task.progress,
       state: state,
       peers: task.connectedPeersNumber,
+      dhtNodes: dhtNodes,
       seeders: task.seederNumber,
       downloadSpeed: dlSpeed,
       uploadSpeed: ulSpeed,

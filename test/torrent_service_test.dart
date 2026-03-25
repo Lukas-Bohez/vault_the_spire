@@ -21,6 +21,7 @@ void main() {
       progress: 0.5,
       state: 'downloading',
       peers: 3,
+      dhtNodes: 4,
       seeders: 1,
       leechers: 2,
       downloadSpeed: 1234,
