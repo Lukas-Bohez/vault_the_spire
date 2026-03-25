@@ -85,16 +85,18 @@ class TorrentEngineService {
     _tasks[torrent.id] = task;
     _wireEvents(torrent.id, task);
 
-    // Prepare tracker/DHT before starting so startup can immediately connect.
-    final infoHashBytes = dtModel.truncatedInfoHash;
-    for (final url in dtModel.announces) {
-      task.startAnnounceUrl(url, infoHashBytes);
-    }
+    // Prepare DHT before starting so startup can immediately connect.
     for (final node in dtModel.nodes) {
       task.addDHTNode(node);
     }
 
     await task.start();
+
+    // Announce to trackers after task start (tracker is initialized in start()).
+    final infoHashBytes = dtModel.truncatedInfoHash;
+    for (final url in dtModel.announces) {
+      task.startAnnounceUrl(url, infoHashBytes);
+    }
 
     // Kick DHT peer discovery immediately after start.
     task.requestPeersFromDHT();
@@ -225,13 +227,16 @@ class TorrentEngineService {
       task.addDHTNode(node);
     }
 
-    // Use truncated (20-byte) info hash for tracker announces.
+    await task.start();
+
+    // Announce to trackers after task start (task.start() initializes tracker).
     final infoHashBytes = dtModel.truncatedInfoHash;
-    for (final url in dtModel.announces) {
+    final trackerUrls = magnet.trackers.isNotEmpty
+        ? magnet.trackers
+        : dtModel.announces;
+    for (final url in trackerUrls) {
       task.startAnnounceUrl(url, infoHashBytes);
     }
-
-    await task.start();
 
     // Hand off peers from metadata downloader — avoids full DHT reconnection.
     for (final peer in downloader.activePeers) {
@@ -249,9 +254,22 @@ class TorrentEngineService {
 
   void _wireEvents(String torrentId, dt.TorrentTask task) {
     task.createListener()
+      // Emit initial status on start/resume/paused events.
+      ..on<dt.TaskStarted>((_) {
+        _emitStats(torrentId, task, 'downloading');
+      })
+      ..on<dt.TaskResumed>((_) {
+        _emitStats(torrentId, task, 'downloading');
+      })
+      ..on<dt.TaskPaused>((_) {
+        _emitStats(torrentId, task, 'paused');
+      })
       // StateFileUpdated fires every time a piece is verified and written to disk.
-      // This is the ONLY correct place to read stats — timer polls read stale values.
+      // This is the best place to read stats.
       ..on<dt.StateFileUpdated>((_) {
+        _emitStats(torrentId, task, 'downloading');
+      })
+      ..on<dt.TaskFileCompleted>((_) {
         _emitStats(torrentId, task, 'downloading');
       })
       ..on<dt.TaskCompleted>((_) async {
