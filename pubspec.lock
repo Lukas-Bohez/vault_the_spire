@@ -178,7 +178,7 @@ packages:
     source: hosted
     version: "0.4.4"
   dtorrent_common:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: dtorrent_common
       sha256: "0ebe177fdaec7d3258ec77265d93743703c3c0e3a8b6b6f614b2883ebdaab1f5"

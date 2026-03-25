@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:b_encode_decode/b_encode_decode.dart';
+import 'package:dtorrent_common/dtorrent_common.dart';
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart' as dt;
 import 'package:path_provider/path_provider.dart';
 
@@ -18,8 +19,8 @@ class TorrentEngineStatus {
   final int peers;
   final int seeders;
   final int leechers;
-  final double downloadSpeed; // bytes/s
-  final double uploadSpeed; // bytes/s
+  final double downloadSpeed;
+  final double uploadSpeed;
 
   const TorrentEngineStatus({
     required this.torrentId,
@@ -48,74 +49,65 @@ class TorrentEngineService {
 
   bool isRunning(String torrentId) => _tasks.containsKey(torrentId);
 
-  Future<void> startTorrent(String torrentId, {String? destinationPath}) async {
+  Future<void> startTorrent(String torrentId) async {
     if (isRunning(torrentId)) return;
     final torrent = await TorrentService.instance.getTorrentById(torrentId);
     if (torrent == null) throw StateError('Torrent not found: $torrentId');
 
     if (torrent.type == 'torrent_file' && torrent.filePath != null) {
-      await _startFromFile(torrent, destinationPath);
+      await _startFromFile(torrent);
     } else if (torrent.magnetLink != null) {
-      await _startFromMagnet(torrent, destinationPath);
+      await _startFromMagnet(torrent);
     } else {
       throw StateError('Torrent has no source');
     }
   }
 
-  Future<void> _startFromFile(
-    TorrentModel torrent,
-    String? destinationPath,
-  ) async {
+  Future<void> _startFromFile(TorrentModel torrent) async {
+    // torrent.filePath is the path to the .torrent FILE, not a download folder.
     final dtModel = await dt.TorrentModel.parse(torrent.filePath!);
-    final saveDir = destinationPath != null && destinationPath.isNotEmpty
-        ? destinationPath
-        : await _defaultDownloadDir();
+    final saveDir = await _defaultDownloadDir();
 
-    // Persist size so UI shows real value immediately.
     final totalBytes = dtModel.files.fold<int>(0, (s, f) => s + f.length);
     if (totalBytes > 0 && (torrent.totalSize ?? 0) != totalBytes) {
-      await TorrentService.instance.updateTorrent(
-        torrent.copyWith(totalSize: totalBytes),
-      );
+      await TorrentService.instance
+          .updateTorrent(torrent.copyWith(totalSize: totalBytes));
     }
 
     final task = dt.TorrentTask.newTask(dtModel, saveDir);
 
+    // Wire events BEFORE start() — pieces can complete immediately on resume.
     _tasks[torrent.id] = task;
     _wireEvents(torrent.id, task);
 
     await task.start();
 
-    final trackerUrls = dtModel.announces.isNotEmpty
-        ? dtModel.announces
-        : <Uri>[
-            Uri.parse('udp://tracker.openbittorrent.com:80/announce'),
-            Uri.parse('udp://tracker.opentrackr.org:1337/announce'),
-          ];
-
-    for (final url in trackerUrls) {
+    // Announce to every tracker embedded in the .torrent file.
+    // infoHashBuffer is the correct Uint8List property name.
+    for (final url in dtModel.announces) {
       task.startAnnounceUrl(url, dtModel.infoHashBuffer);
     }
 
+    // Subscribe to public tracker list — this is what gets peers flowing even
+    // when the .torrent file's own trackers are dead or empty.
+    // findPublicTrackers() is from dtorrent_common, fetches from the internet.
+    findPublicTrackers().listen((urls) {
+      for (final url in urls) {
+        task.startAnnounceUrl(url, dtModel.infoHashBuffer);
+      }
+    });
+
+    // Feed DHT bootstrap nodes from the torrent file.
     for (final node in dtModel.nodes) {
       task.addDHTNode(node);
     }
 
-    // Ensure DHT is queried immediately for peers.
-    task.requestPeersFromDHT();
-
-    await TorrentService.instance.updateTorrentStatus(
-      torrent.id,
-      'downloading',
-    );
+    await TorrentService.instance.updateTorrentStatus(torrent.id, 'downloading');
     _startPollTimer(torrent.id, task);
     _startScrapeTimer(torrent.id, task);
   }
 
-  Future<void> _startFromMagnet(
-    TorrentModel torrent,
-    String? destinationPath,
-  ) async {
+  Future<void> _startFromMagnet(TorrentModel torrent) async {
     final magnet = dt.MagnetParser.parse(torrent.magnetLink!);
     if (magnet == null) throw FormatException('Invalid magnet link');
 
@@ -126,45 +118,24 @@ class TorrentEngineService {
       ..on<dt.MetaDataDownloadComplete>((event) {
         if (completer.isCompleted) return;
         try {
-          final rawData = event.data;
-          final msg = decode(
-            rawData is Uint8List ? rawData : Uint8List.fromList(rawData),
-          );
-          if (msg is! Map<String, dynamic>) {
+          // event.data is the raw bencoded info-dict bytes.
+          // decode() from b_encode_decode returns Map<dynamic, dynamic> with
+          // Uint8List keys — NOT Map<String, dynamic>.
+          // DO NOT type-check with "is Map<String, dynamic>" — it always fails
+          // for real bencode data and silently breaks every magnet download.
+          // Just pass the raw decoded value directly to parseTorrentFileContent.
+          final msg = decode(event.data is Uint8List
+              ? event.data as Uint8List
+              : Uint8List.fromList(event.data as List<int>));
+
+          final model =
+              dt.parseTorrentFileContent(<String, dynamic>{'info': msg});
+          if (model != null) {
+            completer.complete(model);
+          } else {
             completer.completeError(
-              StateError('Invalid metadata format from DHT'),
-            );
-            return;
+                StateError('parseTorrentFileContent returned null'));
           }
-
-          Map<String, dynamic> normalizeMap(Map<String, dynamic> map) {
-            final result = <String, dynamic>{};
-            map.forEach((key, value) {
-              if (value is List<int>) {
-                result[key] = Uint8List.fromList(value);
-              } else if (value is Uint8List) {
-                result[key] = value;
-              } else if (value is List) {
-                result[key] = value.map((v) {
-                  if (v is List<int>) return Uint8List.fromList(v);
-                  if (v is Map<String, dynamic>) return normalizeMap(v);
-                  return v;
-                }).toList();
-              } else if (value is Map<String, dynamic>) {
-                result[key] = normalizeMap(value);
-              } else {
-                result[key] = value;
-              }
-            });
-            return result;
-          }
-
-          final cleanInfo = normalizeMap(msg);
-
-          final model = dt.TorrentParser.parseFromMap(<String, dynamic>{
-            'info': cleanInfo,
-          });
-          completer.complete(model);
         } catch (e) {
           completer.completeError(e);
         }
@@ -183,15 +154,12 @@ class TorrentEngineService {
           throw TimeoutException('Metadata timed out for ${torrent.id}'),
     );
 
-    final saveDir = destinationPath != null && destinationPath.isNotEmpty
-        ? destinationPath
-        : await _defaultDownloadDir();
+    final saveDir = await _defaultDownloadDir();
 
     final totalBytes = dtModel.files.fold<int>(0, (s, f) => s + f.length);
     if (totalBytes > 0) {
-      await TorrentService.instance.updateTorrent(
-        torrent.copyWith(totalSize: totalBytes),
-      );
+      await TorrentService.instance
+          .updateTorrent(torrent.copyWith(totalSize: totalBytes));
     }
 
     final task = dt.TorrentTask.newTask(
@@ -209,59 +177,48 @@ class TorrentEngineService {
     _tasks[torrent.id] = task;
     _wireEvents(torrent.id, task);
 
-    for (final node in dtModel.nodes) {
-      task.addDHTNode(node);
-    }
-
     await task.start();
 
+    // Announce to trackers from the magnet link + parsed model.
     final infoHash = dtModel.infoHashBuffer;
-    final trackerUrls = <Uri>{...magnet.trackers, ...dtModel.announces};
-    if (trackerUrls.isEmpty) {
-      trackerUrls.addAll(<Uri>[
-        Uri.parse('udp://tracker.openbittorrent.com:80/announce'),
-        Uri.parse('udp://tracker.opentrackr.org:1337/announce'),
-      ]);
-    }
-    for (final url in trackerUrls) {
-      task.startAnnounceUrl(url, infoHash);
+    final seenUrls = <String>{};
+    for (final url in [...magnet.trackers, ...dtModel.announces]) {
+      final s = url.toString();
+      if (seenUrls.add(s)) task.startAnnounceUrl(url, infoHash);
     }
 
+    // Public tracker list — ensures peers even without tracker URLs in magnet.
+    findPublicTrackers().listen((urls) {
+      for (final url in urls) {
+        task.startAnnounceUrl(url, infoHash);
+      }
+    });
+
+    // Hand off peers already connected during metadata fetch.
+    // This is what gets pieces flowing immediately.
     for (final peer in downloader.activePeers) {
       task.addPeer(peer.address, dt.PeerSource.manual, type: peer.type);
     }
 
-    // Force DHT peer discovery even if no pieces yet.
-    task.requestPeersFromDHT();
+    // DHT bootstrap nodes from parsed metadata.
+    for (final node in dtModel.nodes) {
+      task.addDHTNode(node);
+    }
 
-    await TorrentService.instance.updateTorrentStatus(
-      torrent.id,
-      'downloading',
-    );
+    await TorrentService.instance.updateTorrentStatus(torrent.id, 'downloading');
     _startPollTimer(torrent.id, task);
     _startScrapeTimer(torrent.id, task);
   }
 
   void _wireEvents(String torrentId, dt.TorrentTask task) {
     task.createListener()
-      ..on<dt.TaskStarted>((_) {
-        _emitStats(torrentId, task, 'downloading');
-      })
-      ..on<dt.TaskResumed>((_) {
-        _emitStats(torrentId, task, 'downloading');
-      })
-      ..on<dt.TaskPaused>((_) {
-        _emitStats(torrentId, task, 'paused');
-      })
       ..on<dt.StateFileUpdated>((_) {
         _emitStats(torrentId, task, 'downloading');
       })
       ..on<dt.TaskCompleted>((_) async {
         _emitStats(torrentId, task, 'completed');
-        await TorrentService.instance.updateTorrentStatus(
-          torrentId,
-          'completed',
-        );
+        await TorrentService.instance
+            .updateTorrentStatus(torrentId, 'completed');
         _cleanup(torrentId);
       })
       ..on<dt.TaskStopped>((_) {
@@ -270,6 +227,8 @@ class TorrentEngineService {
   }
 
   void _startPollTimer(String torrentId, dt.TorrentTask task) {
+    // Poll every 2 s so the UI stays alive during peer discovery
+    // (StateFileUpdated only fires once pieces start writing to disk).
     _pollTimers[torrentId] = Timer.periodic(const Duration(seconds: 2), (_) {
       _emitStats(torrentId, task, 'downloading');
     });
@@ -277,37 +236,28 @@ class TorrentEngineService {
 
   void _emitStats(String torrentId, dt.TorrentTask task, String state) {
     final downloaded = task.downloaded ?? 0;
+    // Speed is in bytes/ms — multiply by 1000 for bytes/s.
     final dlSpeed = task.currentDownloadSpeed * 1000;
     final ulSpeed = task.uploadSpeed * 1000;
 
-    final peers = task.connectedPeersNumber;
-    final seeders = task.seederNumber;
-    final allPeers = task.allPeersNumber;
-
-    // Debug trace for offline diagnosis.
-    print(
-      'TORRENT-ENGINE: id=$torrentId state=$state progress=${task.progress.toStringAsFixed(4)} downloaded=$downloaded peers=$peers allPeers=$allPeers seeders=$seeders dl=${dlSpeed.toStringAsFixed(2)} ul=${ulSpeed.toStringAsFixed(2)}',
-    );
-
-    _statusController.add(
-      TorrentEngineStatus(
-        torrentId: torrentId,
-        downloaded: downloaded,
-        uploaded: 0,
-        progress: task.progress,
-        state: state,
-        peers: peers,
-        seeders: seeders,
-        downloadSpeed: dlSpeed,
-        uploadSpeed: ulSpeed,
-      ),
-    );
+    _statusController.add(TorrentEngineStatus(
+      torrentId: torrentId,
+      downloaded: downloaded,
+      uploaded: 0,
+      progress: task.progress,
+      state: state,
+      peers: task.connectedPeersNumber,
+      seeders: task.seederNumber,
+      downloadSpeed: dlSpeed,
+      uploadSpeed: ulSpeed,
+    ));
 
     TorrentService.instance.updateProgress(torrentId, downloaded, 0);
   }
 
   void _startScrapeTimer(String torrentId, dt.TorrentTask task) {
-    _scrapeTimers[torrentId] = Timer.periodic(const Duration(seconds: 30), (_) {
+    _scrapeTimers[torrentId] =
+        Timer.periodic(const Duration(seconds: 30), (_) {
       _doScrape(torrentId, task);
     });
     _doScrape(torrentId, task);
@@ -317,15 +267,18 @@ class TorrentEngineService {
     try {
       final result = await task.scrapeTracker();
       if (!result.isSuccess) return;
+      // task.metaInfo.infoHash is the confirmed property for scrape lookup.
       final stats = result.getStatsForInfoHash(task.metaInfo.infoHash);
       if (stats == null) return;
-      final existing = await TorrentService.instance.getTorrentById(torrentId);
+      final existing =
+          await TorrentService.instance.getTorrentById(torrentId);
       if (existing == null) return;
       await TorrentService.instance.updateTorrent(
-        existing.copyWith(seeders: stats.complete, leechers: stats.incomplete),
+        existing.copyWith(
+            seeders: stats.complete, leechers: stats.incomplete),
       );
     } catch (_) {
-      // Best-effort � scrape failure must never crash the engine.
+      // Best-effort — scrape failure must never crash the engine.
     }
   }
 
@@ -357,9 +310,14 @@ class TorrentEngineService {
     }
   }
 
+  // Always save to Documents/VaultTheSpire.
+  // torrent.filePath for torrent_file type is the .torrent FILE path — never
+  // use it as a download destination or you'll try to write into wherever the
+  // user dragged the .torrent from.
   Future<String> _defaultDownloadDir() async {
     final docs = await getApplicationDocumentsDirectory();
-    final dir = Directory('${docs.path}${Platform.pathSeparator}VaultTheSpire');
+    final dir =
+        Directory('${docs.path}${Platform.pathSeparator}VaultTheSpire');
     if (!await dir.exists()) await dir.create(recursive: true);
     return dir.path;
   }
