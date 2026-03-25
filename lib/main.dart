@@ -47,7 +47,10 @@ Future<void> main() async {
       await setupServiceLocator();
       await _initSqlCipherOnAndroid();
       await _requestAndroidPermissions();
-      await initBackgroundService();
+
+      if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
+        await initBackgroundService();
+      }
 
       if (!kIsWeb && (Platform.isWindows || Platform.isLinux)) {
         sqfliteFfiInit();
