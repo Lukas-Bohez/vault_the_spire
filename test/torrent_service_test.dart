@@ -51,6 +51,27 @@ void main() {
     expect(SettingsService.instance.browserFavorites, equals(favorites));
   });
 
+  test('SettingsService can persist browser last URL and history', () async {
+    SharedPreferences.setMockInitialValues(<String, Object>{});
+
+    const lastUrl = 'https://example.com/page';
+    const history = ['2024-01-15T14:22:01.000 https://example.com'];
+
+    await SettingsService.instance.setBrowserLastUrl(lastUrl);
+    await SettingsService.instance.setBrowserHistory(history);
+
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString('browser_last_url'), equals(lastUrl));
+    expect(prefs.getStringList('browser_history'), equals(history));
+
+    SettingsService.instance.browserLastUrl = '';
+    SettingsService.instance.browserHistory = [];
+    await SettingsService.instance.load();
+
+    expect(SettingsService.instance.browserLastUrl, equals(lastUrl));
+    expect(SettingsService.instance.browserHistory, equals(history));
+  });
+
   test('normalizeTorrentUrl preserves magnet and local torrent and adds scheme for plain URLs', () {
     expect(TorrentService.normalizeTorrentUrl('magnet:?xt=urn:btih:abc'), 'magnet:?xt=urn:btih:abc');
     expect(TorrentService.normalizeTorrentUrl('file:///tmp/foo.torrent'), 'file:///tmp/foo.torrent');

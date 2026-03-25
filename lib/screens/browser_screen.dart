@@ -1,5 +1,4 @@
 ﻿import 'dart:async';
-import 'dart:ffi';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -8,9 +7,10 @@ import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_windows/webview_windows.dart' as webview_windows;
-import 'package:win32/win32.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../platform/crash_dump_stub.dart'
+    if (dart.library.io) '../platform/crash_dump_windows.dart';
 import '../services/settings_service.dart';
 import '../services/torrent_service.dart';
 
@@ -404,28 +404,9 @@ class _BrowserScreenState extends State<BrowserScreen>
         'URL: ${_addressController.text}\n\n',
         mode: FileMode.append,
       );
-      if (Platform.isWindows) await _captureWindowsMiniDump(reason);
-    } catch (_) {}
-  }
-
-  Future<void> _captureWindowsMiniDump(String reason) async {
-    try {
-      final dir = await getApplicationSupportDirectory();
-      final filename =
-          'webview_crash_${DateTime.now().toIso8601String().replaceAll(':', '-')}.dmp';
-      final path = '${dir.path}${Platform.pathSeparator}$filename';
-      final hFile = CreateFile(TEXT(path), GENERIC_WRITE, 0,
-          Pointer<SECURITY_ATTRIBUTES>.fromAddress(0), CREATE_ALWAYS,
-          FILE_ATTRIBUTE_NORMAL, NULL);
-      if (hFile == INVALID_HANDLE_VALUE) return;
-      final dbghelp = DynamicLibrary.open('Dbghelp.dll');
-      final miniDumpWriteDump = dbghelp.lookupFunction<
-          Int32 Function(IntPtr, Uint32, IntPtr, Uint32, IntPtr, IntPtr, IntPtr),
-          int Function(int, int, int, int, int, int,
-              int)>('MiniDumpWriteDump');
-      miniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(), hFile,
-          0x00000001 | 0x00000004, 0, 0, 0);
-      CloseHandle(hFile);
+      if (Platform.isWindows) {
+        await captureWindowsMiniDump(reason, dir.path);
+      }
     } catch (_) {}
   }
 

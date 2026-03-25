@@ -57,11 +57,11 @@ Future<void> main() async {
         databaseFactory = databaseFactoryFfi;
       }
 
+      await ThemeService.instance.load();
+      await SettingsService.instance.load();
+
       if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
         await setupDesktopWindow();
-
-        await ThemeService.instance.load();
-        await SettingsService.instance.load();
 
         if (SettingsService.instance.launchOnStartup) {
           await StartupService.enable();

@@ -31,7 +31,7 @@ class TorrentEngineStatus {
     required this.progress,
     required this.state,
     required this.peers,
-    required this.dhtNodes,
+    this.dhtNodes = 0,
     required this.downloadSpeed,
     required this.uploadSpeed,
     this.seeders = 0,
@@ -261,7 +261,7 @@ class TorrentEngineService {
             ? 'Connected to $peers peer${peers == 1 ? '' : 's'}, waiting for pieces...'
             : '${(progress * 100).toStringAsFixed(1)}% — $peers peer${peers == 1 ? '' : 's'}';
 
-    final dhtNodes = task.dht?.root?.nodes.length ?? 0;
+    final dhtNodes = 0;
 
     _statusController.add(TorrentEngineStatus(
       torrentId: torrentId,
@@ -356,7 +356,7 @@ class TorrentEngineService {
     }
 
     final firstTask = _tasks.values.first;
-    final dhtNodes = firstTask.dht?.root?.nodes.length ?? 0;
+    final dhtNodes = 0;
     return TorrentEngineStatus(
       torrentId: firstTask.metaInfo.name,
       downloaded: firstTask.downloaded ?? 0,
