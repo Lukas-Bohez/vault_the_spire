@@ -54,6 +54,75 @@ class TorrentEngineService {
 
   bool isRunning(String torrentId) => _tasks.containsKey(torrentId);
 
+  static const _retainUint8Keys = {
+    'pieces',
+    'piece layers',
+    'root hash',
+    'pieces root',
+  };
+
+  dynamic _normalizeBencodeData(dynamic value, {String? key}) {
+    if (value is Uint8List) {
+      if (key != null && _retainUint8Keys.contains(key)) return value;
+      try {
+        return utf8.decode(value);
+      } catch (_) {
+        return value;
+      }
+    }
+
+    if (value is List) {
+      final normalizedList = <dynamic>[];
+      for (final item in value) {
+        normalizedList.add(_normalizeBencodeData(item, key: key));
+      }
+      return normalizedList;
+    }
+
+    if (value is Map) {
+      final normalizedMap = <String, dynamic>{};
+      for (final entry in value.entries) {
+        final rawKey = entry.key;
+        final rawValue = entry.value;
+
+        String keyString;
+        if (rawKey is String) {
+          keyString = rawKey;
+        } else if (rawKey is Uint8List) {
+          try {
+            keyString = utf8.decode(rawKey);
+          } catch (_) {
+            keyString = String.fromCharCodes(rawKey);
+          }
+        } else {
+          keyString = rawKey.toString();
+        }
+
+        normalizedMap[keyString] = _normalizeBencodeData(rawValue, key: keyString);
+      }
+
+      if (normalizedMap.containsKey('announce')) {
+        final announceValue = normalizedMap['announce'];
+        if (announceValue is List && announceValue.isNotEmpty) {
+          final first = announceValue.first;
+          if (first is String) {
+            normalizedMap['announce'] = first;
+          } else if (first is Uint8List) {
+            try {
+              normalizedMap['announce'] = utf8.decode(first);
+            } catch (_) {
+              normalizedMap.remove('announce');
+            }
+          }
+        }
+      }
+
+      return normalizedMap;
+    }
+
+    return value;
+  }
+
   Future<void> startTorrent(String torrentId, {String? destinationPath}) async {
     if (isRunning(torrentId)) return;
     final torrent = await TorrentService.instance.getTorrentById(torrentId);
@@ -72,7 +141,13 @@ class TorrentEngineService {
     TorrentModel torrent, {
     String? destinationPath,
   }) async {
-    final dtModel = await dt.TorrentModel.parse(torrent.filePath!);
+    final bytes = await File(torrent.filePath!).readAsBytes();
+    final decoded = decode(Uint8List.fromList(bytes));
+    if (decoded is! Map<String, dynamic>) {
+      throw FormatException('Invalid torrent file format');
+    }
+    final normalized = _normalizeBencodeData(decoded) as Map<String, dynamic>;
+    final dtModel = dt.TorrentParser.parseFromMap(normalized);
     final saveDir = destinationPath?.trim().isNotEmpty == true
         ? destinationPath!
         : await _defaultDownloadDir();
@@ -136,18 +211,15 @@ class TorrentEngineService {
       ..on<dt.MetaDataDownloadComplete>((event) {
         if (completer.isCompleted) return;
         try {
-          // decode() from b_encode_decode returns Map<dynamic, dynamic>
-          // with Uint8List keys — NOT Map<String, dynamic>.
-          // Do not type-check with "is Map<String, dynamic>" — it always
-          // fails for real bencode data.
           final raw = event.data;
           final rawData = Uint8List.fromList(raw);
           final msg = decode(rawData);
-          final normalized = _normalizeBencodeData(msg);
+          if (msg is! Map<String, dynamic>) {
+            throw FormatException('Invalid magnet metadata format');
+          }
+          final normalized = _normalizeBencodeData(msg) as Map<String, dynamic>;
 
-          // Use TorrentParser.parseFromMap (available in dtorrent_task_v2 0.4.8)
-          // to parse the downloaded metadata map into a TorrentModel.
-          final model = dt.TorrentParser.parseFromMap(<String, dynamic>{'info': normalized});
+          final model = dt.TorrentParser.parseFromMap({'info': normalized});
           completer.complete(model);
         } catch (e) {
           completer.completeError(e);
@@ -225,21 +297,6 @@ class TorrentEngineService {
     await TorrentService.instance.updateTorrentStatus(torrent.id, 'downloading');
     _startPollTimer(torrent.id, task);
     _startScrapeTimer(torrent.id, task);
-  }
-
-  dynamic _normalizeBencodeData(dynamic data) {
-    if (data is Map) {
-      final map = <String, dynamic>{};
-      data.forEach((key, value) {
-        final keyString = key is Uint8List ? utf8.decode(key) : key.toString();
-        map[keyString] = _normalizeBencodeData(value);
-      });
-      return map;
-    }
-    if (data is List) {
-      return data.map(_normalizeBencodeData).toList();
-    }
-    return data;
   }
 
   void _wireEvents(String torrentId, dt.TorrentTask task) {
