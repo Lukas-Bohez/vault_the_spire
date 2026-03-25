@@ -1189,10 +1189,15 @@ class _HomeScreenState extends State<HomeScreen> {
                             Text(
                               'Seeders: ${torrent.seeders}, Leechers: ${torrent.leechers}, Connected: ${engineStatus?.peers ?? 0}',
                             ),
-                            if (engineStatus != null)
+                            if (engineStatus != null) ...[
+                              Text(
+                                'Status: ${engineStatus.statusMessage}',
+                                style: const TextStyle(fontWeight: FontWeight.bold),
+                              ),
                               Text(
                                 'DL: ${engineStatus.downloadSpeed.toStringAsFixed(1)} B/s • UL: ${engineStatus.uploadSpeed.toStringAsFixed(1)} B/s • Peer progress: ${(engineStatus.progress * 100).toStringAsFixed(1)}%',
                               ),
+                            ],
                           ],
                         ),
                         trailing: Row(
@@ -1213,8 +1218,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                       torrent.id,
                                       _downloadDestination,
                                     );
-                                  } catch (e) {
+                                  } catch (e, st) {
                                     if (!mounted) return;
+                                    debugPrint('Download failed stack (play): $st');
                                     messenger.showSnackBar(
                                       SnackBar(
                                         content: Text('Download failed: $e'),
@@ -1264,8 +1270,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                       torrent.id,
                                       _downloadDestination,
                                     );
-                                  } catch (e) {
+                                  } catch (e, st) {
                                     if (!mounted) return;
+                                    debugPrint('Download failed stack (resume): $st');
                                     messenger.showSnackBar(
                                       SnackBar(
                                         content: Text('Download failed: $e'),

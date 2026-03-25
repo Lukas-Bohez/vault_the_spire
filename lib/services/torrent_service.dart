@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 
 import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
@@ -233,8 +234,14 @@ class TorrentService {
       ),
     );
 
-    await TorrentEngineService.instance
-        .startTorrent(id, destinationPath: destinationPath);
+    try {
+      await TorrentEngineService.instance
+          .startTorrent(id, destinationPath: destinationPath);
+    } catch (e, st) {
+      debugPrint('TorrentEngine startTorrent failed: $e');
+      debugPrint('$st');
+      rethrow;
+    }
 
     final completer = Completer<void>();
     StreamSubscription<TorrentEngineStatus>? subscription;
