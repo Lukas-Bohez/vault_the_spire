@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'dart:convert';
 import 'package:b_encode_decode/b_encode_decode.dart';
 import 'package:dtorrent_common/dtorrent_common.dart';
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart' as dt;
@@ -142,10 +143,11 @@ class TorrentEngineService {
           final raw = event.data;
           final rawData = Uint8List.fromList(raw);
           final msg = decode(rawData);
+          final normalized = _normalizeBencodeData(msg);
 
-          // use TorrentParser.parseFromMap (available in dtorrent_task_v2 0.4.8)
+          // Use TorrentParser.parseFromMap (available in dtorrent_task_v2 0.4.8)
           // to parse the downloaded metadata map into a TorrentModel.
-          final model = dt.TorrentParser.parseFromMap(<String, dynamic>{'info': msg});
+          final model = dt.TorrentParser.parseFromMap(<String, dynamic>{'info': normalized});
           completer.complete(model);
         } catch (e) {
           completer.completeError(e);
@@ -223,6 +225,21 @@ class TorrentEngineService {
     await TorrentService.instance.updateTorrentStatus(torrent.id, 'downloading');
     _startPollTimer(torrent.id, task);
     _startScrapeTimer(torrent.id, task);
+  }
+
+  dynamic _normalizeBencodeData(dynamic data) {
+    if (data is Map) {
+      final map = <String, dynamic>{};
+      data.forEach((key, value) {
+        final keyString = key is Uint8List ? utf8.decode(key) : key.toString();
+        map[keyString] = _normalizeBencodeData(value);
+      });
+      return map;
+    }
+    if (data is List) {
+      return data.map(_normalizeBencodeData).toList();
+    }
+    return data;
   }
 
   void _wireEvents(String torrentId, dt.TorrentTask task) {
