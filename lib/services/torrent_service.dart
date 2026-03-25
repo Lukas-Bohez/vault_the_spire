@@ -228,13 +228,13 @@ class TorrentService {
     await updateTorrent(
       existing.copyWith(
         status: 'downloading',
-        filePath: destinationPath,
         bytesDown: existing.bytesDown,
         bytesUp: existing.bytesUp,
       ),
     );
 
-    await TorrentEngineService.instance.startTorrent(id);
+    await TorrentEngineService.instance
+        .startTorrent(id, destinationPath: destinationPath);
 
     final completer = Completer<void>();
     StreamSubscription<TorrentEngineStatus>? subscription;
@@ -321,9 +321,12 @@ class TorrentService {
 
 
   Future<void> setDestinationAndStart(String id, String destinationPath) async {
-    await updateTorrent(
-      (await getTorrentById(id))!.copyWith(filePath: destinationPath),
-    );
+    final torrent = await getTorrentById(id);
+    if (torrent == null) {
+      throw StateError('Torrent not found: $id');
+    }
+
+    await updateTorrent(torrent.copyWith(status: 'downloading'));
     await downloadTorrent(id, destinationPath);
   }
 

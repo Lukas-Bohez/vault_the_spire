@@ -1207,10 +1207,19 @@ class _HomeScreenState extends State<HomeScreen> {
                                     await _chooseDownloadDirectory();
                                     if (_downloadDestination.isEmpty) return;
                                   }
-                                  await TorrentService.instance.downloadTorrent(
-                                    torrent.id,
-                                    _downloadDestination,
-                                  );
+                                  try {
+                                    await TorrentService.instance.downloadTorrent(
+                                      torrent.id,
+                                      _downloadDestination,
+                                    );
+                                  } catch (e) {
+                                    if (!mounted) return;
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Download failed: $e'),
+                                      ),
+                                    );
+                                  }
                                   setState(() {});
                                 },
                               ),
@@ -1248,10 +1257,19 @@ class _HomeScreenState extends State<HomeScreen> {
                                     await _chooseDownloadDirectory();
                                     if (_downloadDestination.isEmpty) return;
                                   }
-                                  await TorrentService.instance.downloadTorrent(
-                                    torrent.id,
-                                    _downloadDestination,
-                                  );
+                                  try {
+                                    await TorrentService.instance.downloadTorrent(
+                                      torrent.id,
+                                      _downloadDestination,
+                                    );
+                                  } catch (e) {
+                                    if (!mounted) return;
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Download failed: $e'),
+                                      ),
+                                    );
+                                  }
                                   setState(() {});
                                 },
                               ),

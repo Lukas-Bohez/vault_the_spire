@@ -49,24 +49,31 @@ class TorrentEngineService {
 
   bool isRunning(String torrentId) => _tasks.containsKey(torrentId);
 
-  Future<void> startTorrent(String torrentId) async {
+  Future<void> startTorrent(String torrentId, {String? destinationPath}) async {
     if (isRunning(torrentId)) return;
 
     final torrent = await TorrentService.instance.getTorrentById(torrentId);
     if (torrent == null) throw StateError('Torrent not found: $torrentId');
 
     if (torrent.type == 'torrent_file' && torrent.filePath != null) {
-      await _startFromFile(torrent);
+      await _startFromFile(torrent, destinationPath);
     } else if (torrent.magnetLink != null) {
-      await _startFromMagnet(torrent);
+      await _startFromMagnet(torrent, destinationPath);
     } else {
       throw StateError('Torrent has no source');
     }
   }
 
-  Future<void> _startFromFile(TorrentModel torrent) async {
+  Future<void> _startFromFile(TorrentModel torrent, String? destinationPath) async {
+    final torrentFile = File(torrent.filePath!);
+    if (!await torrentFile.exists()) {
+      throw FileSystemException('Torrent file does not exist', torrent.filePath);
+    }
+
     final dtModel = await dt.TorrentModel.parse(torrent.filePath!);
-    final saveDir = await _defaultDownloadDir();
+    final saveDir = destinationPath != null && destinationPath.isNotEmpty
+        ? destinationPath
+        : await _defaultDownloadDir();
 
     final totalBytes = dtModel.files.fold<int>(0, (s, f) => s + f.length);
     if (totalBytes > 0) {
@@ -106,7 +113,7 @@ class TorrentEngineService {
     _startScrapeTimer(torrent.id, task);
   }
 
-  Future<void> _startFromMagnet(TorrentModel torrent) async {
+  Future<void> _startFromMagnet(TorrentModel torrent, String? destinationPath) async {
     final magnet = dt.MagnetParser.parse(torrent.magnetLink!);
     if (magnet == null) throw FormatException('Invalid magnet link');
 
@@ -192,7 +199,9 @@ class TorrentEngineService {
           throw TimeoutException('Metadata timed out for ${torrent.id}'),
     );
 
-    final saveDir = await _defaultDownloadDir();
+    final saveDir = destinationPath != null && destinationPath.isNotEmpty
+        ? destinationPath
+        : await _defaultDownloadDir();
 
     final totalBytes = dtModel.files.fold<int>(0, (s, f) => s + f.length);
     if (totalBytes > 0) {
