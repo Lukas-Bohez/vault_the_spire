@@ -1189,7 +1189,9 @@ class _HomeScreenState extends State<HomeScreen> {
                               LinearProgressIndicator(value: progress),
                             Text('Size: ${_formatBytes(torrent.totalSize)}'),
                             Text(
-                              'Seeders: ${torrent.seeders}, Leechers: ${torrent.leechers}, Connected: ${engineStatus?.peers ?? 0}',
+                              'Seeders: ${engineStatus?.seeders ?? torrent.seeders}, '
+                              'Leechers: ${engineStatus?.leechers ?? torrent.leechers}, '
+                              'Connected: ${engineStatus?.peers ?? 0}',
                             ),
                             if (engineStatus != null) ...[
                               Text(

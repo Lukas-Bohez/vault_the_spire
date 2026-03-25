@@ -326,7 +326,15 @@ class TorrentEngineService {
     final dlSpeed = task.currentDownloadSpeed * 1000; // bytes/ms → bytes/s
     final ulSpeed = task.uploadSpeed * 1000;
     final peers = task.connectedPeersNumber;
-    final seeders = task.seederNumber;
+
+    int seeders = task.seederNumber;
+    int leechers = (peers - seeders).clamp(0, peers);
+
+    if (task.activePeers != null) {
+      seeders = task.activePeers!.where((p) => p.isSeeder).length;
+      leechers = task.activePeers!.where((p) => !p.isSeeder).length;
+    }
+
     final progress = task.progress;
 
     final msg = peers == 0
@@ -346,6 +354,7 @@ class TorrentEngineService {
       peers: peers,
       dhtNodes: dhtNodes,
       seeders: seeders,
+      leechers: leechers,
       downloadSpeed: dlSpeed,
       uploadSpeed: ulSpeed,
       statusMessage: msg,
