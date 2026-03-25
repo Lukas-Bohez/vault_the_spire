@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -176,6 +177,28 @@ class TorrentEngineService {
     }
   }
 
+  dynamic _normalizeTorrentMap(dynamic value) {
+    if (value is Uint8List) {
+      try {
+        return utf8.decode(value);
+      } catch (_) {
+        return value;
+      }
+    }
+    if (value is List) {
+      return value.map(_normalizeTorrentMap).toList();
+    }
+    if (value is Map) {
+      final map = <String, dynamic>{};
+      for (final key in value.keys) {
+        final keyStr = key is Uint8List ? utf8.decode(key) : key.toString();
+        map[keyStr] = _normalizeTorrentMap(value[key]);
+      }
+      return map;
+    }
+    return value;
+  }
+
 
   Future<void> startTorrent(String torrentId, {String? destinationPath}) async {
     if (isRunning(torrentId)) return;
@@ -262,8 +285,9 @@ class TorrentEngineService {
               ? rawData
               : Uint8List.fromList(rawData));
 
+          final normalizedInfo = _normalizeTorrentMap(msg);
           final model = dt.TorrentParser.parseFromMap(<String, dynamic>{
-            'info': msg,
+            'info': normalizedInfo,
           });
           completer.complete(model);
         } catch (e) {

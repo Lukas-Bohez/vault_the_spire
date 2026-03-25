@@ -461,10 +461,12 @@ class _BrowserScreenState extends State<BrowserScreen> {
           return;
         }
       }
-    } catch (e) {
+    } catch (e, st) {
+      debugPrint('Failed to handle torrent link: $e');
+      debugPrint('$st');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to handle torrent link: ')),
+          SnackBar(content: Text('Failed to handle torrent link: $e')),
         );
       }
     }

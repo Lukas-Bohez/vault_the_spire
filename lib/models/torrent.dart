@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 class TorrentModel {
   final String id;
   final String name;
@@ -143,25 +146,32 @@ class TorrentModel {
   }
 
   factory TorrentModel.fromMap(Map<String, dynamic> map) {
+    String? stringify(dynamic value) {
+      if (value is String) return value;
+      if (value == null) return null;
+      if (value is Uint8List) return utf8.decode(value);
+      return value.toString();
+    }
+
     return TorrentModel(
-      id: map['id'] as String,
-      name: map['name'] as String,
-      type: map['type'] as String,
+      id: stringify(map['id']) ?? '',
+      name: stringify(map['name']) ?? '',
+      type: stringify(map['type']) ?? '',
       totalSize: map['total_size'] as int?,
       totalPieces: map['total_pieces'] as int?,
       pieceLength: map['piece_length'] as int?,
-      piecesHave: map['pieces_have'] as String?,
-      status: map['status'] as String?,
-      vaultKey: map['vault_key'] as String?,
-      filePath: map['file_path'] as String?,
-      vaultLink: map['vault_link'] as String?,
-      magnetLink: map['magnet_link'] as String?,
+      piecesHave: stringify(map['pieces_have']),
+      status: stringify(map['status']),
+      vaultKey: stringify(map['vault_key']),
+      filePath: stringify(map['file_path']),
+      vaultLink: stringify(map['vault_link']),
+      magnetLink: stringify(map['magnet_link']),
       bytesDown: map['bytes_down'] as int? ?? 0,
       bytesUp: map['bytes_up'] as int? ?? 0,
       addedAt: map['added_at'] as int?,
       completedAt: map['completed_at'] as int?,
       isSequential: (map['is_sequential'] as int? ?? 0) == 1,
-      selectedFiles: map['selected_files'] as String?,
+      selectedFiles: stringify(map['selected_files']),
       maxSeedRatio: (map['max_seed_ratio'] as num?)?.toDouble(),
       deleteAfterRatioReached:
           (map['delete_after_ratio_reached'] as int? ?? 0) == 1,
