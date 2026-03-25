@@ -26,6 +26,7 @@ void main() {
       leechers: 2,
       downloadSpeed: 1234,
       uploadSpeed: 567,
+      statusMessage: 'downloading',
     );
 
     expect(status.peers, equals(3));

@@ -92,7 +92,7 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
                   );
                 }
 
-                final statusMessage = getStatusLabel(status);
+                final statusMessage = status.statusMessage;
                 final hasError = status.state.toLowerCase().contains('error') ||
                     status.state.toLowerCase().contains('failed');
 

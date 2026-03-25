@@ -23,6 +23,7 @@ class TorrentEngineStatus {
   final int leechers;
   final double downloadSpeed;
   final double uploadSpeed;
+  final String statusMessage;
 
   const TorrentEngineStatus({
     required this.torrentId,
@@ -34,6 +35,7 @@ class TorrentEngineStatus {
     required this.dhtNodes,
     required this.downloadSpeed,
     required this.uploadSpeed,
+    required this.statusMessage,
     this.seeders = 0,
     this.leechers = 0,
   });
@@ -144,6 +146,10 @@ class TorrentEngineService {
     }
     final taskCount = _tasks.length;
 
+    final aggregateStatusMessage = hasActiveTasks
+        ? '⚡ Aggregating status: $totalPeers peers, ${totalDht.toInt()} DHT nodes'
+        : '⏹️ Idle';
+
     return TorrentEngineStatus(
       torrentId: 'aggregate',
       downloaded: totalDownload,
@@ -154,6 +160,7 @@ class TorrentEngineService {
       dhtNodes: totalDht.toInt(),
       downloadSpeed: speed,
       uploadSpeed: 0,
+      statusMessage: aggregateStatusMessage,
     );
   }
 
@@ -395,6 +402,8 @@ class TorrentEngineService {
       dhtNodes = 0;
     }
 
+    final statusMsg = _deriveStatusMessage(task, dhtNodes);
+
     _statusController.add(TorrentEngineStatus(
       torrentId: torrentId,
       downloaded: downloaded,
@@ -406,6 +415,7 @@ class TorrentEngineService {
       seeders: task.seederNumber,
       downloadSpeed: dlSpeed,
       uploadSpeed: ulSpeed,
+      statusMessage: statusMsg,
     ));
 
     TorrentService.instance.updateProgress(torrentId, downloaded, 0);
@@ -422,6 +432,26 @@ class TorrentEngineService {
     } catch (_) {
       // Background service may not be available on desktop/test.
     }
+  }
+
+  String _deriveStatusMessage(dt.TorrentTask task, int dhtNodes) {
+    final peers = task.connectedPeersNumber;
+    final progress = task.progress;
+    final hasDownloaded = (task.downloaded ?? 0) > 0;
+
+    if (dhtNodes <= 0) {
+      return '🛰️ DHT bootstrapping...';
+    }
+    if (peers <= 0) {
+      return '🔍 Searching peers... ($dhtNodes DHT nodes)';
+    }
+    if (!hasDownloaded && progress <= 0.01) {
+      return '📥 Getting metadata...';
+    }
+    if (progress < 1.0) {
+      return '📦 Downloading pieces... ${ (progress * 100).toStringAsFixed(1)}%';
+    }
+    return '✅ Download complete';
   }
 
   void _startScrapeTimer(String torrentId, dt.TorrentTask task) {
