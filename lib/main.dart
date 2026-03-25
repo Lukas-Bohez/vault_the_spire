@@ -16,6 +16,7 @@ import 'package:vault_the_spire/services/service_locator.dart';
 import 'package:vault_the_spire/services/startup_service.dart';
 import 'package:vault_the_spire/services/theme_service.dart';
 import 'package:vault_the_spire/services/tray_service.dart';
+import 'package:vault_the_spire/services/background_service.dart';
 import 'package:window_manager/window_manager.dart';
 
 Future<void> _initSqlCipherOnAndroid() async {
@@ -46,6 +47,7 @@ Future<void> main() async {
       await setupServiceLocator();
       await _initSqlCipherOnAndroid();
       await _requestAndroidPermissions();
+      await initBackgroundService();
 
       if (!kIsWeb && (Platform.isWindows || Platform.isLinux)) {
         sqfliteFfiInit();

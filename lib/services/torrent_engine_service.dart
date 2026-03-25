@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:b_encode_decode/b_encode_decode.dart';
 import 'package:dtorrent_common/dtorrent_common.dart';
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart' as dt;
+import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'package:vault_the_spire/models/torrent.dart';
@@ -56,6 +57,105 @@ class TorrentEngineService {
   ];
 
   bool isRunning(String torrentId) => _tasks.containsKey(torrentId);
+
+  bool get hasActiveTasks {
+    return _tasks.values.any((task) {
+      try {
+        final dyn = task as dynamic;
+        final state = dyn.state?.toString().toLowerCase() ?? '';
+        return !(state.contains('paused') || state.contains('completed') || state.contains('stopped'));
+      } catch (_) {
+        return true;
+      }
+    });
+  }
+
+  bool shouldStopService() {
+    if (_tasks.isEmpty) return true;
+    if (hasActiveTasks) {
+      _lastActive = DateTime.now();
+      return false;
+    }
+
+    if (_lastActive == null) {
+      _lastActive = DateTime.now();
+      return false;
+    }
+
+    return DateTime.now().difference(_lastActive!).inMinutes >= 5;
+  }
+
+  DateTime? _lastActive;
+
+  void pauseAll() {
+    for (final task in _tasks.values) {
+      try {
+        final dyn = task as dynamic;
+        if (dyn.pause != null) {
+          dyn.pause();
+        } else if (dyn.stop != null) {
+          dyn.stop();
+        }
+      } catch (e) {
+        print('⚠️ Pause all failed for task: $e');
+      }
+    }
+  }
+
+  void resumeAll() {
+    for (final task in _tasks.values) {
+      try {
+        final dyn = task as dynamic;
+        if (dyn.resume != null) {
+          dyn.resume();
+        } else if (dyn.start != null) {
+          dyn.start();
+        }
+      } catch (e) {
+        print('⚠️ Resume all failed for task: $e');
+      }
+    }
+  }
+
+  TorrentEngineStatus aggregateStatus() {
+    var totalDownload = 0;
+    var totalUpload = 0;
+    num totalDht = 0;
+    num totalPeers = 0;
+    var progress = 0.0;
+    var speed = 0.0;
+    for (final task in _tasks.values) {
+      try {
+        final dyn = task as dynamic;
+        final downloadValue = dyn.downloaded ?? 0;
+        totalDownload += downloadValue is num ? downloadValue.toInt() : 0;
+        final uploadValue = dyn.uploaded ?? 0;
+        totalUpload += uploadValue is num ? uploadValue.toInt() : 0;
+        final dhtValue = dyn.dhtNodesNumber ?? dyn.dhtNodeCount ?? 0;
+        totalDht += dhtValue is num ? dhtValue.toInt() : 0;
+        final peerValue = dyn.connectedPeersNumber ?? 0;
+        totalPeers += peerValue is num ? peerValue.toInt() : 0;
+        final progressValue = dyn.progress ?? 0.0;
+        progress += progressValue is num ? progressValue.toDouble() : 0.0;
+        final currentDownloadSpeedVal = dyn.currentDownloadSpeed ?? 0.0;
+        speed += (currentDownloadSpeedVal is num ? currentDownloadSpeedVal.toDouble() : 0.0) * 1000;
+      } catch (_) {
+      }
+    }
+    final taskCount = _tasks.length;
+
+    return TorrentEngineStatus(
+      torrentId: 'aggregate',
+      downloaded: totalDownload,
+      uploaded: totalUpload,
+      progress: taskCount > 0 ? progress / taskCount : 0.0,
+      state: hasActiveTasks ? 'downloading' : 'idle',
+      peers: totalPeers.toInt(),
+      dhtNodes: totalDht.toInt(),
+      downloadSpeed: speed,
+      uploadSpeed: 0,
+    );
+  }
 
   void _addFallbackDhtNodes(dt.TorrentTask task) {
     for (final node in _fallbackDhtBootstraps) {
@@ -289,7 +389,8 @@ class TorrentEngineService {
     var dhtNodes = 0;
     try {
       final dyn = task as dynamic;
-      dhtNodes = (dyn.dhtNodesNumber ?? dyn.dhtNodeCount ?? 0) as int;
+      final dhtValue = dyn.dhtNodesNumber ?? dyn.dhtNodeCount ?? 0;
+      dhtNodes = dhtValue is num ? dhtValue.toInt() : 0;
     } catch (_) {
       dhtNodes = 0;
     }
@@ -308,6 +409,19 @@ class TorrentEngineService {
     ));
 
     TorrentService.instance.updateProgress(torrentId, downloaded, 0);
+
+    // Notify background service for notification updates.
+    try {
+      final service = FlutterBackgroundService();
+      service.invoke('update_status', {
+        'downloadSpeed': dlSpeed,
+        'progress': task.progress,
+        'peers': task.connectedPeersNumber,
+        'dhtNodes': dhtNodes,
+      });
+    } catch (_) {
+      // Background service may not be available on desktop/test.
+    }
   }
 
   void _startScrapeTimer(String torrentId, dt.TorrentTask task) {
