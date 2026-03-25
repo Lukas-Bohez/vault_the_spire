@@ -43,6 +43,7 @@ class TorrentEngineService {
 
   final Map<String, dt.TorrentTask> _tasks = {};
   final Map<String, Timer> _scrapeTimers = {};
+  final Map<String, Timer> _statsTimers = {};
 
   final _statusController = StreamController<TorrentEngineStatus>.broadcast();
   Stream<TorrentEngineStatus> get statusStream => _statusController.stream;
@@ -333,7 +334,13 @@ class TorrentEngineService {
         Timer.periodic(const Duration(seconds: 30), (_) {
       _doScrape(torrentId, task);
     });
+    _statsTimers[torrentId] =
+        Timer.periodic(const Duration(seconds: 3), (_) {
+      _emitStats(torrentId, task, 'downloading');
+    });
+
     _doScrape(torrentId, task);
+    _emitStats(torrentId, task, 'downloading');
   }
 
   Future<void> _doScrape(String torrentId, dt.TorrentTask task) async {
@@ -357,6 +364,7 @@ class TorrentEngineService {
 
   void _cleanup(String torrentId) {
     _scrapeTimers.remove(torrentId)?.cancel();
+    _statsTimers.remove(torrentId)?.cancel();
     _tasks.remove(torrentId);
   }
 
