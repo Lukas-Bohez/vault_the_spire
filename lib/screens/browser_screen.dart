@@ -20,7 +20,7 @@ class BrowserScreen extends StatefulWidget {
 
   const BrowserScreen({
     super.key,
-    this.initialUrl = 'https://duckduckgo.com/',
+    this.initialUrl = '',
     this.inTab = false,
   });
 
@@ -28,26 +28,30 @@ class BrowserScreen extends StatefulWidget {
   State<BrowserScreen> createState() => _BrowserScreenState();
 }
 
-class _BrowserScreenState extends State<BrowserScreen> {
+// AutomaticKeepAliveClientMixin keeps the widget tree alive when the parent
+// switches away to another tab — the WebView is not torn down and rebuilt,
+// so the user returns to exactly the page they left.
+class _BrowserScreenState extends State<BrowserScreen>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
   static bool _windowsWebViewEnvironmentInitialized = false;
 
   final TextEditingController _addressController = TextEditingController();
 
-  // Browser controls.
   late String _homeUrl;
   bool _showHomeScreen = true;
   late List<String> _favorites;
   bool _showHistory = false;
-  final List<String> _history = [];
+  List<String> _history = [];
 
-  // Flutter WebView for non-Windows platforms (or fallback).
   WebViewController? _webViewController;
   bool _isLoading = true;
   double _progress = 0.0;
   bool _canGoBack = false;
   bool _canGoForward = false;
 
-  // Windows WebView2 controller path.
   webview_windows.WebviewController? _windowsWebViewController;
   bool _windowsCanGoBack = false;
   bool _windowsCanGoForward = false;
@@ -62,21 +66,35 @@ class _BrowserScreenState extends State<BrowserScreen> {
 
     _homeUrl = SettingsService.instance.browserHomeUrl;
     _favorites = List<String>.from(SettingsService.instance.browserFavorites);
-    _addressController.text = widget.initialUrl.isNotEmpty
+    _history = List<String>.from(SettingsService.instance.browserHistory);
+
+    // Restore last visited URL — if available use it, otherwise fall back to
+    // the initialUrl arg, then the home URL.
+    final lastUrl = SettingsService.instance.browserLastUrl;
+    final startUrl = widget.initialUrl.isNotEmpty
         ? widget.initialUrl
-        : _homeUrl;
+        : lastUrl.isNotEmpty
+            ? lastUrl
+            : _homeUrl;
+
+    _addressController.text = startUrl;
+
+    // If we have a real URL to restore (not the home page), show the webview
+    // immediately rather than the home screen.
+    if (startUrl.isNotEmpty && startUrl != _homeUrl) {
+      _showHomeScreen = false;
+    }
 
     if (Platform.isWindows) {
-      _initWindowsWebView();
+      _initWindowsWebView(startUrl);
     } else {
-      _initWebView();
+      _initWebView(startUrl);
     }
     _startMemoryMonitor();
   }
 
-  void _initWebView() {
-    final controller = WebViewController();
-    controller
+  void _initWebView(String startUrl) {
+    final controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(
         NavigationDelegate(
@@ -98,6 +116,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
               _isLoading = false;
               _showHomeScreen = false;
             });
+            _recordVisit(url);
             _refreshNavigationState();
           },
           onNavigationRequest: (request) {
@@ -109,25 +128,24 @@ class _BrowserScreenState extends State<BrowserScreen> {
           },
           onWebResourceError: (error) {
             _captureCrashDump('WebResourceError', error);
-            if (kDebugMode) {
-              debugPrint('Web resource error: ${error.description}');
-            }
           },
         ),
       );
 
     _webViewController = controller;
+
+    if (!_showHomeScreen && startUrl.isNotEmpty) {
+      controller.loadRequest(Uri.parse(startUrl));
+    }
   }
 
-  Future<void> _initWindowsWebView() async {
+  Future<void> _initWindowsWebView(String startUrl) async {
     try {
       if (!_windowsWebViewEnvironmentInitialized) {
         try {
           await webview_windows.WebviewController.initializeEnvironment();
         } on PlatformException catch (e) {
-          if (e.code != 'environment_already_initialized') {
-            rethrow;
-          }
+          if (e.code != 'environment_already_initialized') rethrow;
         }
         _windowsWebViewEnvironmentInitialized = true;
       }
@@ -136,24 +154,17 @@ class _BrowserScreenState extends State<BrowserScreen> {
 
       controller.url.listen((url) async {
         if (!mounted) return;
-
         if (_isTorrentOrMagnetUrl(url)) {
           await controller.stop();
           await _handleTorrentOrMagnetUrl(url);
-          setState(() {
-            _showHomeScreen = true;
-          });
+          setState(() => _showHomeScreen = true);
           return;
         }
-
         setState(() {
           _addressController.text = url;
           _showHomeScreen = false;
-          _history.insert(0, '${DateTime.now().toIso8601String()} $url');
-          if (_history.length > 100) {
-            _history.removeRange(100, _history.length);
-          }
         });
+        _recordVisit(url);
       });
 
       controller.loadingState.listen((state) {
@@ -173,18 +184,14 @@ class _BrowserScreenState extends State<BrowserScreen> {
 
       controller.onLoadError.listen((error) {
         _captureCrashDump('WebView2 LoadError ${error.name}', null);
-        setState(() {
-          _lastLoadError = '${error.name}: ${error.toString()}';
-        });
+        setState(() => _lastLoadError = '${error.name}: ${error.toString()}');
       });
 
       controller.webMessage.listen((message) async {
         if (message is String && _isTorrentOrMagnetUrl(message)) {
           await _handleTorrentOrMagnetUrl(message);
           await controller.stop();
-          setState(() {
-            _showHomeScreen = true;
-          });
+          setState(() => _showHomeScreen = true);
         }
       });
 
@@ -195,56 +202,25 @@ class _BrowserScreenState extends State<BrowserScreen> {
         function _vaultHandleTorrentProtocol(url) {
           if (!url) return false;
           if (url.startsWith('magnet:') || url.endsWith('.torrent')) {
-            if (window.chrome && chrome.webview) {
-              chrome.webview.postMessage(url);
-            }
+            if (window.chrome && chrome.webview) chrome.webview.postMessage(url);
             return true;
           }
           return false;
         }
-
         document.addEventListener('click', function(event) {
           var target = event.target;
-          while (target && target.tagName !== 'A') {
-            target = target.parentElement;
-          }
+          while (target && target.tagName !== 'A') target = target.parentElement;
           if (!target || target.tagName !== 'A') return;
           var href = target.getAttribute('href');
-          if (!href) return;
-          if (_vaultHandleTorrentProtocol(href)) {
-            event.preventDefault();
-          }
+          if (href && _vaultHandleTorrentProtocol(href)) event.preventDefault();
         }, true);
-
         var originalOpen = window.open;
         window.open = function(url, name, specs) {
-          if (_vaultHandleTorrentProtocol(String(url))) {
-            return null;
-          }
+          if (_vaultHandleTorrentProtocol(String(url))) return null;
           return originalOpen.apply(this, arguments);
         };
-
-        var originalAssign = window.location.assign;
-        window.location.assign = function(url) {
-          if (_vaultHandleTorrentProtocol(String(url))) {
-            return;
-          }
-          return originalAssign.apply(this, arguments);
-        };
-
-        var originalReplace = window.location.replace;
-        window.location.replace = function(url) {
-          if (_vaultHandleTorrentProtocol(String(url))) {
-            return;
-          }
-          return originalReplace.apply(this, arguments);
-        };
       ''');
-      } catch (e) {
-        if (kDebugMode) {
-          debugPrint('Could not inject magnet handler script: $e');
-        }
-      }
+      } catch (_) {}
 
       if (mounted) {
         setState(() {
@@ -253,126 +229,55 @@ class _BrowserScreenState extends State<BrowserScreen> {
         });
       }
 
-      if (!_showHomeScreen) {
-        if (_isTorrentOrMagnetUrl(widget.initialUrl)) {
-          await _handleTorrentOrMagnetUrl(widget.initialUrl);
+      if (!_showHomeScreen && startUrl.isNotEmpty) {
+        if (_isTorrentOrMagnetUrl(startUrl)) {
+          await _handleTorrentOrMagnetUrl(startUrl);
         } else {
-          await controller.loadUrl(widget.initialUrl);
+          await controller.loadUrl(startUrl);
         }
       }
     } catch (e, st) {
-      var reason = 'Windows WebView initialization failed: $e';
-      if (e is PlatformException &&
-          e.code == 'environment_already_initialized') {
-        reason = 'Windows WebView environment already initialized';
-      }
       if (kDebugMode) {
-        debugPrint(reason);
-        debugPrint(st.toString());
+        debugPrint('Windows WebView init failed: $e\n$st');
       }
-      _captureCrashDump(reason);
+      _captureCrashDump('Windows WebView initialization failed: $e');
     }
   }
-  Future<void> _startMemoryMonitor() async {
-    if (!Platform.isWindows) return; // focus on WebView2 Windows crash-dump target
 
-    _memoryPollTimer = Timer.periodic(const Duration(seconds: 8), (_) async {
-      try {
-        final rssBytes = ProcessInfo.currentRss;
-        if (rssBytes > 1200 * 1024 * 1024) {
-          await _captureCrashDump('HighMemoryUsage (RSS ${rssBytes ~/ (1024 * 1024)}MB)');
-        }
-      } catch (e) {
-        if (kDebugMode) debugPrint('Memory monitor failed: $e');
+  // Called every time a page finishes loading — persists the URL and updates history.
+  void _recordVisit(String url) {
+    if (url.isEmpty || url == 'about:blank') return;
+
+    final entry = '${DateTime.now().toIso8601String()} $url';
+    setState(() {
+      _history.insert(0, entry);
+      if (_history.length > 500) _history.removeRange(500, _history.length);
+    });
+
+    // Persist asynchronously — never await inside listeners.
+    SettingsService.instance.setBrowserLastUrl(url);
+    SettingsService.instance.setBrowserHistory(_history);
+  }
+
+  bool _isFavourite(String url) => _favorites.contains(url);
+
+  Future<void> _toggleFavourite(String url) async {
+    if (url.isEmpty) return;
+    setState(() {
+      if (_favorites.contains(url)) {
+        _favorites.remove(url);
+      } else {
+        _favorites.add(url);
       }
     });
+    await SettingsService.instance.setBrowserFavorites(_favorites);
   }
 
-  Future<void> _captureCrashDump(String reason, [WebResourceError? error]) async {
-    try {
-      final directory = await getApplicationSupportDirectory();
-      final file = File('${directory.path}${Platform.pathSeparator}webview_crash_dump.log');
-      final now = DateTime.now();
-
-      final lines = <String>[
-        '--- Crash dump @ $now ---',
-        'Reason: $reason',
-        'Platform: ${Platform.operatingSystem} ${Platform.operatingSystemVersion}',
-        'Memory RSS: ${ProcessInfo.currentRss} bytes',
-        'Available virtual memory: ${ProcessInfo.maxRss} bytes',
-        if (error != null) 'WebResourceError: ${error.description} (${error.errorCode})',
-        'Current URL: ${_addressController.text}',
-        '-------------------------',
-      ];
-
-      await file.writeAsString('${lines.join('\n')}\n', mode: FileMode.append);
-
-      if (kDebugMode) {
-        debugPrint('WebView crash dump saved to ${file.path}');
-      }
-
-      if (Platform.isWindows) {
-        await _captureWindowsMiniDump(reason);
-      }
-    } catch (e) {
-      if (kDebugMode) debugPrint('Failed to write crash dump: $e');
-    }
-  }
-
-  Future<void> _captureWindowsMiniDump(String reason) async {
-    try {
-      final directory = await getApplicationSupportDirectory();
-      final filename =
-          'webview_crash_${DateTime.now().toIso8601String().replaceAll(':', '-')}.dmp';
-      final path = '${directory.path}${Platform.pathSeparator}$filename';
-
-      final hFile = CreateFile(TEXT(path), GENERIC_WRITE, 0,
-          Pointer<SECURITY_ATTRIBUTES>.fromAddress(0), CREATE_ALWAYS,
-          FILE_ATTRIBUTE_NORMAL, NULL);
-      if (hFile == INVALID_HANDLE_VALUE) {
-        if (kDebugMode) {
-          debugPrint('Could not create dump file at $path');
-        }
-        return;
-      }
-
-      final process = GetCurrentProcess();
-      final pid = GetCurrentProcessId();
-      final dbghelp = DynamicLibrary.open('Dbghelp.dll');
-
-      final miniDumpWriteDump = dbghelp.lookupFunction<
-          Int32 Function(IntPtr, Uint32, IntPtr, Uint32, IntPtr, IntPtr, IntPtr),
-          int Function(int, int, int, int, int, int, int)>('MiniDumpWriteDump');
-
-      const int miniDumpWithDataSegs = 0x00000001;
-      const int miniDumpWithHandleData = 0x00000004;
-      const int dumpType = miniDumpWithDataSegs | miniDumpWithHandleData;
-
-      final success = miniDumpWriteDump(process, pid, hFile, dumpType, 0, 0, 0);
-
-      CloseHandle(hFile);
-
-      if (success == 0) {
-        if (kDebugMode) {
-          debugPrint('MiniDumpWriteDump failed: ${GetLastError()}');
-        }
-      } else {
-        if (kDebugMode) {
-          debugPrint('MiniDump written to $path for reason: $reason');
-        }
-      }
-    } catch (e) {
-      if (kDebugMode) debugPrint('Failed to capture mini dump: $e');
-    }
-  }
-
-  bool _isTorrentOrMagnetUrl(String url) {
-    return TorrentService.isTorrentOrMagnetUrl(url);
-  }
+  bool _isTorrentOrMagnetUrl(String url) =>
+      TorrentService.isTorrentOrMagnetUrl(url);
 
   Future<void> _handleTorrentOrMagnetUrl(String url) async {
     if (url.trim().isEmpty) return;
-
     try {
       if (url.toLowerCase().startsWith('magnet:')) {
         await TorrentService.instance.addTorrentFromMagnetLink(url);
@@ -383,87 +288,51 @@ class _BrowserScreenState extends State<BrowserScreen> {
         }
         return;
       }
-
       if (url.toLowerCase().endsWith('.torrent')) {
-        if (kIsWeb) {
+        if (kIsWeb) return;
+        String localPath = url;
+        if (url.toLowerCase().startsWith('file://')) {
+          localPath = Uri.parse(url).toFilePath();
+        }
+        final torrentFile = File(localPath);
+        if (await torrentFile.exists()) {
+          await TorrentService.instance.addTorrentFromTorrentFile(localPath);
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Torrent file download is not supported on web.')),
+              SnackBar(content: Text('Torrent added: $localPath')),
             );
           }
           return;
         }
-
-        try {
-          String localPath = url;
-
-          if (url.toLowerCase().startsWith('file://')) {
-            localPath = Uri.parse(url).toFilePath();
-          }
-
-          final torrentFile = File(localPath);
-          if (await torrentFile.exists()) {
-            await TorrentService.instance.addTorrentFromTorrentFile(localPath);
+        final uri = Uri.parse(url);
+        if (uri.isScheme('http') || uri.isScheme('https')) {
+          final client = HttpClient();
+          try {
+            final request = await client.getUrl(uri);
+            final response = await request.close();
+            if (response.statusCode != HttpStatus.ok) {
+              throw HttpException('HTTP ${response.statusCode}', uri: uri);
+            }
+            final bytes = await consolidateHttpClientResponseBytes(response);
+            final filename = uri.pathSegments.isNotEmpty
+                ? uri.pathSegments.last
+                : 'downloaded.torrent';
+            final tmp = File(
+                '${Directory.systemTemp.path}${Platform.pathSeparator}vts_${DateTime.now().millisecondsSinceEpoch}_$filename');
+            await tmp.writeAsBytes(bytes);
+            await TorrentService.instance.addTorrentFromTorrentFile(tmp.path);
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Torrent file added from local path: $localPath')),
+                SnackBar(content: Text('Torrent added from $url')),
               );
             }
-            return;
+          } finally {
+            client.close(force: true);
           }
-
-          // If not a local file, download from HTTP/HTTPS.
-          final uri = Uri.parse(url);
-          if (uri.isScheme('http') || uri.isScheme('https')) {
-            final client = HttpClient();
-            client.badCertificateCallback = (cert, host, port) {
-              // Allow local/self-signed certs during development; crucial for bootstrapping
-              // when running behind intercepting proxies or missing system CA chain.
-              // Remove or restrict in production.
-              debugPrint('TLS bad cert for $host:$port - cert=${cert.toString()}');
-              return true;
-            };
-            try {
-              final request = await client.getUrl(uri);
-              final response = await request.close();
-              if (response.statusCode != HttpStatus.ok) {
-                throw HttpException('Failed to download torrent file', uri: uri);
-              }
-
-              final fileBytes = await consolidateHttpClientResponseBytes(response);
-              final filename = uri.pathSegments.isNotEmpty
-                  ? uri.pathSegments.last
-                  : 'downloaded.torrent';
-              final tempFile = File(
-                '${Directory.systemTemp.path}${Platform.pathSeparator}vault_the_spire_${DateTime.now().millisecondsSinceEpoch}_$filename',
-              );
-              await tempFile.writeAsBytes(fileBytes);
-              await TorrentService.instance.addTorrentFromTorrentFile(tempFile.path);
-              if (mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Torrent file added from URL: ${uri.toString()}')),
-                );
-              }
-            } finally {
-              client.close(force: true);
-            }
-            return;
-          }
-
-          // Not valid URI as file or HTTP.
-          throw FormatException('Cannot handle torrent URL: $url');
-        } on Exception catch (e) {
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Failed to add torrent file: $e')),
-            );
-          }
-          return;
         }
       }
     } catch (e, st) {
-      debugPrint('Failed to handle torrent link: $e');
-      debugPrint('$st');
+      debugPrint('Failed to handle torrent link: $e\n$st');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to handle torrent link: $e')),
@@ -472,16 +341,11 @@ class _BrowserScreenState extends State<BrowserScreen> {
     }
   }
 
-  String _normalizeUrl(String value) {
-    final normalized = TorrentService.normalizeTorrentUrl(value);
-    if (TorrentService.isTorrentOrMagnetUrl(normalized)) {
-      return normalized;
-    }
-    return normalized;
-  }
+  String _normalizeUrl(String value) =>
+      TorrentService.normalizeTorrentUrl(value);
 
   Future<void> _navigateTo(String value) async {
-    final url = _normalizeUrl(value);
+    final url = _normalizeUrl(value.trim());
     if (url.isEmpty) return;
     _addressController.text = url;
 
@@ -490,44 +354,21 @@ class _BrowserScreenState extends State<BrowserScreen> {
       return;
     }
 
-    _showHomeScreen = false;
+    setState(() => _showHomeScreen = false);
 
     if (Platform.isWindows && _windowsWebViewController != null) {
-      await _windowsWebViewController?.loadUrl(url);
-      setState(() {
-        _showHomeScreen = false;
-        _history.insert(0, '${DateTime.now().toIso8601String()} $url');
-        if (_history.length > 100) {
-          _history.removeRange(100, _history.length);
-        }
-      });
+      await _windowsWebViewController!.loadUrl(url);
       return;
     }
-
     await _webViewController?.loadRequest(Uri.parse(url));
     await _refreshNavigationState();
-    setState(() {
-      _showHomeScreen = false;
-      _history.insert(0, '${DateTime.now().toIso8601String()} $url');
-      if (_history.length > 100) {
-        _history.removeRange(100, _history.length);
-      }
-    });
   }
 
   Future<void> _refreshNavigationState() async {
-    if (Platform.isWindows && _windowsWebViewController != null) {
-      // History updates are pushed via historyChanged stream.
-      return;
-    }
-
-    if (_webViewController == null) return;
-    final canGoBack = await _webViewController!.canGoBack();
-    final canGoForward = await _webViewController!.canGoForward();
-    setState(() {
-      _canGoBack = canGoBack;
-      _canGoForward = canGoForward;
-    });
+    if (Platform.isWindows || _webViewController == null) return;
+    final back = await _webViewController!.canGoBack();
+    final fwd = await _webViewController!.canGoForward();
+    if (mounted) setState(() { _canGoBack = back; _canGoForward = fwd; });
   }
 
   Future<void> _openExternally() async {
@@ -539,6 +380,55 @@ class _BrowserScreenState extends State<BrowserScreen> {
     }
   }
 
+  Future<void> _startMemoryMonitor() async {
+    if (!Platform.isWindows) return;
+    _memoryPollTimer = Timer.periodic(const Duration(seconds: 8), (_) async {
+      try {
+        if (ProcessInfo.currentRss > 1200 * 1024 * 1024) {
+          await _captureCrashDump(
+              'HighMemoryUsage (${ProcessInfo.currentRss ~/ (1024 * 1024)}MB)');
+        }
+      } catch (_) {}
+    });
+  }
+
+  Future<void> _captureCrashDump(String reason,
+      [WebResourceError? error]) async {
+    try {
+      final dir = await getApplicationSupportDirectory();
+      final file = File(
+          '${dir.path}${Platform.pathSeparator}webview_crash_dump.log');
+      await file.writeAsString(
+        '--- ${DateTime.now()} ---\nReason: $reason\n'
+        '${error != null ? 'Error: ${error.description} (${error.errorCode})\n' : ''}'
+        'URL: ${_addressController.text}\n\n',
+        mode: FileMode.append,
+      );
+      if (Platform.isWindows) await _captureWindowsMiniDump(reason);
+    } catch (_) {}
+  }
+
+  Future<void> _captureWindowsMiniDump(String reason) async {
+    try {
+      final dir = await getApplicationSupportDirectory();
+      final filename =
+          'webview_crash_${DateTime.now().toIso8601String().replaceAll(':', '-')}.dmp';
+      final path = '${dir.path}${Platform.pathSeparator}$filename';
+      final hFile = CreateFile(TEXT(path), GENERIC_WRITE, 0,
+          Pointer<SECURITY_ATTRIBUTES>.fromAddress(0), CREATE_ALWAYS,
+          FILE_ATTRIBUTE_NORMAL, NULL);
+      if (hFile == INVALID_HANDLE_VALUE) return;
+      final dbghelp = DynamicLibrary.open('Dbghelp.dll');
+      final miniDumpWriteDump = dbghelp.lookupFunction<
+          Int32 Function(IntPtr, Uint32, IntPtr, Uint32, IntPtr, IntPtr, IntPtr),
+          int Function(int, int, int, int, int, int,
+              int)>('MiniDumpWriteDump');
+      miniDumpWriteDump(GetCurrentProcess(), GetCurrentProcessId(), hFile,
+          0x00000001 | 0x00000004, 0, 0, 0);
+      CloseHandle(hFile);
+    } catch (_) {}
+  }
+
   @override
   void dispose() {
     _memoryPollTimer?.cancel();
@@ -547,150 +437,21 @@ class _BrowserScreenState extends State<BrowserScreen> {
     super.dispose();
   }
 
-  Widget _buildBrowserContent(ThemeData theme) {
-    return Column(
-      children: [
-        _buildBrowserTopBar(theme),
-        if (Platform.isWindows ? _windowsIsLoading : _isLoading)
-          LinearProgressIndicator(
-            value: Platform.isWindows ? null : _progress,
-            minHeight: 3,
-          ),
-        Expanded(
-          child: _showHomeScreen
-              ? SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text('Home', style: theme.textTheme.headlineMedium),
-                          Row(
-                            children: [
-                              TextButton(
-                                onPressed: () {
-                                  setState(() {
-                                    _showHistory = false;
-                                  });
-                                },
-                                child: const Text('Favorites'),
-                              ),
-                              TextButton(
-                                onPressed: () {
-                                  setState(() {
-                                    _showHistory = true;
-                                  });
-                                },
-                                child: const Text('History'),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                      if (_showHistory)
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: _history.map((entry) {
-                            return ListTile(
-                              dense: true,
-                              title: Text(entry,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(fontSize: 12)),
-                              onTap: () {
-                                final url = entry.split(' ').last;
-                                _navigateTo(url);
-                              },
-                            );
-                          }).toList(),
-                        )
-                      else
-                        Wrap(
-                          spacing: 12,
-                          runSpacing: 12,
-                          children: _favorites.map((url) {
-                            return InputChip(
-                              label: ConstrainedBox(
-                                constraints: const BoxConstraints(maxWidth: 180),
-                                child: Text(url,
-                                    overflow: TextOverflow.ellipsis,
-                                    softWrap: false),
-                              ),
-                              onPressed: () {
-                                _navigateTo(url);
-                              },
-                              deleteIcon: const Icon(Icons.close),
-                              onDeleted: () async {
-                                setState(() {
-                                  _favorites.remove(url);
-                                });
-                                await SettingsService.instance
-                                    .setBrowserFavorites(_favorites);
-                              },
-                            );
-                          }).toList(),
-                        ),
-                      const SizedBox(height: 20),
-                      const Text('Quick links',
-                          style: TextStyle(fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 12,
-                        runSpacing: 12,
-                        children: [
-                          'https://www.startpage.com/',
-                          'https://www.duckduckgo.com/',
-                          'https://news.ycombinator.com/',
-                          'https://www.wikipedia.org/',
-                        ].map((url) {
-                          return ElevatedButton(
-                            onPressed: () {
-                              _navigateTo(url);
-                            },
-                            child: Text(url.replaceAll('https://', ''),
-                                overflow: TextOverflow.ellipsis),
-                          );
-                        }).toList(),
-                      ),
-                    ],
-                  ),
-                )
-              : (Platform.isWindows
-                  ? (_windowsWebViewController == null
-                      ? const Center(child: CircularProgressIndicator())
-                      : webview_windows.Webview(_windowsWebViewController!))
-                  : (_webViewController == null
-                      ? const Center(child: CircularProgressIndicator())
-                      : WebViewWidget(controller: _webViewController!))),
-        ),
-      ],
-    );
-  }
+  // ── Top bar shown in BOTH tab and standalone modes ───────────────────────
 
-  Widget _buildBrowserTopBar(ThemeData theme) {
+  Widget _buildTopBar(ThemeData theme) {
+    final currentUrl = _addressController.text.trim();
+    final isFav = _isFavourite(currentUrl);
+    final canBack = Platform.isWindows ? _windowsCanGoBack : _canGoBack;
+    final canFwd = Platform.isWindows ? _windowsCanGoForward : _canGoForward;
+
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
       child: Row(
         children: [
-          Expanded(
-            child: TextField(
-              controller: _addressController,
-              textInputAction: TextInputAction.go,
-              onSubmitted: _navigateTo,
-              decoration: const InputDecoration(
-                hintText: 'Enter URL or magnet link',
-                border: OutlineInputBorder(),
-                isDense: true,
-                contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-              ),
-            ),
-          ),
           IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: (Platform.isWindows ? _windowsCanGoBack : _canGoBack)
+            icon: const Icon(Icons.arrow_back, size: 20),
+            onPressed: canBack
                 ? () async {
                     if (Platform.isWindows) {
                       await _windowsWebViewController?.goBack();
@@ -700,10 +461,11 @@ class _BrowserScreenState extends State<BrowserScreen> {
                     }
                   }
                 : null,
+            tooltip: 'Back',
           ),
           IconButton(
-            icon: const Icon(Icons.arrow_forward),
-            onPressed: (Platform.isWindows ? _windowsCanGoForward : _canGoForward)
+            icon: const Icon(Icons.arrow_forward, size: 20),
+            onPressed: canFwd
                 ? () async {
                     if (Platform.isWindows) {
                       await _windowsWebViewController?.goForward();
@@ -713,9 +475,10 @@ class _BrowserScreenState extends State<BrowserScreen> {
                     }
                   }
                 : null,
+            tooltip: 'Forward',
           ),
           IconButton(
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(Icons.refresh, size: 20),
             onPressed: () async {
               if (Platform.isWindows) {
                 await _windowsWebViewController?.reload();
@@ -723,264 +486,234 @@ class _BrowserScreenState extends State<BrowserScreen> {
                 await _webViewController?.reload();
               }
             },
+            tooltip: 'Reload',
+          ),
+          IconButton(
+            icon: const Icon(Icons.home_outlined, size: 20),
+            onPressed: () => _navigateTo(_homeUrl),
+            tooltip: 'Home',
+          ),
+          Expanded(
+            child: TextField(
+              controller: _addressController,
+              textInputAction: TextInputAction.go,
+              onSubmitted: _navigateTo,
+              style: const TextStyle(fontSize: 13),
+              decoration: const InputDecoration(
+                hintText: 'Enter URL or magnet link',
+                border: OutlineInputBorder(),
+                isDense: true,
+                contentPadding:
+                    EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+              ),
+            ),
+          ),
+          // ★ Favourite toggle — fills/unfills instantly, persists on disk.
+          IconButton(
+            icon: Icon(
+              isFav ? Icons.star : Icons.star_border,
+              size: 20,
+              color: isFav ? Colors.amber : null,
+            ),
+            onPressed: () => _toggleFavourite(currentUrl),
+            tooltip: isFav ? 'Remove favourite' : 'Add favourite',
+          ),
+          IconButton(
+            icon: const Icon(Icons.open_in_new, size: 20),
+            onPressed: _openExternally,
+            tooltip: 'Open in system browser',
           ),
         ],
+      ),
+    );
+  }
+
+  // ── Home screen (favourites + history) ───────────────────────────────────
+
+  Widget _buildHomeScreen(ThemeData theme) {
+    return SingleChildScrollView(
+      physics: const BouncingScrollPhysics(),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Text('Browser', style: theme.textTheme.headlineSmall),
+              const Spacer(),
+              TextButton.icon(
+                icon: const Icon(Icons.star, size: 16),
+                label: const Text('Favourites'),
+                onPressed: () => setState(() => _showHistory = false),
+                style: TextButton.styleFrom(
+                  foregroundColor:
+                      !_showHistory ? theme.colorScheme.primary : null,
+                ),
+              ),
+              TextButton.icon(
+                icon: const Icon(Icons.history, size: 16),
+                label: const Text('History'),
+                onPressed: () => setState(() => _showHistory = true),
+                style: TextButton.styleFrom(
+                  foregroundColor:
+                      _showHistory ? theme.colorScheme.primary : null,
+                ),
+              ),
+              if (_showHistory && _history.isNotEmpty)
+                TextButton(
+                  onPressed: () async {
+                    setState(() => _history.clear());
+                    await SettingsService.instance.setBrowserHistory([]);
+                  },
+                  child: const Text('Clear'),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (_showHistory)
+            ..._history.map((entry) {
+              final parts = entry.split(' ');
+              final url = parts.length > 1 ? parts.last : entry;
+              final timestamp = parts.length > 1 ? parts.first : '';
+              return ListTile(
+                dense: true,
+                leading: const Icon(Icons.history, size: 16),
+                title: Text(url,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 13)),
+                subtitle: timestamp.isNotEmpty
+                    ? Text(timestamp.substring(0, 10),
+                        style: const TextStyle(fontSize: 11))
+                    : null,
+                trailing: IconButton(
+                  icon: const Icon(Icons.close, size: 14),
+                  onPressed: () async {
+                    setState(() => _history.remove(entry));
+                    await SettingsService.instance.setBrowserHistory(_history);
+                  },
+                ),
+                onTap: () => _navigateTo(url),
+              );
+            })
+          else ...[
+            if (_favorites.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Text('No favourites yet. Star a page to add it.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.grey)),
+              )
+            else
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: _favorites.map((url) {
+                  return InputChip(
+                    avatar: const Icon(Icons.star, size: 14, color: Colors.amber),
+                    label: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 180),
+                      child: Text(url.replaceAll('https://', '').replaceAll('http://', ''),
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 13)),
+                    ),
+                    onPressed: () => _navigateTo(url),
+                    deleteIcon: const Icon(Icons.close, size: 14),
+                    onDeleted: () async {
+                      setState(() => _favorites.remove(url));
+                      await SettingsService.instance
+                          .setBrowserFavorites(_favorites);
+                    },
+                  );
+                }).toList(),
+              ),
+            const SizedBox(height: 20),
+            const Text('Quick links',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                'https://www.startpage.com/',
+                'https://duckduckgo.com/',
+                'https://news.ycombinator.com/',
+                'https://www.wikipedia.org/',
+              ]
+                  .map((url) => OutlinedButton(
+                        onPressed: () => _navigateTo(url),
+                        child: Text(
+                            url.replaceAll('https://', '').replaceAll('/', ''),
+                            style: const TextStyle(fontSize: 12)),
+                      ))
+                  .toList(),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ── WebView body ──────────────────────────────────────────────────────────
+
+  Widget _buildWebViewBody() {
+    if (Platform.isWindows) {
+      if (_windowsWebViewController == null) {
+        return const Center(child: CircularProgressIndicator());
+      }
+      return webview_windows.Webview(_windowsWebViewController!);
+    }
+    if (_webViewController == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    return WebViewWidget(controller: _webViewController!);
+  }
+
+  Widget _buildLoadError() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text('Load error: $_lastLoadError',
+                style: const TextStyle(color: Colors.red)),
+            const SizedBox(height: 12),
+            ElevatedButton(
+              onPressed: () => _navigateTo(_addressController.text),
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // required by AutomaticKeepAliveClientMixin
     final theme = Theme.of(context);
-    Widget content = _buildBrowserContent(theme);
+    final isLoading = Platform.isWindows ? _windowsIsLoading : _isLoading;
 
-    if (widget.inTab) {
-      return content;
-    }
-
-    return Scaffold(
-      appBar: AppBar(
-        title: SizedBox(
-          height: 36,
-          child: TextField(
-            controller: _addressController,
-            textInputAction: TextInputAction.go,
-            onSubmitted: _navigateTo,
-            decoration: const InputDecoration(
-              hintText: 'Enter URL or magnet link',
-              border: OutlineInputBorder(),
-              contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-            ),
+    final column = Column(
+      children: [
+        _buildTopBar(theme),
+        if (isLoading)
+          LinearProgressIndicator(
+            value: Platform.isWindows ? null : _progress,
+            minHeight: 2,
           ),
+        Expanded(
+          child: _showHomeScreen
+              ? _buildHomeScreen(theme)
+              : _lastLoadError != null
+                  ? _buildLoadError()
+                  : _buildWebViewBody(),
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: (Platform.isWindows ? _windowsCanGoBack : _canGoBack)
-                ? () async {
-                    if (Platform.isWindows) {
-                      await _windowsWebViewController?.goBack();
-                    } else {
-                      await _webViewController?.goBack();
-                      await _refreshNavigationState();
-                    }
-                  }
-                : null,
-          ),
-          IconButton(
-            icon: const Icon(Icons.arrow_forward),
-            onPressed: (Platform.isWindows ? _windowsCanGoForward : _canGoForward)
-                ? () async {
-                    if (Platform.isWindows) {
-                      await _windowsWebViewController?.goForward();
-                    } else {
-                      await _webViewController?.goForward();
-                      await _refreshNavigationState();
-                    }
-                  }
-                : null,
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () async {
-              if (Platform.isWindows) {
-                await _windowsWebViewController?.reload();
-              } else {
-                await _webViewController?.reload();
-              }
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.home),
-            onPressed: () async {
-              _showHomeScreen = true;
-              _addressController.text = _homeUrl;
-              await _navigateTo(_homeUrl);
-            },
-            tooltip: 'Go home',
-          ),
-          IconButton(
-            icon: const Icon(Icons.home_filled),
-            onPressed: () async {
-              final current = _addressController.text.trim();
-              if (current.isEmpty) return;
-              final messenger = ScaffoldMessenger.of(context);
-              await SettingsService.instance.setBrowserHomeUrl(current);
-              if (!mounted) return;
-              setState(() {
-                _homeUrl = current;
-              });
-              messenger.showSnackBar(
-                const SnackBar(content: Text('Home URL updated')),
-              );
-            },
-            tooltip: 'Set current page as home',
-          ),
-          IconButton(
-            icon: Icon(_favorites.contains(_addressController.text.trim())
-                ? Icons.star
-                : Icons.star_border),
-            onPressed: () async {
-              final url = _addressController.text.trim();
-              if (url.isEmpty) return;
-              setState(() {
-                if (_favorites.contains(url)) {
-                  _favorites.remove(url);
-                } else {
-                  _favorites.add(url);
-                }
-              });
-              await SettingsService.instance.setBrowserFavorites(_favorites);
-            },
-            tooltip: 'Toggle favorite',
-          ),
-          IconButton(
-            icon: const Icon(Icons.open_in_new),
-            onPressed: _openExternally,
-          ),
-          IconButton(
-            icon: const Icon(Icons.add),
-            onPressed: () => _handleTorrentOrMagnetUrl(_addressController.text),
-            tooltip: 'Add URL to torrents if valid magnet/.torrent',
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          if (Platform.isWindows ? _windowsIsLoading : _isLoading)
-            LinearProgressIndicator(
-              value: Platform.isWindows ? null : _progress,
-              minHeight: 3,
-            ),
-          Expanded(
-            child: _showHomeScreen
-                ? SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text('Home', style: theme.textTheme.headlineMedium),
-                            Row(
-                              children: [
-                                TextButton(
-                                  onPressed: () {
-                                    setState(() {
-                                      _showHistory = false;
-                                    });
-                                  },
-                                  child: const Text('Favorites'),
-                                ),
-                                TextButton(
-                                  onPressed: () {
-                                    setState(() {
-                                      _showHistory = true;
-                                    });
-                                  },
-                                  child: const Text('History'),
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        if (_showHistory)
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: _history.map((entry) {
-                              return ListTile(
-                                dense: true,
-                                title: Text(entry,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(fontSize: 12)),
-                                onTap: () {
-                                  final url = entry.split(' ').last;
-                                  _navigateTo(url);
-                                },
-                              );
-                            }).toList(),
-                          )
-                        else
-                          Wrap(
-                            spacing: 12,
-                            runSpacing: 12,
-                            children: _favorites.map((url) {
-                            return InputChip(
-                              label: ConstrainedBox(
-                                constraints: const BoxConstraints(maxWidth: 180),
-                                child: Text(url,
-                                    overflow: TextOverflow.ellipsis,
-                                    softWrap: false),
-                              ),
-                              onPressed: () {
-                                _navigateTo(url);
-                              },
-                              deleteIcon: const Icon(Icons.close),
-                              onDeleted: () async {
-                                setState(() {
-                                  _favorites.remove(url);
-                                });
-                                await SettingsService.instance.setBrowserFavorites(_favorites);
-                              },
-                            );
-                          }).toList(),
-                        ),
-                        const SizedBox(height: 20),
-                        const Text('Quick links', style: TextStyle(fontWeight: FontWeight.bold)),
-                        const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 12,
-                          runSpacing: 12,
-                          children: [
-                            'https://www.startpage.com/',
-                            'https://www.duckduckgo.com/',
-                            'https://news.ycombinator.com/',
-                            'https://www.wikipedia.org/',
-                          ].map((url) {
-                            return ElevatedButton(
-                              onPressed: () {
-                                _navigateTo(url);
-                              },
-                              child: Text(url.replaceAll('https://', ''), overflow: TextOverflow.ellipsis),
-                            );
-                          }).toList(),
-                        ),
-                      ],
-                    ),
-                  )
-                : _lastLoadError != null
-                    ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text('Load error: $_lastLoadError',
-                                  style: const TextStyle(color: Colors.red)),
-                              const SizedBox(height: 12),
-                              ElevatedButton(
-                                onPressed: () {
-                                  _navigateTo(_addressController.text);
-                                },
-                                child: const Text('Retry'),
-                              ),
-                            ],
-                          ),
-                        ),
-                      )
-                    : (Platform.isWindows
-                        ? (_windowsWebViewController == null
-                            ? const Center(child: CircularProgressIndicator())
-                            : webview_windows.Webview(_windowsWebViewController!))
-                        : (_webViewController == null
-                            ? const Center(child: CircularProgressIndicator())
-                            : WebViewWidget(controller: _webViewController!))),
-          ),
-        ],
-      ),
+      ],
     );
+
+    if (widget.inTab) return column;
+
+    return Scaffold(body: column);
   }
 }

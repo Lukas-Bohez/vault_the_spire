@@ -412,18 +412,20 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildMainContent(ThemeData theme) {
-    switch (_mainView) {
-      case MainView.dashboard:
-        return _buildDashboard(theme);
-      case MainView.torrents:
-        return _buildTorrentsArea(theme);
-      case MainView.messages:
-        return _buildMessagesArea(theme);
-      case MainView.server:
-        return _buildServerChatArea(theme);
-      case MainView.browser:
-        return _buildBrowserArea(theme);
-    }
+    // IndexedStack keeps every tab widget alive in the tree even when not
+    // visible — the BrowserScreen (WebView) is never torn down when the user
+    // switches away, so it stays exactly on the page they left.
+    final views = MainView.values;
+    return IndexedStack(
+      index: views.indexOf(_mainView),
+      children: [
+        _buildDashboard(theme),
+        _buildTorrentsArea(theme),
+        _buildMessagesArea(theme),
+        _buildServerChatArea(theme),
+        _buildBrowserArea(theme),
+      ],
+    );
   }
 
   Future<void> _toggleVoiceChannel(String serverId, String channelName) async {

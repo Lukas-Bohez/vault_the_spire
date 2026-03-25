@@ -10,10 +10,10 @@ class SettingsService {
   static const _kTorrentSortMode = 'torrent_sort_mode';
   static const _kBrowserHomeUrl = 'browser_home_url';
   static const _kBrowserFavorites = 'browser_favorites';
-
+  static const _kBrowserLastUrl = 'browser_last_url';
+  static const _kBrowserHistory = 'browser_history';
 
   static final SettingsService instance = SettingsService._();
-
   SettingsService._();
 
   bool useSystemTray = true;
@@ -22,14 +22,15 @@ class SettingsService {
   bool soundEffectsEnabled = true;
   bool usePersistentSidebar = false;
   String downloadDestination = '';
-  int torrentSortMode = 0; // 0=reputation, 1=seeders, 2=leechers
+  int torrentSortMode = 0;
   String browserHomeUrl = 'https://www.startpage.com/';
   List<String> browserFavorites = <String>[
     'https://www.startpage.com/',
     'https://news.ycombinator.com/',
     'https://www.wikipedia.org/',
   ];
-
+  String browserLastUrl = '';
+  List<String> browserHistory = <String>[];
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -42,6 +43,8 @@ class SettingsService {
     torrentSortMode = prefs.getInt(_kTorrentSortMode) ?? 0;
     browserHomeUrl = prefs.getString(_kBrowserHomeUrl) ?? browserHomeUrl;
     browserFavorites = prefs.getStringList(_kBrowserFavorites) ?? browserFavorites;
+    browserLastUrl = prefs.getString(_kBrowserLastUrl) ?? '';
+    browserHistory = prefs.getStringList(_kBrowserHistory) ?? <String>[];
   }
 
   Future<void> setUseSystemTray(bool value) async {
@@ -96,5 +99,19 @@ class SettingsService {
     browserFavorites = list;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList(_kBrowserFavorites, list);
+  }
+
+  Future<void> setBrowserLastUrl(String url) async {
+    browserLastUrl = url;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kBrowserLastUrl, url);
+  }
+
+  Future<void> setBrowserHistory(List<String> history) async {
+    browserHistory = history;
+    final prefs = await SharedPreferences.getInstance();
+    // Keep at most 200 entries persisted.
+    final trimmed = history.length > 200 ? history.sublist(0, 200) : history;
+    await prefs.setStringList(_kBrowserHistory, trimmed);
   }
 }
