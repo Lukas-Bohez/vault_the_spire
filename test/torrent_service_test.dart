@@ -13,7 +13,7 @@ void main() {
     expect(TorrentService.isTorrentOrMagnetUrl('just some text'), isFalse);
   });
 
-  test('TorrentEngineStatus has peerAddresses and the field is populated', () {
+  test('TorrentEngineStatus has peers and can report peer count', () {
     final status = TorrentEngineStatus(
       torrentId: 'test',
       downloaded: 1024,
@@ -25,12 +25,10 @@ void main() {
       leechers: 2,
       downloadSpeed: 1234,
       uploadSpeed: 567,
-      peerAddresses: ['1.2.3.4:6881', '5.6.7.8:6881'],
     );
 
-    expect(status.peerAddresses, isNotEmpty);
-    expect(status.peerAddresses, contains('1.2.3.4:6881'));
     expect(status.peers, equals(3));
+    expect(status.seeders, equals(1));
   });
 
   test('SettingsService can persist browser favorites through SharedPreferences', () async {
