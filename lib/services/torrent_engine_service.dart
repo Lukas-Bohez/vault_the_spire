@@ -82,8 +82,6 @@ class TorrentEngineService {
     _tasks[torrent.id] = task;
     _wireEvents(torrent.id, task);
 
-    await task.start();
-
     // Announce to every tracker embedded in the .torrent file.
     // infoHashBuffer is the correct Uint8List property name.
     for (final url in dtModel.announces) {
@@ -103,6 +101,8 @@ class TorrentEngineService {
     for (final node in dtModel.nodes) {
       task.addDHTNode(node);
     }
+
+    await task.start();
 
     await TorrentService.instance.updateTorrentStatus(torrent.id, 'downloading');
     _startPollTimer(torrent.id, task);
@@ -178,9 +178,7 @@ class TorrentEngineService {
     _tasks[torrent.id] = task;
     _wireEvents(torrent.id, task);
 
-    await task.start();
-
-    // Announce to trackers from the magnet link + parsed model.
+    // Announce to trackers from the magnet link + parsed model before start.
     final infoHash = dtModel.infoHashBuffer;
     final seenUrls = <String>{};
     for (final url in [...magnet.trackers, ...dtModel.announces]) {
@@ -195,15 +193,17 @@ class TorrentEngineService {
       }
     });
 
+    // DHT bootstrap nodes from parsed metadata.
+    for (final node in dtModel.nodes) {
+      task.addDHTNode(node);
+    }
+
+    await task.start();
+
     // Hand off peers already connected during metadata fetch.
     // This is what gets pieces flowing immediately.
     for (final peer in downloader.activePeers) {
       task.addPeer(peer.address, dt.PeerSource.manual, type: peer.type);
-    }
-
-    // DHT bootstrap nodes from parsed metadata.
-    for (final node in dtModel.nodes) {
-      task.addDHTNode(node);
     }
 
     await TorrentService.instance.updateTorrentStatus(torrent.id, 'downloading');
