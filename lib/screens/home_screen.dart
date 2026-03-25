@@ -1203,6 +1203,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               IconButton(
                                 icon: const Icon(Icons.play_arrow),
                                 onPressed: () async {
+                                  final messenger = ScaffoldMessenger.of(context);
                                   if (_downloadDestination.isEmpty) {
                                     await _chooseDownloadDirectory();
                                     if (_downloadDestination.isEmpty) return;
@@ -1214,7 +1215,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                     );
                                   } catch (e) {
                                     if (!mounted) return;
-                                    ScaffoldMessenger.of(context).showSnackBar(
+                                    messenger.showSnackBar(
                                       SnackBar(
                                         content: Text('Download failed: $e'),
                                       ),
@@ -1253,6 +1254,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 icon: const Icon(Icons.play_arrow),
                                 tooltip: 'Resume',
                                 onPressed: () async {
+                                  final messenger = ScaffoldMessenger.of(context);
                                   if (_downloadDestination.isEmpty) {
                                     await _chooseDownloadDirectory();
                                     if (_downloadDestination.isEmpty) return;
@@ -1264,7 +1266,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                     );
                                   } catch (e) {
                                     if (!mounted) return;
-                                    ScaffoldMessenger.of(context).showSnackBar(
+                                    messenger.showSnackBar(
                                       SnackBar(
                                         content: Text('Download failed: $e'),
                                       ),

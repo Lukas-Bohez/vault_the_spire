@@ -126,9 +126,10 @@ class TorrentEngineService {
           // DO NOT type-check with "is Map<String, dynamic>" — it always fails
           // for real bencode data and silently breaks every magnet download.
           // Just pass the raw decoded value directly to parseTorrentFileContent.
-          final msg = decode(event.data is Uint8List
-              ? event.data as Uint8List
-              : Uint8List.fromList(event.data as List<int>));
+          final rawData = event.data;
+          final msg = decode(rawData is Uint8List
+              ? rawData
+              : Uint8List.fromList(rawData));
 
           final model = dt.TorrentParser.parseFromMap(<String, dynamic>{
             'info': msg,
