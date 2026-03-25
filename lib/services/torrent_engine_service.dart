@@ -86,13 +86,23 @@ class TorrentEngineService {
 
     await task.start();
 
-    for (final url in dtModel.announces) {
+    final trackerUrls = dtModel.announces.isNotEmpty
+        ? dtModel.announces
+        : <Uri>[
+            Uri.parse('udp://tracker.openbittorrent.com:80/announce'),
+            Uri.parse('udp://tracker.opentrackr.org:1337/announce'),
+          ];
+
+    for (final url in trackerUrls) {
       task.startAnnounceUrl(url, dtModel.infoHashBuffer);
     }
 
     for (final node in dtModel.nodes) {
       task.addDHTNode(node);
     }
+
+    // Ensure DHT is queried immediately for peers.
+    task.requestPeersFromDHT();
 
     await TorrentService.instance.updateTorrentStatus(
       torrent.id,
@@ -207,6 +217,12 @@ class TorrentEngineService {
 
     final infoHash = dtModel.infoHashBuffer;
     final trackerUrls = <Uri>{...magnet.trackers, ...dtModel.announces};
+    if (trackerUrls.isEmpty) {
+      trackerUrls.addAll(<Uri>[
+        Uri.parse('udp://tracker.openbittorrent.com:80/announce'),
+        Uri.parse('udp://tracker.opentrackr.org:1337/announce'),
+      ]);
+    }
     for (final url in trackerUrls) {
       task.startAnnounceUrl(url, infoHash);
     }
@@ -214,6 +230,9 @@ class TorrentEngineService {
     for (final peer in downloader.activePeers) {
       task.addPeer(peer.address, dt.PeerSource.manual, type: peer.type);
     }
+
+    // Force DHT peer discovery even if no pieces yet.
+    task.requestPeersFromDHT();
 
     await TorrentService.instance.updateTorrentStatus(
       torrent.id,
@@ -225,6 +244,15 @@ class TorrentEngineService {
 
   void _wireEvents(String torrentId, dt.TorrentTask task) {
     task.createListener()
+      ..on<dt.TaskStarted>((_) {
+        _emitStats(torrentId, task, 'downloading');
+      })
+      ..on<dt.TaskResumed>((_) {
+        _emitStats(torrentId, task, 'downloading');
+      })
+      ..on<dt.TaskPaused>((_) {
+        _emitStats(torrentId, task, 'paused');
+      })
       ..on<dt.StateFileUpdated>((_) {
         _emitStats(torrentId, task, 'downloading');
       })
@@ -252,6 +280,15 @@ class TorrentEngineService {
     final dlSpeed = task.currentDownloadSpeed * 1000;
     final ulSpeed = task.uploadSpeed * 1000;
 
+    final peers = task.connectedPeersNumber;
+    final seeders = task.seederNumber;
+    final allPeers = task.allPeersNumber;
+
+    // Debug trace for offline diagnosis.
+    print(
+      'TORRENT-ENGINE: id=$torrentId state=$state progress=${task.progress.toStringAsFixed(4)} downloaded=$downloaded peers=$peers allPeers=$allPeers seeders=$seeders dl=${dlSpeed.toStringAsFixed(2)} ul=${ulSpeed.toStringAsFixed(2)}',
+    );
+
     _statusController.add(
       TorrentEngineStatus(
         torrentId: torrentId,
@@ -259,8 +296,8 @@ class TorrentEngineService {
         uploaded: 0,
         progress: task.progress,
         state: state,
-        peers: task.connectedPeersNumber,
-        seeders: task.seederNumber,
+        peers: peers,
+        seeders: seeders,
         downloadSpeed: dlSpeed,
         uploadSpeed: ulSpeed,
       ),
