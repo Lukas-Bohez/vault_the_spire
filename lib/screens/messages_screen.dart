@@ -89,6 +89,16 @@ class _MessagesScreenState extends State<MessagesScreen> {
       ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
   }
 
+  String _formatTimestamp(int millis) {
+    final dt = DateTime.fromMillisecondsSinceEpoch(millis).toLocal();
+    final now = DateTime.now();
+    final isToday = dt.year == now.year && dt.month == now.month && dt.day == now.day;
+    final hour = dt.hour.toString().padLeft(2, '0');
+    final minute = dt.minute.toString().padLeft(2, '0');
+    if (isToday) return '$hour:$minute';
+    return '${dt.day}/${dt.month} $hour:$minute';
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -226,7 +236,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
                                   ),
                                 ),
                                 Text(
-                                  'Last activity: ${selectedMessages.isEmpty ? '—' : DateTime.fromMillisecondsSinceEpoch(selectedMessages.last.createdAt)}',
+                                  'Last activity: ${selectedMessages.isEmpty ? '—' : _formatTimestamp(selectedMessages.last.createdAt)}',
                                   style: const TextStyle(fontSize: 12, color: Colors.grey),
                                 ),
                               ],
@@ -264,7 +274,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
                                           ),
                                           const SizedBox(height: 4),
                                           Text(
-                                            DateTime.fromMillisecondsSinceEpoch(message.createdAt).toLocal().toString(),
+                                            _formatTimestamp(message.createdAt),
                                             style: TextStyle(
                                               fontSize: 10,
                                               color: isMine ? Colors.white70 : Colors.black54,
@@ -285,6 +295,8 @@ class _MessagesScreenState extends State<MessagesScreen> {
                             Expanded(
                               child: TextField(
                                 controller: _bodyController,
+                                textInputAction: TextInputAction.send,
+                                onSubmitted: (_) => _sendMessage(),
                                 decoration: const InputDecoration(
                                   hintText: 'Type your message',
                                   border: OutlineInputBorder(),

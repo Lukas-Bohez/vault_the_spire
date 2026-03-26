@@ -16,11 +16,50 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> {
   final _controller = TextEditingController();
+  List<ChatMessage> _messages = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadMessages();
+  }
 
   @override
   void dispose() {
     _controller.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadMessages() async {
+    setState(() {
+      _loading = true;
+    });
+    _messages = await ChatService.instance.messagesFor(
+      widget.server.id,
+      widget.channelId,
+    );
+    setState(() {
+      _loading = false;
+    });
+  }
+
+  Future<void> _send() async {
+    final text = _controller.text.trim();
+    if (text.isEmpty) return;
+    await ChatService.instance.sendMessage(
+      widget.server.id,
+      widget.channelId,
+      'you',
+      text,
+    );
+    if (ChatService.instance.messageMentions('you', text)) {
+      await SoundService.instance.playMention();
+    } else {
+      await SoundService.instance.playSend();
+    }
+    _controller.clear();
+    await _loadMessages();
   }
 
   @override
@@ -34,38 +73,24 @@ class _ChatScreenState extends State<ChatScreen> {
       body: Column(
         children: [
           Expanded(
-            child: FutureBuilder<List<ChatMessage>>(
-              future: ChatService.instance.messagesFor(
-                widget.server.id,
-                widget.channelId,
-              ),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snapshot.hasError) {
-                  return Center(child: Text('Error: ${snapshot.error}'));
-                }
-                final messages = snapshot.data ?? <ChatMessage>[];
-                if (messages.isEmpty) {
-                  return const Center(child: Text('No messages yet.'));
-                }
-                return ListView.builder(
-                  padding: const EdgeInsets.all(12),
-                  itemCount: messages.length,
-                  itemBuilder: (context, index) {
-                    final m = messages[index];
-                    return ListTile(
-                      title: Text(m.author),
-                      subtitle: Text(m.text),
-                      trailing: Text(
-                        '${m.timestamp.hour}:${m.timestamp.minute.toString().padLeft(2, '0')}',
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : _messages.isEmpty
+                    ? const Center(child: Text('No messages yet.'))
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(12),
+                        itemCount: _messages.length,
+                        itemBuilder: (context, index) {
+                          final m = _messages[index];
+                          return ListTile(
+                            title: Text(m.author),
+                            subtitle: Text(m.text),
+                            trailing: Text(
+                              '${m.timestamp.hour}:${m.timestamp.minute.toString().padLeft(2, '0')}',
+                            ),
+                          );
+                        },
                       ),
-                    );
-                  },
-                );
-              },
-            ),
           ),
           SafeArea(
             child: Row(
@@ -80,23 +105,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 ),
                 IconButton(
                   icon: const Icon(Icons.send),
-                  onPressed: () async {
-                    final text = _controller.text.trim();
-                    if (text.isEmpty) return;
-                    await ChatService.instance.sendMessage(
-                      widget.server.id,
-                      widget.channelId,
-                      'you',
-                      text,
-                    );
-                    if (ChatService.instance.messageMentions('you', text)) {
-                      await SoundService.instance.playMention();
-                    } else {
-                      await SoundService.instance.playSend();
-                    }
-                    _controller.clear();
-                    setState(() {});
-                  },
+                  onPressed: _send,
                 ),
               ],
             ),

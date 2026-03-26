@@ -18,31 +18,61 @@ class DMScreen extends StatefulWidget {
 
 class _DMScreenState extends State<DMScreen> {
   final _controller = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
   Timer? _typingTimer;
+  List<ChatMessage> _messages = [];
+  bool _loading = true;
   ChatMessage? _replyTarget;
+
   @override
   void initState() {
     super.initState();
     _typingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() {}); // refresh typing indicator
+      if (mounted && ChatService.instance.isUserTyping(widget.peer)) {
+        setState(() {});
+      }
     });
+    _loadMessages();
   }
 
   @override
   void dispose() {
     _typingTimer?.cancel();
+    _scrollController.dispose();
     _controller.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadMessages() async {
+    setState(() {
+      _loading = true;
+    });
+    _messages = await ChatService.instance.directMessagesBetween(
+      widget.user,
+      widget.peer,
+    );
+    setState(() {
+      _loading = false;
+    });
+    _scrollToBottom();
+  }
+
+  void _scrollToBottom() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
+      }
+    });
   }
 
   Future<void> _send() async {
     final text = _controller.text.trim();
     final topic = ChatService.dmSwarmTopic(widget.user, widget.peer);
     ChatService.instance.broadcastTypingStatus(topic, widget.user, false);
-    _typingTimer?.cancel();
-    _typingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
-      if (mounted) setState(() {}); // refresh typing indicator
-    });
 
     if (text.isEmpty) return;
     await ChatService.instance.sendDirectMessage(
@@ -52,7 +82,6 @@ class _DMScreenState extends State<DMScreen> {
       replyToMessageId: _replyTarget?.id,
     );
     _replyTarget = null;
-    _controller.clear();
 
     if (ChatService.instance.messageMentions(widget.user, text) ||
         ChatService.instance.messageMentions(widget.peer, text)) {
@@ -60,8 +89,9 @@ class _DMScreenState extends State<DMScreen> {
     } else {
       await SoundService.instance.playSend();
     }
+
     _controller.clear();
-    setState(() {});
+    await _loadMessages();
   }
 
   @override
@@ -71,29 +101,18 @@ class _DMScreenState extends State<DMScreen> {
       body: Column(
         children: [
           Expanded(
-            child: FutureBuilder<List<ChatMessage>>(
-              future: ChatService.instance.directMessagesBetween(
-                widget.user,
-                widget.peer,
-              ),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (snapshot.hasError) {
-                  return Center(child: Text('Error: ${snapshot.error}'));
-                }
-                final messages = snapshot.data ?? [];
-                if (messages.isEmpty) {
-                  return const Center(
-                    child: Text('No DMs yet. Start the conversation.'),
-                  );
-                }
-                return ListView.builder(
-                  padding: const EdgeInsets.all(12),
-                  itemCount: messages.length,
-                  itemBuilder: (context, index) {
-                    final m = messages[index];
+            child: _loading
+                ? const Center(child: CircularProgressIndicator())
+                : _messages.isEmpty
+                    ? const Center(
+                        child: Text('No DMs yet. Start the conversation.'),
+                      )
+                    : ListView.builder(
+                        controller: _scrollController,
+                        padding: const EdgeInsets.all(12),
+                        itemCount: _messages.length,
+                        itemBuilder: (context, index) {
+                          final m = _messages[index];
                     final mentionsCurrent = ChatService.instance
                         .messageMentions(widget.user, m.text);
                     return ListTile(
@@ -250,9 +269,7 @@ class _DMScreenState extends State<DMScreen> {
                       },
                     );
                   },
-                );
-              },
-            ),
+                ),
           ),
           SafeArea(
             child: Row(
