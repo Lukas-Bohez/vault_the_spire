@@ -4,11 +4,11 @@ import 'dart:ui' show Offset, Size;
 
 import 'package:flutter/foundation.dart' show VoidCallback, debugPrint, kIsWeb;
 import 'package:path/path.dart' as p;
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:vault_the_spire/constants.dart';
-
+import 'package:vault_the_spire/services/settings_service.dart';
+import 'package:vault_the_spire/services/torrent_engine_service.dart';
 class TrayService with TrayListener, WindowListener {
   static bool enabled = false;
   static bool shouldMinimiseToTrayOnClose = false;
@@ -80,9 +80,10 @@ class TrayService with TrayListener, WindowListener {
 
     final menu = Menu(
       items: [
-        MenuItem(key: 'show', label: 'Show'),
+        MenuItem(key: 'show', label: 'Show Vault'),
+        MenuItem(key: 'pause_all', label: 'Pause All Torrents'),
         MenuItem.separator(),
-        MenuItem(key: 'quit', label: 'Quit'),
+        MenuItem(key: 'quit', label: 'Exit'),
       ],
     );
 
@@ -106,6 +107,9 @@ class TrayService with TrayListener, WindowListener {
     switch (menuItem.key) {
       case 'show':
         _showWindow();
+        break;
+      case 'pause_all':
+        TorrentEngineService.instance.pauseAll();
         break;
       case 'quit':
         onTrayQuit?.call();
@@ -139,11 +143,12 @@ class TrayService with TrayListener, WindowListener {
   Future<void> _saveWindowGeometry() async {
     try {
       final bounds = await windowManager.getBounds();
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setDouble(_kWindowX, bounds.left);
-      await prefs.setDouble(_kWindowY, bounds.top);
-      await prefs.setDouble(_kWindowW, bounds.width);
-      await prefs.setDouble(_kWindowH, bounds.height);
+      await SettingsService.instance.setWindowGeometry(
+        bounds.left,
+        bounds.top,
+        bounds.width,
+        bounds.height,
+      );
     } catch (_) {}
   }
 
@@ -157,12 +162,11 @@ class TrayService with TrayListener, WindowListener {
 
   Future<void> _restoreWindowGeometry() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final x = prefs.getDouble(_kWindowX);
-      final y = prefs.getDouble(_kWindowY);
-      final w = prefs.getDouble(_kWindowW);
-      final h = prefs.getDouble(_kWindowH);
-      if (x == null || y == null || w == null || h == null) return;
+      final x = SettingsService.instance.windowX;
+      final y = SettingsService.instance.windowY;
+      final w = SettingsService.instance.windowW;
+      final h = SettingsService.instance.windowH;
+      if (w <= 0 || h <= 0) return;
       if (w < 100 || h < 100) return;
 
       const minVisibleX = -200.0;

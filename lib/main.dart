@@ -18,6 +18,7 @@ import 'package:vault_the_spire/services/service_locator.dart';
 import 'package:vault_the_spire/services/startup_service.dart';
 import 'package:vault_the_spire/services/theme_service.dart';
 import 'package:vault_the_spire/services/tray_service.dart';
+import 'package:vault_the_spire/services/torrent_service.dart';
 import 'package:vault_the_spire/services/background_service.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -85,6 +86,7 @@ Future<void> main() async {
             },
             onTrayQuit: () async {
               await windowManager.destroy();
+              exit(0);
             },
           ).init();
         }
@@ -94,6 +96,8 @@ Future<void> main() async {
       }
 
       await IdentityService.instance.initialize();
+
+      await TorrentService.instance.resumeActiveTorrents();
 
       runApp(const MainApp());
     },
@@ -138,33 +142,9 @@ class _MainAppState extends State<MainApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'VaultTheSpire',
-      theme: ThemeData(
-        brightness: Brightness.light,
-        primaryColor: const Color(0xFF5865F2),
-        scaffoldBackgroundColor: const Color(0xFFF2F3F5),
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF5865F2),
-          brightness: Brightness.light,
-          primary: const Color(0xFF5865F2),
-          secondary: const Color(0xFF2F3136),
-          surface: const Color(0xFFF2F3F5),
-        ),
-        useMaterial3: true,
-      ),
-      darkTheme: ThemeData(
-        brightness: Brightness.dark,
-        primaryColor: const Color(0xFF5865F2),
-        scaffoldBackgroundColor: const Color(0xFF0B0D14),
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF5865F2),
-          brightness: Brightness.dark,
-          primary: const Color(0xFF5865F2),
-          secondary: const Color(0xFF2F3136),
-          surface: const Color(0xFF12181F),
-        ),
-        useMaterial3: true,
-      ),
-      themeMode: themeService.themeMode,
+      theme: ThemeData.dark(useMaterial3: true),
+      darkTheme: ThemeData.dark(useMaterial3: true),
+      themeMode: ThemeMode.dark,
       home: const HomeScreen(),
     );
   }

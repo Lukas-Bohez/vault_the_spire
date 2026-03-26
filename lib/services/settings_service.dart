@@ -8,6 +8,10 @@ class SettingsService {
   static const _kUsePersistentSidebar = 'use_persistent_sidebar';
   static const _kDownloadDestination = 'download_destination';
   static const _kDisplayName = 'display_name';
+  static const _kWindowX = 'window_x';
+  static const _kWindowY = 'window_y';
+  static const _kWindowW = 'window_w';
+  static const _kWindowH = 'window_h';
   static const _kTorrentSortMode = 'torrent_sort_mode';
   static const _kBrowserHomeUrl = 'browser_home_url';
   static const _kBrowserFavorites = 'browser_favorites';
@@ -31,6 +35,10 @@ class SettingsService {
     'https://www.wikipedia.org/',
   ];
   String displayName = 'Anonymous';
+  double windowX = 0.0;
+  double windowY = 0.0;
+  double windowW = 0.0;
+  double windowH = 0.0;
   String browserLastUrl = '';
   List<String> browserHistory = <String>[];
 
@@ -43,6 +51,10 @@ class SettingsService {
     soundEffectsEnabled = prefs.getBool(_kSoundEffectsEnabled) ?? true;
     usePersistentSidebar = prefs.getBool(_kUsePersistentSidebar) ?? false;
     downloadDestination = prefs.getString(_kDownloadDestination) ?? '';
+    windowX = prefs.getDouble(_kWindowX) ?? 0.0;
+    windowY = prefs.getDouble(_kWindowY) ?? 0.0;
+    windowW = prefs.getDouble(_kWindowW) ?? 0.0;
+    windowH = prefs.getDouble(_kWindowH) ?? 0.0;
     torrentSortMode = prefs.getInt(_kTorrentSortMode) ?? 0;
     browserHomeUrl = prefs.getString(_kBrowserHomeUrl) ?? browserHomeUrl;
     browserFavorites =
@@ -91,6 +103,18 @@ class SettingsService {
     displayName = name;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_kDisplayName, name);
+  }
+
+  Future<void> setWindowGeometry(double x, double y, double w, double h) async {
+    final prefs = await SharedPreferences.getInstance();
+    windowX = x;
+    windowY = y;
+    windowW = w;
+    windowH = h;
+    await prefs.setDouble(_kWindowX, x);
+    await prefs.setDouble(_kWindowY, y);
+    await prefs.setDouble(_kWindowW, w);
+    await prefs.setDouble(_kWindowH, h);
   }
 
   Future<void> setTorrentSortMode(int value) async {

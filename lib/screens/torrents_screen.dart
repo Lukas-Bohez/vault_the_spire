@@ -1,6 +1,7 @@
 ﻿import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:vault_the_spire/models/torrent.dart';
 import 'package:vault_the_spire/platform/drag_drop.dart';
 import 'package:vault_the_spire/services/settings_service.dart';
@@ -201,6 +202,19 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
                           Text('${_statusLabel(torrent)} • ${(progress * 100).toStringAsFixed(1)}%'),
                         ],
                       ),
+                      onLongPress: () {
+                        final magnet = torrent.magnetLink;
+                        if (magnet != null && magnet.isNotEmpty) {
+                          Clipboard.setData(ClipboardData(text: magnet));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Magnet link copied to clipboard')),
+                          );
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('No magnet link available for this torrent')),
+                          );
+                        }
+                      },
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -216,6 +230,23 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
                               tooltip: isActive ? 'Pause' : 'Play',
                               onPressed: () => _toggleTorrent(torrent),
                             ),
+                          IconButton(
+                            icon: const Icon(Icons.copy),
+                            tooltip: 'Copy magnet link',
+                            onPressed: () {
+                              final magnet = torrent.magnetLink;
+                              if (magnet != null && magnet.isNotEmpty) {
+                                Clipboard.setData(ClipboardData(text: magnet));
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('Magnet link copied to clipboard')),
+                                );
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('No magnet link available for this torrent')),
+                                );
+                              }
+                            },
+                          ),
                           IconButton(
                             icon: const Icon(Icons.delete),
                             tooltip: 'Delete',

@@ -5,10 +5,10 @@ import 'dart:math';
 import 'package:b_encode_decode/b_encode_decode.dart';
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart' as dt;
 import 'package:flutter/foundation.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'package:vault_the_spire/models/torrent.dart';
+import 'package:vault_the_spire/services/notification_service.dart';
 import 'package:vault_the_spire/services/torrent_service.dart';
 
 class TorrentEngineStatus {
@@ -67,9 +67,33 @@ class TorrentEngineService {
   final Map<String, List<String>> _connectionLogs = {};
   bool _defaultPortsBlocked = false;
 
-  final FlutterLocalNotificationsPlugin _localNotificationsPlugin =
-      FlutterLocalNotificationsPlugin();
-  bool _notificationsInitialized = false;
+  int get currentDhtNodeCount {
+    int nodes = 0;
+    for (final task in _tasks.values) {
+      try {
+        final dynamic t = task;
+        final dht = t.dhtNodeCount as int? ?? 0;
+        nodes += dht;
+      } catch (_) {
+        // ignore if not available
+      }
+    }
+    return nodes;
+  }
+
+  int get totalPeerCount {
+    int peers = 0;
+    for (final task in _tasks.values) {
+      try {
+        final dynamic t = task;
+        final pcount = t.connectedPeersNumber as int? ?? 0;
+        peers += pcount;
+      } catch (_) {
+        // ignore if not available
+      }
+    }
+    return peers;
+  }
 
   void _bootstrapDhtNetwork() {
     debugPrint('Initializing default DHT bootstrap nodes');
@@ -111,48 +135,6 @@ class TorrentEngineService {
         .add('[${DateTime.now().toIso8601String()}] $message');
   }
 
-  Future<void> _initNotifications() async {
-    if (_notificationsInitialized) return;
-    try {
-      final settings = InitializationSettings(
-        android: const AndroidInitializationSettings('@mipmap/ic_launcher'),
-        iOS: const DarwinInitializationSettings(),
-        linux: const LinuxInitializationSettings(defaultActionName: 'Open'),
-      );
-      await _localNotificationsPlugin.initialize(settings);
-      _notificationsInitialized = true;
-    } catch (e) {
-      debugPrint('Notification init failed: $e');
-    }
-  }
-
-  Future<void> _showTorrentCompletedNotification(String torrentId) async {
-    try {
-      await _initNotifications();
-      final torrent = await TorrentService.instance.getTorrentById(torrentId);
-      final title = 'Download Complete';
-      final body = torrent?.name ?? 'Torrent $torrentId';
-      final notificationDetails = NotificationDetails(
-        android: const AndroidNotificationDetails(
-          'torrent_complete_channel',
-          'Torrent Complete',
-          channelDescription: 'Torrent completion notifications',
-          importance: Importance.high,
-          priority: Priority.high,
-        ),
-        iOS: const DarwinNotificationDetails(),
-        linux: const LinuxNotificationDetails(),
-      );
-      await _localNotificationsPlugin.show(
-        torrentId.hashCode & 0x7fffffff,
-        title,
-        'Download Complete: $body',
-        notificationDetails,
-      );
-    } catch (e) {
-      debugPrint('Failed to show completion notification: $e');
-    }
-  }
 
   List<String> getLogs(String torrentId) {
     return List.unmodifiable(_connectionLogs[torrentId] ?? []);
@@ -699,7 +681,11 @@ class TorrentEngineService {
           torrentId,
           'completed',
         );
-        await _showTorrentCompletedNotification(torrentId);
+        final torrent = await TorrentService.instance.getTorrentById(torrentId);
+        if (torrent != null) {
+          await NotificationService.instance
+              .showDownloadComplete(torrent.name);
+        }
         _cleanup(torrentId);
       })
       ..on<dt.TaskStopped>((_) {

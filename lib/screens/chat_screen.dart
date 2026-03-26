@@ -146,6 +146,13 @@ class _ChatScreenState extends State<ChatScreen> {
                               bottomLeft: Radius.circular(isMe ? 12 : 2),
                               bottomRight: Radius.circular(isMe ? 2 : 12),
                             ),
+                            border: Border.all(
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurface
+                                  .withOpacity(0.15),
+                              width: 1,
+                            ),
                           ),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,

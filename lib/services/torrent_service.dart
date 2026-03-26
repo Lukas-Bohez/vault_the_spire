@@ -76,6 +76,22 @@ class TorrentService {
   Future<void> removeTorrent(String id) =>
       TorrentsDao.instance.deleteTorrent(id);
 
+  Future<void> resumeActiveTorrents() async {
+    final torrents = await allTorrents();
+    final active = torrents.where((torrent) {
+      final status = torrent.status?.toLowerCase() ?? '';
+      return status == 'downloading' || status == 'seeding';
+    });
+
+    for (final torrent in active) {
+      try {
+        await TorrentEngineService.instance.startTorrent(torrent.id);
+      } catch (e) {
+        debugPrint('Failed to resume torrent ${torrent.id}: $e');
+      }
+    }
+  }
+
   Future<void> updateTorrentStatus(String id, String status) async {
     final existing = await TorrentsDao.instance.getTorrentById(id);
     if (existing == null) {
@@ -397,6 +413,8 @@ class TorrentService {
     await updateTorrentStatus(metadata.infoHashV1, 'downloading');
     await TorrentEngineService.instance.startTorrent(metadata.infoHashV1);
   }
+
+  Future<void> addTorrentFromMagnet(String uri) => addTorrentFromMagnetLink(uri);
 
   Future<void> addTorrentFromMagnetLink(String uri) async {
     final magnet = MagnetLink.parse(uri);
