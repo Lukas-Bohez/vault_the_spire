@@ -12,6 +12,14 @@ import 'package:vault_the_spire/db/torrents_dao.dart';
 import 'package:vault_the_spire/models/torrent.dart';
 import 'package:vault_the_spire/services/torrent_engine_service.dart';
 
+class TorrentAlreadyExistsException implements Exception {
+  final String torrentId;
+  TorrentAlreadyExistsException(this.torrentId);
+
+  @override
+  String toString() => 'Torrent already exists: $torrentId';
+}
+
 class TorrentService {
   TorrentService._();
 
@@ -55,7 +63,6 @@ class TorrentService {
       return name.contains(keyword) || magnet.contains(keyword);
     }).toList();
   }
-
 
   Future<void> addTorrent(TorrentModel torrent) =>
       TorrentsDao.instance.insertTorrent(torrent);
@@ -235,8 +242,10 @@ class TorrentService {
     );
 
     try {
-      await TorrentEngineService.instance
-          .startTorrent(id, destinationPath: destinationPath);
+      await TorrentEngineService.instance.startTorrent(
+        id,
+        destinationPath: destinationPath,
+      );
     } catch (e, st) {
       debugPrint('TorrentEngine startTorrent failed: $e');
       debugPrint('$st');
@@ -248,18 +257,20 @@ class TorrentService {
     subscription = TorrentEngineService.instance.statusStream
         .where((status) => status.torrentId == id)
         .listen((status) async {
-      if (status.state == 'completed') {
-        if (!completer.isCompleted) completer.complete();
-      } else if (status.state == 'error') {
-        if (!completer.isCompleted) {
-          completer.completeError(StateError('Download failed for torrent $id'));
-        }
-      }
+          if (status.state == 'completed') {
+            if (!completer.isCompleted) completer.complete();
+          } else if (status.state == 'error') {
+            if (!completer.isCompleted) {
+              completer.completeError(
+                StateError('Download failed for torrent $id'),
+              );
+            }
+          }
 
-      if (status.downloaded > 0) {
-        await updateProgress(id, status.downloaded, status.uploaded);
-      }
-    });
+          if (status.downloaded > 0) {
+            await updateProgress(id, status.downloaded, status.uploaded);
+          }
+        });
 
     try {
       await completer.future.timeout(
@@ -326,7 +337,6 @@ class TorrentService {
     }
   }
 
-
   Future<void> setDestinationAndStart(String id, String destinationPath) async {
     final torrent = await getTorrentById(id);
     if (torrent == null) {
@@ -350,7 +360,8 @@ class TorrentService {
       metadata.infoHashV1,
     );
     if (existing != null) {
-      throw StateError('Torrent already exists: ${metadata.name}');
+      await TorrentEngineService.instance.forceRefresh(existing.id);
+      throw TorrentAlreadyExistsException(existing.id);
     }
 
     final totalSize = metadata.files.fold<int>(
@@ -396,9 +407,8 @@ class TorrentService {
 
     final existing = await TorrentsDao.instance.getTorrentById(infoHash);
     if (existing != null) {
-      throw StateError(
-        'Torrent already exists: ${magnet.displayName ?? infoHash}',
-      );
+      await TorrentEngineService.instance.forceRefresh(existing.id);
+      throw TorrentAlreadyExistsException(existing.id);
     }
 
     final torrent = TorrentModel(

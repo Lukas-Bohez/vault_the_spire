@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:b_encode_decode/b_encode_decode.dart';
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart' as dt;
@@ -17,11 +18,13 @@ class TorrentEngineStatus {
   final String state;
   final int peers;
   final int dhtNodes;
+  final int trackers;
   final int seeders;
   final int leechers;
   final double downloadSpeed;
   final double uploadSpeed;
   final String statusMessage;
+  final String connectionMessage;
 
   const TorrentEngineStatus({
     required this.torrentId,
@@ -31,11 +34,13 @@ class TorrentEngineStatus {
     required this.state,
     required this.peers,
     this.dhtNodes = 0,
+    this.trackers = 0,
     required this.downloadSpeed,
     required this.uploadSpeed,
     this.seeders = 0,
     this.leechers = 0,
     this.statusMessage = '',
+    this.connectionMessage = '',
   });
 }
 
@@ -55,15 +60,61 @@ class TorrentEngineService {
   final Map<String, dt.TorrentTask> _tasks = {};
   final Map<String, Timer> _pollTimers = {};
   final Map<String, Timer> _scrapeTimers = {};
+  final Map<String, Timer> _healthCheckTimers = {};
+  final Map<String, int> _peerlessCounters = {};
+  final Map<String, List<Uri>> _torrentTrackers = {};
+  final Map<String, List<String>> _connectionLogs = {};
+  bool _defaultPortsBlocked = false;
 
   void _bootstrapDhtNetwork() {
     debugPrint('Initializing default DHT bootstrap nodes');
     for (final node in _defaultDhtBootstrapNodes) {
       debugPrint('DHT bootstrap candidate: $node');
     }
+    _detectRestrictedNetwork();
   }
 
-  void _configureTask(dt.TorrentTask task) {
+  Future<void> _detectRestrictedNetwork() async {
+    final host = '1.1.1.1';
+    final blockedPorts = <int>[];
+    for (var port = 6881; port <= 6889; port++) {
+      try {
+        final s = await Socket.connect(
+          host,
+          port,
+          timeout: const Duration(seconds: 3),
+        );
+        s.destroy();
+      } catch (_) {
+        blockedPorts.add(port);
+      }
+    }
+    if (blockedPorts.length >= 7) {
+      _defaultPortsBlocked = true;
+      debugPrint(
+        'Network restriction detected: default bittorrent ports 6881-6889 may be blocked or filtered',
+      );
+    } else {
+      _defaultPortsBlocked = false;
+      debugPrint('Port probe done; blocked ports: $blockedPorts');
+    }
+  }
+
+  void _log(String torrentId, String message) {
+    _connectionLogs
+        .putIfAbsent(torrentId, () => [])
+        .add('[${DateTime.now().toIso8601String()}] $message');
+  }
+
+  List<String> getLogs(String torrentId) {
+    return List.unmodifiable(_connectionLogs[torrentId] ?? []);
+  }
+
+  void clearLogs(String torrentId) {
+    _connectionLogs[torrentId]?.clear();
+  }
+
+  Future<void> _configureTask(dt.TorrentTask task) async {
     try {
       (task as dynamic).setDHTEnabled(true);
       debugPrint('Enabled DHT for torrent task');
@@ -86,7 +137,40 @@ class TorrentEngineService {
       debugPrint(st.toString());
     }
 
+    await _mapPorts(task);
     _addDhtBootstrapNodes(task);
+  }
+
+  Future<void> _mapPorts(dt.TorrentTask task) async {
+    final random = Random.secure();
+    final initialPort = _defaultPortsBlocked ? 0 : 6881;
+
+    final candidatePorts = <int>[];
+    if (initialPort > 0) {
+      candidatePorts.add(initialPort);
+    }
+    while (candidatePorts.length < 5) {
+      candidatePorts.add(49152 + random.nextInt(65535 - 49152));
+    }
+
+    for (final candidate in candidatePorts) {
+      try {
+        (task as dynamic).setPort(candidate);
+        if ((task as dynamic).enableUPnP != null) {
+          (task as dynamic).enableUPnP(true);
+        }
+        if ((task as dynamic).enableNATPMP != null) {
+          (task as dynamic).enableNATPMP(true);
+        }
+        debugPrint('Attempted port mapping on port $candidate (UPnP/NAT-PMP)');
+        // Once one mapping is configured, use it.
+        break;
+      } catch (e, st) {
+        debugPrint('Port mapping attempt failed on port $candidate: $e');
+        debugPrint(st.toString());
+        continue;
+      }
+    }
   }
 
   void _addDhtBootstrapNodes(dt.TorrentTask task) {
@@ -120,14 +204,20 @@ class TorrentEngineService {
         debugPrint('Announce URL success ($attempt): $url');
         return;
       } catch (e, st) {
-        debugPrint('Announce URL attempt $attempt failed: $url $e');
+        final msg = 'Announce URL attempt $attempt failed: $url $e';
+        debugPrint(msg);
+        final taskId = taskIdFromTask(task);
+        if (taskId.isNotEmpty) _log(taskId, msg);
         debugPrint(st.toString());
         if (attempt < retries) {
           await Future.delayed(delay);
         }
       }
     }
-    throw StateError('All announce attempts failed for $url');
+    final finalMsg = 'All announce attempts failed for $url';
+    final taskId = taskIdFromTask(task);
+    if (taskId.isNotEmpty) _log(taskId, finalMsg);
+    throw StateError(finalMsg);
   }
 
   Future<void> announceTrackerUri(Uri uri, Uint8List infoHash) async {
@@ -162,10 +252,86 @@ class TorrentEngineService {
     }
   }
 
+  String taskIdFromTask(dt.TorrentTask task) {
+    for (final entry in _tasks.entries) {
+      if (identical(entry.value, task)) {
+        return entry.key;
+      }
+    }
+    return '';
+  }
+
+  Future<void> _refreshConnection(String torrentId, dt.TorrentTask task) async {
+    debugPrint(
+      'Refreshing connection for $torrentId: reannounce trackers and DHT bootstrap',
+    );
+    _log(torrentId, 'Triggered force refresh.');
+
+    final trackers = _torrentTrackers[torrentId] ?? [];
+    final infoHash = (task as dynamic).metaInfo?.infoHash as Uint8List?;
+
+    if (infoHash != null) {
+      for (final url in trackers) {
+        try {
+          await _announceUrlWithRetry(task, url, infoHash);
+        } catch (e) {
+          debugPrint('Re-announce tracker failed for $url: $e');
+        }
+      }
+    }
+
+    _addDhtBootstrapNodes(task);
+    try {
+      for (final node in (task as dynamic).metaInfo?.nodes ?? []) {
+        if (node is Map && node['host'] != null && node['port'] != null) {
+          (task as dynamic).addDHTNode(node['host'], node['port']);
+        }
+      }
+    } catch (e, st) {
+      debugPrint('Re-bootstrap DHT nodes failed: $e');
+      debugPrint(st.toString());
+    }
+  }
+
+  void _startHealthCheckTimer(String torrentId, dt.TorrentTask task) {
+    _healthCheckTimers[torrentId]?.cancel();
+    _peerlessCounters[torrentId] = 0;
+
+    _healthCheckTimers[torrentId] = Timer.periodic(const Duration(seconds: 30), (
+      timer,
+    ) async {
+      final peers = task.connectedPeersNumber;
+      if (peers == 0) {
+        _peerlessCounters[torrentId] = (_peerlessCounters[torrentId] ?? 0) + 1;
+        _log(
+          torrentId,
+          'No peers for interval, peerless count ${_peerlessCounters[torrentId]}',
+        );
+        if (_peerlessCounters[torrentId]! >= 4) {
+          _peerlessCounters[torrentId] = 0;
+          await _refreshConnection(torrentId, task);
+        }
+      } else {
+        if ((_peerlessCounters[torrentId] ?? 0) > 0) {
+          _log(torrentId, 'Peers returned at $peers connections');
+        }
+        _peerlessCounters[torrentId] = 0;
+      }
+    });
+  }
+
   final _statusController = StreamController<TorrentEngineStatus>.broadcast();
   Stream<TorrentEngineStatus> get statusStream => _statusController.stream;
 
   bool isRunning(String torrentId) => _tasks.containsKey(torrentId);
+
+  Future<void> forceRefresh(String torrentId) async {
+    final task = _tasks[torrentId];
+    if (task == null) {
+      throw StateError('Torrent not found: $torrentId');
+    }
+    await _refreshConnection(torrentId, task);
+  }
 
   Future<void> startTorrent(String torrentId, {String? destinationPath}) async {
     if (isRunning(torrentId)) return;
@@ -201,7 +367,11 @@ class TorrentEngineService {
     final task = dt.TorrentTask.newTask(dtModel, saveDir);
     _tasks[torrent.id] = task;
     _wireEvents(torrent.id, task);
-    _configureTask(task);
+    await _configureTask(task);
+    _torrentTrackers[torrent.id] = dtModel.announces
+        .map<Uri>((u) => Uri.parse(u.toString()))
+        .toList();
+    _startHealthCheckTimer(torrent.id, task);
 
     // Set listening port and NAT traversal hints (UPnP/NAT-PMP)
     try {
@@ -337,7 +507,14 @@ class TorrentEngineService {
 
     _tasks[torrent.id] = task;
     _wireEvents(torrent.id, task);
-    _configureTask(task);
+    await _configureTask(task);
+    _torrentTrackers[torrent.id] = [
+      ...magnet.trackers
+          .map<Uri>((s) => Uri.parse(s.toString()))
+          .where((u) => u.toString().isNotEmpty),
+      ...dtModel.announces.map<Uri>((u) => Uri.parse(u.toString())),
+    ];
+    _startHealthCheckTimer(torrent.id, task);
 
     // Set listening port and NAT traversal hints (UPnP/NAT-PMP)
     try {
@@ -486,7 +663,29 @@ class TorrentEngineService {
         ? 'Connected to $peers peer${peers == 1 ? '' : 's'}, waiting for pieces...'
         : '${(progress * 100).toStringAsFixed(1)}% — $peers peer${peers == 1 ? '' : 's'}';
 
-    final dhtNodes = 0;
+    int dhtNodes = 0;
+    int trackers = 0;
+    String connectionMsg;
+
+    try {
+      dhtNodes = (task as dynamic).dhtNodeCount ?? dhtNodes;
+    } catch (_) {
+      // ignore - no available field
+    }
+    try {
+      trackers = (task as dynamic).trackerPeersNumber ?? trackers;
+    } catch (_) {
+      // ignore if unavailable
+    }
+
+    if (peers > 0) {
+      connectionMsg =
+          'Connected to $peers peers (DHT: $dhtNodes, Trackers: $trackers)';
+    } else if (dhtNodes == 0) {
+      connectionMsg = 'Searching for DHT nodes...';
+    } else {
+      connectionMsg = 'Trackers timed out (Check VPN/Firewall)';
+    }
 
     _statusController.add(
       TorrentEngineStatus(
@@ -497,11 +696,13 @@ class TorrentEngineService {
         state: state,
         peers: peers,
         dhtNodes: dhtNodes,
+        trackers: trackers,
         seeders: seeders,
         leechers: leechers,
         downloadSpeed: dlSpeed,
         uploadSpeed: ulSpeed,
         statusMessage: msg,
+        connectionMessage: connectionMsg,
       ),
     );
 

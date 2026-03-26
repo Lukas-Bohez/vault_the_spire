@@ -76,7 +76,7 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
               builder: (context, snapshot) {
                 final status = snapshot.data;
                 return Text(
-                  'Seeders: ${status?.seeders ?? widget.torrent.seeders} • '
+                  'Seeders (DHT: ${status?.dhtNodes ?? 0}, Trackers: ${status?.trackers ?? 0}): ${status?.seeders ?? widget.torrent.seeders} • '
                   'Leechers: ${status?.leechers ?? widget.torrent.leechers}',
                 );
               },
@@ -102,7 +102,8 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
                 }
 
                 final statusMessage = status.statusMessage;
-                final hasError = status.state.toLowerCase().contains('error') ||
+                final hasError =
+                    status.state.toLowerCase().contains('error') ||
                     status.state.toLowerCase().contains('failed');
 
                 return Column(
@@ -113,7 +114,33 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
                       peers: status.peers,
                       downloadSpeed: status.downloadSpeed / 1024,
                       statusMessage: statusMessage,
+                      connectionMessage: status.connectionMessage,
                       hasError: hasError,
+                      onRefresh: () async {
+                        await TorrentEngineService.instance.forceRefresh(
+                          widget.torrent.id,
+                        );
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Connection refresh triggered'),
+                          ),
+                        );
+                      },
+                      onCopyLogs: () async {
+                        final logs = TorrentEngineService.instance.getLogs(
+                          widget.torrent.id,
+                        );
+                        await Clipboard.setData(
+                          ClipboardData(text: logs.join('\n')),
+                        );
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Connection logs copied'),
+                          ),
+                        );
+                      },
                     ),
                     const SizedBox(height: 8),
                     Text('State: ${status.state}'),
@@ -121,7 +148,9 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
                     Text('Size: ${widget.torrent.totalSize ?? 0} bytes'),
                     Text('Downloaded: ${status.downloaded}'),
                     Text('Uploaded: ${status.uploaded}'),
-                    Text('Progress engine: ${(status.progress * 100).toStringAsFixed(1)}%'),
+                    Text(
+                      'Progress engine: ${(status.progress * 100).toStringAsFixed(1)}%',
+                    ),
                   ],
                 );
               },

@@ -20,6 +20,7 @@ import 'package:vault_the_spire/services/torrent_engine_service.dart';
 import 'package:vault_the_spire/services/torrent_service.dart';
 import 'package:vault_the_spire/screens/about_screen.dart';
 import 'package:vault_the_spire/screens/browser_screen.dart';
+import 'package:vault_the_spire/screens/torrent_detail_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -96,10 +97,11 @@ class _HomeScreenState extends State<HomeScreen> {
     usePersistentSidebar = SettingsService.instance.usePersistentSidebar;
     _downloadDestination = SettingsService.instance.downloadDestination;
 
-    _sortMode = TorrentSortMode.values[SettingsService.instance.torrentSortMode.clamp(
-      0,
-      TorrentSortMode.values.length - 1,
-    )];
+    _sortMode =
+        TorrentSortMode.values[SettingsService.instance.torrentSortMode.clamp(
+          0,
+          TorrentSortMode.values.length - 1,
+        )];
 
     if (IdentityService.instance.identity != null) {
       _identityNameController.text =
@@ -352,16 +354,11 @@ class _HomeScreenState extends State<HomeScreen> {
         'label': 'Dashboard',
         'view': MainView.dashboard,
       },
-      {
-        'icon': Icons.storage,
-        'label': 'Torrents',
-        'view': MainView.torrents,
-      },
+      {'icon': Icons.storage, 'label': 'Torrents', 'view': MainView.torrents},
       {'icon': Icons.chat, 'label': 'Messages', 'view': MainView.messages},
       {'icon': Icons.cloud, 'label': 'Servers', 'view': MainView.server},
       {'icon': Icons.web, 'label': 'Browser', 'view': MainView.browser},
     ];
-
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -494,9 +491,9 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to create torrent: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to create torrent: $e')));
     }
   }
 
@@ -513,9 +510,9 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to create torrent: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to create torrent: $e')));
     }
   }
 
@@ -546,6 +543,42 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {});
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Torrent added successfully')),
+      );
+    } on TorrentAlreadyExistsException catch (error) {
+      final existing = await TorrentService.instance.getTorrentById(
+        error.torrentId,
+      );
+      if (!mounted) return;
+
+      if (existing != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Torrent already exists. Refreshing and opening details.',
+            ),
+          ),
+        );
+        await TorrentEngineService.instance.forceRefresh(existing.id);
+        try {
+          Navigator.of(
+            context,
+          ).pushNamed('/torrent_detail', arguments: existing);
+        } catch (_) {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => TorrentDetailScreen(torrent: existing),
+            ),
+          );
+        }
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Torrent exists but could not open: ${error.torrentId}',
+          ),
+        ),
       );
     } catch (error) {
       if (!mounted) return;
@@ -968,9 +1001,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               onTap: () {
                 Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => const AboutScreen(),
-                  ),
+                  MaterialPageRoute(builder: (context) => const AboutScreen()),
                 );
               },
             ),
@@ -978,9 +1009,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ElevatedButton.icon(
               onPressed: () {
                 Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) => const AboutScreen(),
-                  ),
+                  MaterialPageRoute(builder: (context) => const AboutScreen()),
                 );
               },
               icon: const Icon(Icons.info_outline),
@@ -1166,149 +1195,168 @@ class _HomeScreenState extends State<HomeScreen> {
                         itemCount: torrents.length,
                         itemBuilder: (context, index) {
                           final torrent = torrents[index];
-                    final progress =
-                        (torrent.totalSize != null && torrent.totalSize! > 0)
-                        ? (torrent.bytesDown / torrent.totalSize!).clamp(
-                            0.0,
-                            1.0,
-                          )
-                        : 0.0;
-                    final engineStatus = _engineStatuses[torrent.id];
+                          final progress =
+                              (torrent.totalSize != null &&
+                                  torrent.totalSize! > 0)
+                              ? (torrent.bytesDown / torrent.totalSize!).clamp(
+                                  0.0,
+                                  1.0,
+                                )
+                              : 0.0;
+                          final engineStatus = _engineStatuses[torrent.id];
 
-                    return Card(
-                      margin: const EdgeInsets.symmetric(vertical: 6),
-                      child: ListTile(
-                        title: Text(torrent.name ?? 'Unnamed'),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              '${torrent.status ?? 'unknown'} • ${torrent.totalSize != null ? '${(progress * 100).toStringAsFixed(1)}%' : 'No size'}',
-                            ),
-                            if (torrent.totalSize != null)
-                              LinearProgressIndicator(value: progress),
-                            Text('Size: ${_formatBytes(torrent.totalSize)}'),
-                            Text(
-                              'Seeders: ${engineStatus?.seeders ?? torrent.seeders}, '
-                              'Leechers: ${engineStatus?.leechers ?? torrent.leechers}, '
-                              'Connected: ${engineStatus?.peers ?? 0}',
-                            ),
-                            if (engineStatus != null) ...[
-                              Text(
-                                'Status: ${engineStatus.statusMessage}',
-                                style: const TextStyle(fontWeight: FontWeight.bold),
-                              ),
-                              Text(
-                                'DL: ${engineStatus.downloadSpeed.toStringAsFixed(1)} B/s • UL: ${engineStatus.uploadSpeed.toStringAsFixed(1)} B/s • Peer progress: ${(engineStatus.progress * 100).toStringAsFixed(1)}%',
-                              ),
-                            ],
-                          ],
-                        ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (torrent.status != 'downloading' &&
-                                torrent.status != 'completed')
-                              IconButton(
-                                icon: const Icon(Icons.play_arrow),
-                                onPressed: () async {
-                                  final messenger = ScaffoldMessenger.of(context);
-                                  if (_downloadDestination.isEmpty) {
-                                    await _chooseDownloadDirectory();
-                                    if (_downloadDestination.isEmpty) return;
-                                  }
-                                  try {
-                                    await TorrentService.instance.downloadTorrent(
-                                      torrent.id,
-                                      _downloadDestination,
-                                    );
-                                  } catch (e, st) {
-                                    if (!mounted) return;
-                                    debugPrint('Download failed stack (play): $st');
-                                    messenger.showSnackBar(
-                                      SnackBar(
-                                        content: Text('Download failed: $e'),
+                          return Card(
+                            margin: const EdgeInsets.symmetric(vertical: 6),
+                            child: ListTile(
+                              title: Text(torrent.name ?? 'Unnamed'),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '${torrent.status ?? 'unknown'} • ${torrent.totalSize != null ? '${(progress * 100).toStringAsFixed(1)}%' : 'No size'}',
+                                  ),
+                                  if (torrent.totalSize != null)
+                                    LinearProgressIndicator(value: progress),
+                                  Text(
+                                    'Size: ${_formatBytes(torrent.totalSize)}',
+                                  ),
+                                  Text(
+                                    'Seeders: ${engineStatus?.seeders ?? torrent.seeders}, '
+                                    'Leechers: ${engineStatus?.leechers ?? torrent.leechers}, '
+                                    'Connected: ${engineStatus?.peers ?? 0}',
+                                  ),
+                                  if (engineStatus != null) ...[
+                                    Text(
+                                      'Status: ${engineStatus.statusMessage}',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.bold,
                                       ),
-                                    );
-                                  }
-                                  setState(() {});
-                                },
+                                    ),
+                                    Text(
+                                      'DL: ${engineStatus.downloadSpeed.toStringAsFixed(1)} B/s • UL: ${engineStatus.uploadSpeed.toStringAsFixed(1)} B/s • Peer progress: ${(engineStatus.progress * 100).toStringAsFixed(1)}%',
+                                    ),
+                                  ],
+                                ],
                               ),
-                            if (torrent.status == 'downloading') ...[
-                              IconButton(
-                                icon: const Icon(Icons.pause),
-                                tooltip: 'Pause',
-                                onPressed: () async {
-                                  TorrentEngineService.instance.stopTorrent(
-                                    torrent.id,
-                                  );
-                                  await TorrentService.instance
-                                      .updateTorrentStatus(
-                                        torrent.id,
-                                        'paused',
-                                      );
-                                  setState(() {});
-                                },
-                              ),
-                              const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              ),
-                            ],
-                            if (torrent.status == 'paused' ||
-                                torrent.status == 'queued')
-                              IconButton(
-                                icon: const Icon(Icons.play_arrow),
-                                tooltip: 'Resume',
-                                onPressed: () async {
-                                  final messenger = ScaffoldMessenger.of(context);
-                                  if (_downloadDestination.isEmpty) {
-                                    await _chooseDownloadDirectory();
-                                    if (_downloadDestination.isEmpty) return;
-                                  }
-                                  try {
-                                    await TorrentService.instance.downloadTorrent(
-                                      torrent.id,
-                                      _downloadDestination,
-                                    );
-                                  } catch (e, st) {
-                                    if (!mounted) return;
-                                    debugPrint('Download failed stack (resume): $st');
-                                    messenger.showSnackBar(
-                                      SnackBar(
-                                        content: Text('Download failed: $e'),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (torrent.status != 'downloading' &&
+                                      torrent.status != 'completed')
+                                    IconButton(
+                                      icon: const Icon(Icons.play_arrow),
+                                      onPressed: () async {
+                                        final messenger = ScaffoldMessenger.of(
+                                          context,
+                                        );
+                                        if (_downloadDestination.isEmpty) {
+                                          await _chooseDownloadDirectory();
+                                          if (_downloadDestination.isEmpty)
+                                            return;
+                                        }
+                                        try {
+                                          await TorrentService.instance
+                                              .downloadTorrent(
+                                                torrent.id,
+                                                _downloadDestination,
+                                              );
+                                        } catch (e, st) {
+                                          if (!mounted) return;
+                                          debugPrint(
+                                            'Download failed stack (play): $st',
+                                          );
+                                          messenger.showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                'Download failed: $e',
+                                              ),
+                                            ),
+                                          );
+                                        }
+                                        setState(() {});
+                                      },
+                                    ),
+                                  if (torrent.status == 'downloading') ...[
+                                    IconButton(
+                                      icon: const Icon(Icons.pause),
+                                      tooltip: 'Pause',
+                                      onPressed: () async {
+                                        TorrentEngineService.instance
+                                            .stopTorrent(torrent.id);
+                                        await TorrentService.instance
+                                            .updateTorrentStatus(
+                                              torrent.id,
+                                              'paused',
+                                            );
+                                        setState(() {});
+                                      },
+                                    ),
+                                    const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
                                       ),
-                                    );
-                                  }
-                                  setState(() {});
-                                },
+                                    ),
+                                  ],
+                                  if (torrent.status == 'paused' ||
+                                      torrent.status == 'queued')
+                                    IconButton(
+                                      icon: const Icon(Icons.play_arrow),
+                                      tooltip: 'Resume',
+                                      onPressed: () async {
+                                        final messenger = ScaffoldMessenger.of(
+                                          context,
+                                        );
+                                        if (_downloadDestination.isEmpty) {
+                                          await _chooseDownloadDirectory();
+                                          if (_downloadDestination.isEmpty)
+                                            return;
+                                        }
+                                        try {
+                                          await TorrentService.instance
+                                              .downloadTorrent(
+                                                torrent.id,
+                                                _downloadDestination,
+                                              );
+                                        } catch (e, st) {
+                                          if (!mounted) return;
+                                          debugPrint(
+                                            'Download failed stack (resume): $st',
+                                          );
+                                          messenger.showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                'Download failed: $e',
+                                              ),
+                                            ),
+                                          );
+                                        }
+                                        setState(() {});
+                                      },
+                                    ),
+                                  IconButton(
+                                    icon: const Icon(Icons.delete),
+                                    tooltip: 'Remove torrent',
+                                    onPressed: () async {
+                                      await TorrentService.instance
+                                          .removeTorrent(torrent.id);
+                                      setState(() {
+                                        // Optionally remove from local list if present
+                                      });
+                                    },
+                                  ),
+                                  if (torrent.status == 'completed')
+                                    const Icon(
+                                      Icons.check_circle,
+                                      color: Colors.green,
+                                    ),
+                                ],
                               ),
-                            IconButton(
-                              icon: const Icon(Icons.delete),
-                              tooltip: 'Remove torrent',
-                              onPressed: () async {
-                                await TorrentService.instance.removeTorrent(
-                                  torrent.id,
-                                );
-                                setState(() {
-                                  // Optionally remove from local list if present
-                                });
-                              },
                             ),
-                            if (torrent.status == 'completed')
-                              const Icon(
-                                Icons.check_circle,
-                                color: Colors.green,
-                              ),
-                          ],
-                        ),
+                          );
+                        },
                       ),
-                    );
-                  },
-                ),
               ),
             ],
           ),

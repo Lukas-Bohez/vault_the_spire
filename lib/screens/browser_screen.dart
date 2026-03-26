@@ -13,16 +13,14 @@ import '../platform/crash_dump_stub.dart'
     if (dart.library.io) '../platform/crash_dump_windows.dart';
 import '../services/settings_service.dart';
 import '../services/torrent_service.dart';
+import '../services/torrent_engine_service.dart';
+import 'torrent_detail_screen.dart';
 
 class BrowserScreen extends StatefulWidget {
   final String initialUrl;
   final bool inTab;
 
-  const BrowserScreen({
-    super.key,
-    this.initialUrl = '',
-    this.inTab = false,
-  });
+  const BrowserScreen({super.key, this.initialUrl = '', this.inTab = false});
 
   @override
   State<BrowserScreen> createState() => _BrowserScreenState();
@@ -74,8 +72,8 @@ class _BrowserScreenState extends State<BrowserScreen>
     final startUrl = widget.initialUrl.isNotEmpty
         ? widget.initialUrl
         : lastUrl.isNotEmpty
-            ? lastUrl
-            : _homeUrl;
+        ? lastUrl
+        : _homeUrl;
 
     _addressController.text = startUrl;
 
@@ -316,7 +314,8 @@ class _BrowserScreenState extends State<BrowserScreen>
                 ? uri.pathSegments.last
                 : 'downloaded.torrent';
             final tmp = File(
-                '${Directory.systemTemp.path}${Platform.pathSeparator}vts_${DateTime.now().millisecondsSinceEpoch}_$filename');
+              '${Directory.systemTemp.path}${Platform.pathSeparator}vts_${DateTime.now().millisecondsSinceEpoch}_$filename',
+            );
             await tmp.writeAsBytes(bytes);
             await TorrentService.instance.addTorrentFromTorrentFile(tmp.path);
             if (mounted) {
@@ -329,6 +328,36 @@ class _BrowserScreenState extends State<BrowserScreen>
           }
         }
       }
+    } on TorrentAlreadyExistsException catch (e) {
+      final existing = await TorrentService.instance.getTorrentById(
+        e.torrentId,
+      );
+      if (!mounted) return;
+      if (existing != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Torrent already exists. Navigating to details.'),
+          ),
+        );
+        await TorrentEngineService.instance.forceRefresh(existing.id);
+        if (!mounted) return;
+        try {
+          Navigator.of(
+            context,
+          ).pushNamed('/torrent_detail', arguments: existing);
+        } catch (_) {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => TorrentDetailScreen(torrent: existing),
+            ),
+          );
+        }
+        return;
+      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Torrent exists but not found: ${e.torrentId}')),
+      );
     } catch (e, st) {
       debugPrint('Failed to handle torrent link: $e\n$st');
       if (mounted) {
@@ -366,7 +395,11 @@ class _BrowserScreenState extends State<BrowserScreen>
     if (Platform.isWindows || _webViewController == null) return;
     final back = await _webViewController!.canGoBack();
     final fwd = await _webViewController!.canGoForward();
-    if (mounted) setState(() { _canGoBack = back; _canGoForward = fwd; });
+    if (mounted)
+      setState(() {
+        _canGoBack = back;
+        _canGoForward = fwd;
+      });
   }
 
   Future<void> _openExternally() async {
@@ -384,18 +417,22 @@ class _BrowserScreenState extends State<BrowserScreen>
       try {
         if (ProcessInfo.currentRss > 1200 * 1024 * 1024) {
           await _captureCrashDump(
-              'HighMemoryUsage (${ProcessInfo.currentRss ~/ (1024 * 1024)}MB)');
+            'HighMemoryUsage (${ProcessInfo.currentRss ~/ (1024 * 1024)}MB)',
+          );
         }
       } catch (_) {}
     });
   }
 
-  Future<void> _captureCrashDump(String reason,
-      [WebResourceError? error]) async {
+  Future<void> _captureCrashDump(
+    String reason, [
+    WebResourceError? error,
+  ]) async {
     try {
       final dir = await getApplicationSupportDirectory();
       final file = File(
-          '${dir.path}${Platform.pathSeparator}webview_crash_dump.log');
+        '${dir.path}${Platform.pathSeparator}webview_crash_dump.log',
+      );
       await file.writeAsString(
         '--- ${DateTime.now()} ---\nReason: $reason\n'
         '${error != null ? 'Error: ${error.description} (${error.errorCode})\n' : ''}'
@@ -482,8 +519,10 @@ class _BrowserScreenState extends State<BrowserScreen>
                 hintText: 'Enter URL or magnet link',
                 border: OutlineInputBorder(),
                 isDense: true,
-                contentPadding:
-                    EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+                contentPadding: EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 7,
+                ),
               ),
             ),
           ),
@@ -525,8 +564,9 @@ class _BrowserScreenState extends State<BrowserScreen>
                 label: const Text('Favourites'),
                 onPressed: () => setState(() => _showHistory = false),
                 style: TextButton.styleFrom(
-                  foregroundColor:
-                      !_showHistory ? theme.colorScheme.primary : null,
+                  foregroundColor: !_showHistory
+                      ? theme.colorScheme.primary
+                      : null,
                 ),
               ),
               TextButton.icon(
@@ -534,8 +574,9 @@ class _BrowserScreenState extends State<BrowserScreen>
                 label: const Text('History'),
                 onPressed: () => setState(() => _showHistory = true),
                 style: TextButton.styleFrom(
-                  foregroundColor:
-                      _showHistory ? theme.colorScheme.primary : null,
+                  foregroundColor: _showHistory
+                      ? theme.colorScheme.primary
+                      : null,
                 ),
               ),
               if (_showHistory && _history.isNotEmpty)
@@ -557,12 +598,16 @@ class _BrowserScreenState extends State<BrowserScreen>
               return ListTile(
                 dense: true,
                 leading: const Icon(Icons.history, size: 16),
-                title: Text(url,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 13)),
+                title: Text(
+                  url,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 13),
+                ),
                 subtitle: timestamp.isNotEmpty
-                    ? Text(timestamp.substring(0, 10),
-                        style: const TextStyle(fontSize: 11))
+                    ? Text(
+                        timestamp.substring(0, 10),
+                        style: const TextStyle(fontSize: 11),
+                      )
                     : null,
                 trailing: IconButton(
                   icon: const Icon(Icons.close, size: 14),
@@ -578,9 +623,11 @@ class _BrowserScreenState extends State<BrowserScreen>
             if (_favorites.isEmpty)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 24),
-                child: Text('No favourites yet. Star a page to add it.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(color: Colors.grey)),
+                child: Text(
+                  'No favourites yet. Star a page to add it.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey),
+                ),
               )
             else
               Wrap(
@@ -588,43 +635,58 @@ class _BrowserScreenState extends State<BrowserScreen>
                 runSpacing: 10,
                 children: _favorites.map((url) {
                   return InputChip(
-                    avatar: const Icon(Icons.star, size: 14, color: Colors.amber),
+                    avatar: const Icon(
+                      Icons.star,
+                      size: 14,
+                      color: Colors.amber,
+                    ),
                     label: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 180),
-                      child: Text(url.replaceAll('https://', '').replaceAll('http://', ''),
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 13)),
+                      child: Text(
+                        url
+                            .replaceAll('https://', '')
+                            .replaceAll('http://', ''),
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 13),
+                      ),
                     ),
                     onPressed: () => _navigateTo(url),
                     deleteIcon: const Icon(Icons.close, size: 14),
                     onDeleted: () async {
                       setState(() => _favorites.remove(url));
-                      await SettingsService.instance
-                          .setBrowserFavorites(_favorites);
+                      await SettingsService.instance.setBrowserFavorites(
+                        _favorites,
+                      );
                     },
                   );
                 }).toList(),
               ),
             const SizedBox(height: 20),
-            const Text('Quick links',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+            const Text(
+              'Quick links',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+            ),
             const SizedBox(height: 8),
             Wrap(
               spacing: 10,
               runSpacing: 10,
-              children: [
-                'https://www.startpage.com/',
-                'https://duckduckgo.com/',
-                'https://news.ycombinator.com/',
-                'https://www.wikipedia.org/',
-              ]
-                  .map((url) => OutlinedButton(
-                        onPressed: () => _navigateTo(url),
-                        child: Text(
+              children:
+                  [
+                        'https://www.startpage.com/',
+                        'https://duckduckgo.com/',
+                        'https://news.ycombinator.com/',
+                        'https://www.wikipedia.org/',
+                      ]
+                      .map(
+                        (url) => OutlinedButton(
+                          onPressed: () => _navigateTo(url),
+                          child: Text(
                             url.replaceAll('https://', '').replaceAll('/', ''),
-                            style: const TextStyle(fontSize: 12)),
-                      ))
-                  .toList(),
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ),
+                      )
+                      .toList(),
             ),
           ],
         ],
@@ -654,8 +716,10 @@ class _BrowserScreenState extends State<BrowserScreen>
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Text('Load error: $_lastLoadError',
-                style: const TextStyle(color: Colors.red)),
+            Text(
+              'Load error: $_lastLoadError',
+              style: const TextStyle(color: Colors.red),
+            ),
             const SizedBox(height: 12),
             ElevatedButton(
               onPressed: () => _navigateTo(_addressController.text),
@@ -685,8 +749,8 @@ class _BrowserScreenState extends State<BrowserScreen>
           child: _showHomeScreen
               ? _buildHomeScreen(theme)
               : _lastLoadError != null
-                  ? _buildLoadError()
-                  : _buildWebViewBody(),
+              ? _buildLoadError()
+              : _buildWebViewBody(),
         ),
       ],
     );

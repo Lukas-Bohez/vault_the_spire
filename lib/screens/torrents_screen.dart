@@ -220,6 +220,37 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
           ScaffoldMessenger.of(
             context,
           ).showSnackBar(const SnackBar(content: Text('Magnet link added.')));
+        } on TorrentAlreadyExistsException catch (e) {
+          final existing = await TorrentService.instance.getTorrentById(
+            e.torrentId,
+          );
+          if (!mounted) return;
+
+          if (existing != null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Torrent exists. Opening details.')),
+            );
+            await TorrentEngineService.instance.forceRefresh(existing.id);
+            try {
+              Navigator.of(
+                context,
+              ).pushNamed('/torrent_detail', arguments: existing);
+            } catch (_) {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => TorrentDetailScreen(torrent: existing),
+                ),
+              );
+            }
+            return;
+          }
+
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Torrent exists but not found: ${e.torrentId}'),
+            ),
+          );
         } catch (e) {
           if (!mounted) return;
           ScaffoldMessenger.of(
@@ -247,6 +278,31 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Magnet link added.')));
+    } on TorrentAlreadyExistsException catch (e) {
+      final existing = await TorrentService.instance.getTorrentById(
+        e.torrentId,
+      );
+      if (existing != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Torrent already exists. Opening details.'),
+          ),
+        );
+        await TorrentEngineService.instance.forceRefresh(existing.id);
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => TorrentDetailScreen(torrent: existing),
+          ),
+        );
+        return;
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Torrent exists but not found: ${e.torrentId}'),
+          ),
+        );
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -604,15 +660,15 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
                                   );
                                   await TorrentService.instance
                                       .updateTorrentStatus(
-                                    torrent.id,
-                                    'paused',
-                                  );
+                                        torrent.id,
+                                        'paused',
+                                      );
                                 } else if (value == 'resume') {
                                   await TorrentService.instance
                                       .updateTorrentStatus(
-                                    torrent.id,
-                                    'downloading',
-                                  );
+                                        torrent.id,
+                                        'downloading',
+                                      );
                                   await TorrentEngineService.instance
                                       .startTorrent(torrent.id);
                                 } else if (value == 'stop') {
@@ -621,9 +677,9 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
                                   );
                                   await TorrentService.instance
                                       .updateTorrentStatus(
-                                    torrent.id,
-                                    'paused',
-                                  );
+                                        torrent.id,
+                                        'paused',
+                                      );
                                 } else if (value == 'set_ratio') {
                                   final ratioController = TextEditingController(
                                     text:
@@ -766,7 +822,8 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
                               }
                             },
                             itemBuilder: (_) {
-                              final isDownloading = torrent.status == 'downloading';
+                              final isDownloading =
+                                  torrent.status == 'downloading';
                               return <PopupMenuEntry<String>>[
                                 if (isDownloading)
                                   const PopupMenuItem<String>(
