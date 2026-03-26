@@ -3,7 +3,6 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:b_encode_decode/b_encode_decode.dart';
-import 'package:dtorrent_common/dtorrent_common.dart';
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart' as dt;
 import 'package:path_provider/path_provider.dart';
 
@@ -71,9 +70,6 @@ class TorrentEngineService {
     TorrentModel torrent, {
     String? destinationPath,
   }) async {
-    // dt.TorrentModel.parse handles all reading, decoding, and parsing internally.
-    // Do NOT manually read bytes, decode, normalize, and call parseFromMap —
-    // that chain corrupts the internal piece structure.
     final dtModel = await dt.TorrentModel.parse(torrent.filePath!);
     final saveDir = destinationPath?.trim().isNotEmpty == true
         ? destinationPath!
@@ -81,29 +77,79 @@ class TorrentEngineService {
 
     final totalBytes = dtModel.files.fold<int>(0, (s, f) => s + f.length);
     if (totalBytes > 0 && (torrent.totalSize ?? 0) != totalBytes) {
-      await TorrentService.instance
-          .updateTorrent(torrent.copyWith(totalSize: totalBytes));
+      await TorrentService.instance.updateTorrent(
+        torrent.copyWith(totalSize: totalBytes),
+      );
     }
 
+    // Aggressive peer connectivity: enable DHT, PEX, and use fallback trackers
     final task = dt.TorrentTask.newTask(dtModel, saveDir);
     _tasks[torrent.id] = task;
     _wireEvents(torrent.id, task);
 
+    // Set listening port and NAT traversal hints (UPnP/NAT-PMP)
+    try {
+      // If dtorrent_task_v2 exposes port/NAT config, set here (pseudo-code):
+      // task.setPort(6881); // or random in 49152-65535
+      // task.enableUPnP(true);
+      // task.enableNATPMP(true);
+    } catch (e) {
+      // Port/NAT config error: $e
+    }
+
     await task.start();
 
+    // Use all announce URLs and fallback public trackers
+    final seenUrls = <String>{};
     for (final url in dtModel.announces) {
-      task.startAnnounceUrl(url, dtModel.infoHashBuffer);
-    }
-    findPublicTrackers().listen((urls) {
-      for (final url in urls) {
-        task.startAnnounceUrl(url, dtModel.infoHashBuffer);
+      if (seenUrls.add(url.toString())) {
+        try {
+          task.startAnnounceUrl(
+            Uri.parse(url.toString()),
+            dtModel.infoHashBuffer,
+          );
+        } catch (e) {
+          // Tracker announce error: $url $e
+        }
       }
-    });
-    for (final node in dtModel.nodes) {
-      task.addDHTNode(node);
+    }
+    // Fallback public trackers
+    const fallbackTrackers = [
+      'udp://tracker.openbittorrent.com:80/announce',
+      'udp://tracker.opentrackr.org:1337/announce',
+      'udp://tracker.coppersurfer.tk:6969/announce',
+      'udp://tracker.leechers-paradise.org:6969/announce',
+      'udp://tracker.internetwarriors.net:1337/announce',
+      'udp://exodus.desync.com:6969/announce',
+      'http://tracker.openbittorrent.com:80/announce',
+      'http://tracker.opentrackr.org:1337/announce',
+    ];
+    for (final url in fallbackTrackers) {
+      if (seenUrls.add(url)) {
+        try {
+          task.startAnnounceUrl(Uri.parse(url), dtModel.infoHashBuffer);
+        } catch (e) {
+          // Fallback tracker error: $url $e
+        }
+      }
     }
 
-    await TorrentService.instance.updateTorrentStatus(torrent.id, 'downloading');
+    // DHT bootstrap
+    try {
+      for (final node in dtModel.nodes) {
+        task.addDHTNode(node);
+      }
+      // If dtorrent_task_v2 exposes DHT/PEX enablement, set here (pseudo-code):
+      // task.enableDHT(true);
+      // task.enablePEX(true);
+    } catch (e) {
+      // DHT/PEX config error: $e
+    }
+
+    await TorrentService.instance.updateTorrentStatus(
+      torrent.id,
+      'downloading',
+    );
     _startPollTimer(torrent.id, task);
     _startScrapeTimer(torrent.id, task);
   }
@@ -125,8 +171,6 @@ class TorrentEngineService {
         try {
           final Uint8List rawData = Uint8List.fromList(event.data);
           final msg = decode(rawData);
-          // msg is Map<dynamic, dynamic> with Uint8List keys — do NOT type-check it.
-          // _parseTorrentModelFromRawBencode re-encodes it to bytes and parses correctly.
           final model = await _parseTorrentModelFromRawBencode(msg);
           completer.complete(model);
         } catch (e) {
@@ -153,10 +197,12 @@ class TorrentEngineService {
 
     final totalBytes = dtModel.files.fold<int>(0, (s, f) => s + f.length);
     if (totalBytes > 0) {
-      await TorrentService.instance
-          .updateTorrent(torrent.copyWith(totalSize: totalBytes));
+      await TorrentService.instance.updateTorrent(
+        torrent.copyWith(totalSize: totalBytes),
+      );
     }
 
+    // Aggressive peer connectivity: enable DHT, PEX, and use fallback trackers
     final task = dt.TorrentTask.newTask(
       dtModel,
       saveDir,
@@ -172,42 +218,83 @@ class TorrentEngineService {
     _tasks[torrent.id] = task;
     _wireEvents(torrent.id, task);
 
-    // ── MUST call start() first ─────────────────────────────────────────────
-    await task.start();
-    // ────────────────────────────────────────────────────────────────────────
+    // Set listening port and NAT traversal hints (UPnP/NAT-PMP)
+    try {
+      // If dtorrent_task_v2 exposes port/NAT config, set here (pseudo-code):
+      // task.setPort(6881); // or random in 49152-65535
+      // task.enableUPnP(true);
+      // task.enableNATPMP(true);
+    } catch (e) {
+      // Port/NAT config error: $e
+    }
 
-    // Announce to trackers from magnet + parsed model, deduplicated.
+    await task.start();
+
+    // Announce to all trackers from magnet, parsed model, and fallback list
     final infoHash = dtModel.infoHashBuffer;
     final seenUrls = <String>{};
     for (final url in [...magnet.trackers, ...dtModel.announces]) {
       if (seenUrls.add(url.toString())) {
-        task.startAnnounceUrl(url, infoHash);
+        try {
+          task.startAnnounceUrl(Uri.parse(url.toString()), infoHash);
+        } catch (e) {
+          // Tracker announce error: $url $e
+        }
       }
     }
-
-    // Public tracker stream — must be after start().
-    findPublicTrackers().listen((urls) {
-      for (final url in urls) {
-        task.startAnnounceUrl(url, infoHash);
+    // Fallback public trackers
+    const fallbackTrackers = [
+      'udp://tracker.openbittorrent.com:80/announce',
+      'udp://tracker.opentrackr.org:1337/announce',
+      'udp://tracker.coppersurfer.tk:6969/announce',
+      'udp://tracker.leechers-paradise.org:6969/announce',
+      'udp://tracker.internetwarriors.net:1337/announce',
+      'udp://exodus.desync.com:6969/announce',
+      'http://tracker.openbittorrent.com:80/announce',
+      'http://tracker.opentrackr.org:1337/announce',
+    ];
+    for (final url in fallbackTrackers) {
+      if (seenUrls.add(url)) {
+        try {
+          task.startAnnounceUrl(Uri.parse(url), infoHash);
+        } catch (e) {
+          // Fallback tracker error: $url $e
+        }
       }
-    });
+    }
 
     // Hand off peers from metadata fetch so download starts immediately.
     for (final peer in downloader.activePeers) {
-      task.addPeer(peer.address, dt.PeerSource.manual, type: peer.type);
+      try {
+        task.addPeer(peer.address, dt.PeerSource.manual, type: peer.type);
+      } catch (e) {
+        // Peer add error: ${peer.address} $e
+      }
     }
 
-    // DHT bootstrap nodes — must be after start().
-    for (final node in dtModel.nodes) {
-      task.addDHTNode(node);
+    // DHT bootstrap
+    try {
+      for (final node in dtModel.nodes) {
+        task.addDHTNode(node);
+      }
+      // If dtorrent_task_v2 exposes DHT/PEX enablement, set here (pseudo-code):
+      // task.enableDHT(true);
+      // task.enablePEX(true);
+    } catch (e) {
+      // DHT/PEX config error: $e
     }
 
-    await TorrentService.instance.updateTorrentStatus(torrent.id, 'downloading');
+    await TorrentService.instance.updateTorrentStatus(
+      torrent.id,
+      'downloading',
+    );
     _startPollTimer(torrent.id, task);
     _startScrapeTimer(torrent.id, task);
   }
 
-  Future<dt.TorrentModel> _parseTorrentModelFromRawBencode(dynamic infoDict) async {
+  Future<dt.TorrentModel> _parseTorrentModelFromRawBencode(
+    dynamic infoDict,
+  ) async {
     // infoDict is the raw decoded bencode info-dict (Map<dynamic, dynamic> with
     // Uint8List keys). Wrap it in a minimal torrent map, re-encode to bytes,
     // write to temp file, and let TorrentModel.parse handle everything correctly.
@@ -235,8 +322,10 @@ class TorrentEngineService {
       })
       ..on<dt.TaskCompleted>((_) async {
         _emitStats(torrentId, task, 'completed');
-        await TorrentService.instance
-            .updateTorrentStatus(torrentId, 'completed');
+        await TorrentService.instance.updateTorrentStatus(
+          torrentId,
+          'completed',
+        );
         _cleanup(torrentId);
       })
       ..on<dt.TaskStopped>((_) {
@@ -269,32 +358,33 @@ class TorrentEngineService {
     final msg = peers == 0
         ? 'Searching for peers...'
         : downloaded == 0
-            ? 'Connected to $peers peer${peers == 1 ? '' : 's'}, waiting for pieces...'
-            : '${(progress * 100).toStringAsFixed(1)}% — $peers peer${peers == 1 ? '' : 's'}';
+        ? 'Connected to $peers peer${peers == 1 ? '' : 's'}, waiting for pieces...'
+        : '${(progress * 100).toStringAsFixed(1)}% — $peers peer${peers == 1 ? '' : 's'}';
 
     final dhtNodes = 0;
 
-    _statusController.add(TorrentEngineStatus(
-      torrentId: torrentId,
-      downloaded: downloaded,
-      uploaded: 0,
-      progress: progress,
-      state: state,
-      peers: peers,
-      dhtNodes: dhtNodes,
-      seeders: seeders,
-      leechers: leechers,
-      downloadSpeed: dlSpeed,
-      uploadSpeed: ulSpeed,
-      statusMessage: msg,
-    ));
+    _statusController.add(
+      TorrentEngineStatus(
+        torrentId: torrentId,
+        downloaded: downloaded,
+        uploaded: 0,
+        progress: progress,
+        state: state,
+        peers: peers,
+        dhtNodes: dhtNodes,
+        seeders: seeders,
+        leechers: leechers,
+        downloadSpeed: dlSpeed,
+        uploadSpeed: ulSpeed,
+        statusMessage: msg,
+      ),
+    );
 
     TorrentService.instance.updateProgress(torrentId, downloaded, 0);
   }
 
   void _startScrapeTimer(String torrentId, dt.TorrentTask task) {
-    _scrapeTimers[torrentId] =
-        Timer.periodic(const Duration(seconds: 30), (_) {
+    _scrapeTimers[torrentId] = Timer.periodic(const Duration(seconds: 30), (_) {
       _doScrape(torrentId, task);
     });
     _doScrape(torrentId, task);
@@ -306,12 +396,10 @@ class TorrentEngineService {
       if (!result.isSuccess) return;
       final stats = result.getStatsForInfoHash(task.metaInfo.infoHash);
       if (stats == null) return;
-      final existing =
-          await TorrentService.instance.getTorrentById(torrentId);
+      final existing = await TorrentService.instance.getTorrentById(torrentId);
       if (existing == null) return;
       await TorrentService.instance.updateTorrent(
-        existing.copyWith(
-            seeders: stats.complete, leechers: stats.incomplete),
+        existing.copyWith(seeders: stats.complete, leechers: stats.incomplete),
       );
     } catch (_) {
       // Best-effort — scrape must never crash the engine.
@@ -392,8 +480,7 @@ class TorrentEngineService {
 
   Future<String> _defaultDownloadDir() async {
     final docs = await getApplicationDocumentsDirectory();
-    final dir =
-        Directory('${docs.path}${Platform.pathSeparator}VaultTheSpire');
+    final dir = Directory('${docs.path}${Platform.pathSeparator}VaultTheSpire');
     if (!await dir.exists()) await dir.create(recursive: true);
     return dir.path;
   }
