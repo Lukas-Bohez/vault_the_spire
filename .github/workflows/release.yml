@@ -228,22 +228,35 @@ jobs:
 
       - name: Configure Android signing (fallback)
         if: ${{ env.KEYSTORE_BASE64 == '' || env.KEYSTORE_PASSWORD == '' || env.KEY_ALIAS == '' || env.KEY_PASSWORD == '' }}
-        run: echo "⚠️ Android release signing secrets are not set. Building debug APK (not signed for Google Play)."
+        run: |
+          set -euo pipefail
+          if [ -f android/release.keystore ] && [ -f android/key.properties ]; then
+            echo "✅ Using local repo keystore and key.properties for signing."
+          elif [ -f key.properties ]; then
+            echo "✅ Found key.properties at repo root. Copying to android directory."
+            cp key.properties android/key.properties
+          else
+            echo "⚠️ Android signing secrets are not set and no local keystore found. Release build may fail."
+          fi
 
       - name: Install dependencies
         run: flutter pub get
 
       - name: Build APK — release
-        if: ${{ env.KEYSTORE_BASE64 != '' && env.KEYSTORE_PASSWORD != '' && env.KEY_ALIAS != '' && env.KEY_PASSWORD != '' }}
-        run: flutter build apk --release --no-tree-shake-icons
+        run: flutter build apk --release --no-tree-shake-icons || true
 
       - name: Build AAB — release
-        if: ${{ env.KEYSTORE_BASE64 != '' && env.KEYSTORE_PASSWORD != '' && env.KEY_ALIAS != '' && env.KEY_PASSWORD != '' }}
-        run: flutter build appbundle --release --no-tree-shake-icons
+        run: flutter build appbundle --release --no-tree-shake-icons || true
 
       - name: Build APK — debug fallback
-        if: ${{ env.KEYSTORE_BASE64 == '' || env.KEYSTORE_PASSWORD == '' || env.KEY_ALIAS == '' || env.KEY_PASSWORD == '' }}
-        run: flutter build apk --debug --no-tree-shake-icons
+        if: ${{ always() }}
+        run: |
+          if [ ! -f build/app/outputs/flutter-apk/app-release.apk ]; then
+            echo "❗Release APK not found; building debug APK as fallback."
+            flutter build apk --debug --no-tree-shake-icons
+          else
+            echo "✅ Release APK already built."
+          fi
 
       - name: Collect Android builds
         id: collect
