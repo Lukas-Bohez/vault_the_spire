@@ -7,7 +7,9 @@ import 'package:vault_the_spire/db/chat_dao.dart';
 import 'package:vault_the_spire/db/conversation_dao.dart';
 import 'package:vault_the_spire/db/dm_messages_dao.dart';
 import 'package:vault_the_spire/db/users_dao.dart';
+import 'package:vault_the_spire/models/chat_hub_entry.dart';
 import 'package:vault_the_spire/models/chat_message.dart';
+import 'package:vault_the_spire/services/server_service.dart';
 import 'package:vault_the_spire/models/chat_user.dart';
 import 'package:vault_the_spire/models/conversation.dart';
 import 'package:vault_the_spire/models/dm_message.dart';
@@ -258,6 +260,64 @@ class ChatService {
           ),
         )
         .toList();
+  }
+
+  Future<List<ChatHubEntry>> getChatHubEntries(String currentUser) async {
+    final hub = <ChatHubEntry>[];
+
+    final user = await _ensureUserExists(currentUser);
+    final conversations = await conversationsFor(currentUser);
+
+    for (final conv in conversations) {
+      final peerId = conv.participant1Id == user.id
+          ? conv.participant2Id
+          : conv.participant1Id;
+      final peerUser = await UsersDao.instance.getUserById(peerId);
+      final peerName = peerUser?.username ?? 'Unknown';
+      final unread = await DmMessagesDao.instance.getUnreadCountForConversation(
+        conv.id,
+        user.id,
+      );
+      final messages = await DmMessagesDao.instance.getMessagesForConversation(
+        conv.id,
+        limit: 1,
+        offset: 0,
+      );
+      final latest = messages.isNotEmpty ? messages.last : null;
+      hub.add(ChatHubEntry(
+        id: conv.id,
+        type: ChatHubEntryType.dm,
+        title: peerName,
+        subtitle: latest?.content ?? 'No messages yet',
+        conversationId: conv.id,
+        unread: unread,
+        lastUpdated: latest?.timestamp ?? conv.createdAt,
+      ));
+    }
+
+    final servers = ServerService.instance.servers;
+    for (final server in servers) {
+      for (final channel in server.channels) {
+        final messages = await ChatDao.instance.getMessagesFor(
+          server.id,
+          channel.id,
+        );
+        final latest = messages.isNotEmpty ? messages.last : null;
+        hub.add(ChatHubEntry(
+          id: '${server.id}:${channel.id}',
+          type: ChatHubEntryType.serverChannel,
+          title: '${server.name} / ${channel.name}',
+          subtitle: latest?.text ?? 'No messages yet',
+          serverId: server.id,
+          channelId: channel.id,
+          unread: 0,
+          lastUpdated: latest?.timestamp ?? DateTime.fromMillisecondsSinceEpoch(0),
+        ));
+      }
+    }
+
+    hub.sort((a, b) => b.lastUpdated.compareTo(a.lastUpdated));
+    return hub;
   }
 
   Future<void> addReaction(String messageId, String emoji) async {

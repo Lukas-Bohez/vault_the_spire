@@ -11,7 +11,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:vault_the_spire/platform/desktop_window.dart';
 import 'package:vault_the_spire/platform/hotkeys.dart';
 import 'package:vault_the_spire/platform/notifications_desktop.dart';
-import 'package:vault_the_spire/screens/home_screen.dart';
+import './screens/home_screen.dart';
 import 'package:vault_the_spire/services/identity_service.dart';
 import 'package:vault_the_spire/services/settings_service.dart';
 import 'package:vault_the_spire/services/service_locator.dart';

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
@@ -516,6 +517,35 @@ class TorrentEngineService {
         try {
           final Uint8List rawData = Uint8List.fromList(event.data);
           final msg = decode(rawData);
+          debugPrint('Metadata download decoded type: ${msg.runtimeType}');
+          if (msg is Map) {
+            debugPrint('Metadata keys: ${msg.keys}');
+            final rawName = msg['name'];
+            debugPrint('Top-level name type: ${rawName?.runtimeType}, isUint8List=${rawName is Uint8List}');
+            final rawPieces = msg['pieces'];
+            debugPrint('Top-level pieces type: ${rawPieces?.runtimeType}, isUint8List=${rawPieces is Uint8List}');
+            if (rawName is Uint8List) {
+              try {
+                debugPrint('Top-level name decoded: ${utf8.decode(rawName)}');
+              } catch (_) {
+                debugPrint('Top-level name could not decode to UTF-8');
+              }
+            }
+            if (msg.containsKey('info')) {
+              final info = msg['info'];
+              debugPrint('info type: ${info?.runtimeType}');
+              if (info is Map) {
+                final infoName = info['name'];
+                debugPrint('info.name type: ${infoName?.runtimeType}, isUint8List=${infoName is Uint8List}');
+                if (infoName is Uint8List) {
+                  try {
+                    debugPrint('info.name decoded: ${utf8.decode(infoName)}');
+                  } catch (_) {}
+                }
+              }
+            }
+          }
+
           final model = await _parseTorrentModelFromRawBencode(msg);
           completer.complete(model);
         } catch (e) {
@@ -652,24 +682,190 @@ class TorrentEngineService {
   Future<dt.TorrentModel> _parseTorrentModelFromRawBencode(
     dynamic infoDict,
   ) async {
-    // infoDict is the raw decoded bencode info-dict (Map<dynamic, dynamic> with
-    // Uint8List keys). Wrap it in a minimal torrent map, re-encode to bytes,
-    // write to temp file, and let TorrentModel.parse handle everything correctly.
-    final torrentMap = <dynamic, dynamic>{
-      Uint8List.fromList('info'.codeUnits): infoDict,
+    if (infoDict is! Map) {
+      throw FormatException('Invalid metadata: expected info dictionary');
+    }
+
+    // Normalize all map and list values; keep binary buffers in place.
+    final normalizedInfo = _normalizeBencodeMap(infoDict);
+    if (normalizedInfo is! Map<String, dynamic>) {
+      throw FormatException('Invalid metadata after normalization');
+    }
+
+    _ensureInfoNameIsString(normalizedInfo);
+    _ensureAnnounceFieldsAreString(normalizedInfo);
+    _ensureFilePathsAreString(normalizedInfo);
+
+    _normalizePiecesField(normalizedInfo);
+    debugPrint('Normalized info types:');
+    final pieceType = normalizedInfo['pieces']?.runtimeType;
+    debugPrint(' - pieces type: $pieceType');
+    final filesType = normalizedInfo['files']?.runtimeType;
+    debugPrint(' - files type: $filesType');
+
+    final torrentMap = <String, dynamic>{
+      'info': normalizedInfo,
     };
-    final bytes = encode(torrentMap);
-    final tempPath =
-        '${Directory.systemTemp.path}${Platform.pathSeparator}vts_${DateTime.now().millisecondsSinceEpoch}.torrent';
-    final tempFile = File(tempPath);
-    await tempFile.writeAsBytes(bytes);
-    try {
-      return await dt.TorrentModel.parse(tempFile.path);
-    } finally {
+
+    return dt.TorrentParser.parseFromMap(torrentMap);
+  }
+
+  void _normalizePiecesField(Map<String, dynamic> info) {
+    final piecesValue = info['pieces'];
+    if (piecesValue is List) {
+      // Some decoders can return piece bytes as List<int> segments, assemble to Uint8List.
       try {
-        if (await tempFile.exists()) await tempFile.delete();
+        final bytes = <int>[];
+        for (final segment in piecesValue) {
+          if (segment is int) {
+            bytes.add(segment);
+          } else if (segment is Uint8List) {
+            bytes.addAll(segment);
+          } else if (segment is List<int>) {
+            bytes.addAll(segment);
+          }
+        }
+        info['pieces'] = Uint8List.fromList(bytes);
+      } catch (_) {
+        // If conversion fails, leave as-is and allow parser to report a better error.
+      }
+    }
+  }
+
+  void _ensureInfoNameIsString(Map<String, dynamic> info) {
+    final nameValue = info['name'];
+    if (nameValue is List) {
+      final nameParts = nameValue
+          .where((e) => e != null)
+          .map((e) {
+            if (e is String) return e;
+            if (e is Uint8List) {
+              try {
+                return utf8.decode(e);
+              } catch (_) {
+                return e.toString();
+              }
+            }
+            return e.toString();
+          })
+          .toList();
+      info['name'] = nameParts.join('/');
+    } else if (nameValue is Uint8List) {
+      try {
+        info['name'] = utf8.decode(nameValue);
+      } catch (_) {
+        info['name'] = nameValue.toString();
+      }
+    }
+  }
+
+  void _ensureAnnounceFieldsAreString(Map<String, dynamic> info) {
+    if (info['announce'] is Uint8List) {
+      try {
+        info['announce'] = utf8.decode(info['announce'] as Uint8List);
       } catch (_) {}
     }
+
+    if (info['announce-list'] is List) {
+      info['announce-list'] = (info['announce-list'] as List).map((tier) {
+        if (tier is List) {
+          return tier.map((url) {
+            if (url is Uint8List) {
+              try {
+                return utf8.decode(url);
+              } catch (_) {
+                return url.toString();
+              }
+            }
+            return url;
+          }).toList();
+        }
+        return tier;
+      }).toList();
+    }
+  }
+
+  void _ensureFilePathsAreString(Map<String, dynamic> info) {
+    if (info['files'] is List) {
+      for (final entry in (info['files'] as List)) {
+        if (entry is Map && entry.containsKey('path')) {
+          final pathList = entry['path'];
+          if (pathList is List) {
+            entry['path'] = pathList.map((component) {
+              if (component is Uint8List) {
+                try {
+                  return utf8.decode(component);
+                } catch (_) {
+                  return component.toString();
+                }
+              }
+              return component;
+            }).toList();
+          }
+        }
+      }
+    }
+
+    if (info['file tree'] is Map) {
+      // Convert file tree keys and names from Uint8List to String if needed.
+      info['file tree'] = _normalizeFileTreeKeys(info['file tree']);
+    }
+  }
+
+  Map<String, dynamic> _normalizeFileTreeKeys(dynamic treeData) {
+    if (treeData is! Map) return {};
+    final result = <String, dynamic>{};
+    for (final entry in treeData.entries) {
+      final key = entry.key is String
+          ? entry.key as String
+          : entry.key is Uint8List
+              ? utf8.decode(entry.key as Uint8List)
+              : entry.key.toString();
+      final value = entry.value;
+      if (value is Map) {
+        if (value.containsKey('')) {
+          final subentry = value[''];
+          if (subentry is Map) {
+            final lengthValue = subentry['length'];
+            final piecesRoot = subentry['pieces root'];
+            final resSub = <String, dynamic>{};
+            if (lengthValue is int) resSub['length'] = lengthValue;
+            if (piecesRoot is Uint8List) resSub['pieces root'] = piecesRoot;
+            result[key] = {'': resSub};
+          } else {
+            result[key] = value;
+          }
+        } else {
+          result[key] = _normalizeFileTreeKeys(value);
+        }
+      } else {
+        result[key] = value;
+      }
+    }
+    return result;
+  }
+
+
+  dynamic _normalizeBencodeMap(dynamic value) {
+    if (value is Map) {
+      return Map<String, dynamic>.fromEntries(
+        value.entries.map((entry) {
+          final key = entry.key is String ? entry.key as String : entry.key.toString();
+          return MapEntry(key, _normalizeBencodeMap(entry.value));
+        }),
+      );
+    }
+
+    if (value is List) {
+      return value.map((item) => _normalizeBencodeMap(item)).toList();
+    }
+
+    if (value is Uint8List) {
+      // Keep raw bytes for binary fields (pieces, roots etc), decode names separately.
+      return value;
+    }
+
+    return value;
   }
 
   void _wireEvents(String torrentId, dt.TorrentTask task) {

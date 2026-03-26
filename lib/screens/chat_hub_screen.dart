@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:vault_the_spire/models/chat_hub_entry.dart';
+import 'package:vault_the_spire/models/server.dart';
+import 'package:vault_the_spire/screens/chat_screen.dart';
 import 'package:vault_the_spire/screens/dm_screen.dart';
-import 'package:vault_the_spire/services/settings_service.dart';
+import 'package:vault_the_spire/services/chat_service.dart';
+import 'package:vault_the_spire/services/identity_service.dart';
+import 'package:vault_the_spire/services/server_service.dart';
 
 class ChatHubScreen extends StatefulWidget {
   const ChatHubScreen({super.key});
@@ -10,58 +15,148 @@ class ChatHubScreen extends StatefulWidget {
 }
 
 class _ChatHubScreenState extends State<ChatHubScreen> {
-  final _peerController = TextEditingController();
-  String _user = SettingsService.instance.displayName;
-  String? _activePeer;
+  final _searchController = TextEditingController();
+  final _dmTargetController = TextEditingController();
+  String _query = '';
+  late String _currentUser;
+  Future<List<ChatHubEntry>>? _entriesFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _currentUser = IdentityService.instance.identity?.displayName ?? 'you';
+    _loadEntries();
+  }
 
   @override
   void dispose() {
-    _peerController.dispose();
+    _searchController.dispose();
+    _dmTargetController.dispose();
     super.dispose();
   }
 
-  void _startDm() {
-    final peer = _peerController.text.trim();
-    if (peer.isEmpty) return;
+  void _loadEntries() {
     setState(() {
-      _activePeer = peer;
+      _entriesFuture = ChatService.instance.getChatHubEntries(_currentUser);
     });
+  }
+
+  Future<void> _openEntry(ChatHubEntry entry) async {
+    if (entry.isDM) {
+      await Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => DMScreen(user: _currentUser, peer: entry.title),
+      ));
+    } else {
+      final server = ServerService.instance.servers.firstWhere(
+        (s) => s.id == entry.serverId,
+        orElse: () => ServerModel(id: entry.serverId, name: 'Unknown', channels: []),
+      );
+      await Navigator.of(context).push(MaterialPageRoute(
+        builder: (_) => ChatScreen(server: server, channelId: entry.channelId),
+      ));
+    }
+    _loadEntries();
+  }
+
+  Future<void> _startDm() async {
+    final target = _dmTargetController.text.trim();
+    if (target.isEmpty) return;
+
+    await ChatService.instance.getOrCreateConversation(_currentUser, target);
+    _dmTargetController.clear();
+    _loadEntries();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_activePeer != null && _activePeer!.isNotEmpty) {
-      return DMScreen(user: _user, peer: _activePeer!);
-    }
-
-    return Padding(
-      padding: const EdgeInsets.all(16.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('2. Direct Peer Chat', style: Theme.of(context).textTheme.headlineSmall),
-          const SizedBox(height: 8),
-          Text('Your identity: $_user', style: Theme.of(context).textTheme.bodyMedium),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _peerController,
-            decoration: const InputDecoration(
-              labelText: 'Peer username',
-              hintText: 'Enter a username to connect',
-              border: OutlineInputBorder(),
-            ),
-            textInputAction: TextInputAction.go,
-            onSubmitted: (_) => _startDm(),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _searchController,
+                  decoration: const InputDecoration(
+                    labelText: 'Search chats',
+                    prefixIcon: Icon(Icons.search),
+                  ),
+                  onChanged: (value) {
+                    setState(() => _query = value.trim().toLowerCase());
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              IconButton(
+                icon: const Icon(Icons.refresh),
+                onPressed: _loadEntries,
+              ),
+            ],
           ),
-          const SizedBox(height: 12),
-          ElevatedButton(
-            onPressed: _startDm,
-            child: const Text('Connect to Peer'),
+        ),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _dmTargetController,
+                  decoration: const InputDecoration(
+                    labelText: 'New DM',
+                    hintText: 'Username',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton(onPressed: _startDm, child: const Text('Start')),
+            ],
           ),
-          const SizedBox(height: 12),
-          const Text('Enter a peer username and press connect to open a direct P2P chat.'),
-        ],
-      ),
+        ),
+        Expanded(
+          child: FutureBuilder<List<ChatHubEntry>>(
+            future: _entriesFuture,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              if (snapshot.hasError) {
+                return Center(child: Text('Error loading chats: ${snapshot.error}'));
+              }
+              final entries = snapshot.data ?? [];
+              final filtered = _query.isEmpty
+                  ? entries
+                  : entries.where((entry) {
+                      final combined = '${entry.title} ${entry.subtitle}'.toLowerCase();
+                      return combined.contains(_query);
+                    }).toList();
+              if (filtered.isEmpty) {
+                return const Center(child: Text('No chats found.'));
+              }
+              return ListView.separated(
+                itemCount: filtered.length,
+                separatorBuilder: (_, __) => const Divider(height: 1),
+                itemBuilder: (context, index) {
+                  final entry = filtered[index];
+                  return ListTile(
+                    leading: CircleAvatar(
+                      child: Text(entry.type == ChatHubEntryType.dm ? 'DM' : 'S'),
+                    ),
+                    title: Text(entry.title),
+                    subtitle: Text(entry.subtitle.isNotEmpty ? entry.subtitle : 'No messages yet'),
+                    trailing: entry.unread > 0
+                        ? CircleAvatar(radius: 12, child: Text(entry.unread.toString()))
+                        : null,
+                    onTap: () => _openEntry(entry),
+                  );
+                },
+              );
+            },
+          ),
+        ),
+      ],
     );
   }
 }

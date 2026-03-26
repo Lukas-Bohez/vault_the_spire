@@ -23,8 +23,9 @@ class NotificationService {
       android: androidSettings,
       iOS: iosSettings,
       linux: linuxSettings,
-      // flutter_local_notifications ^18 (as in this project) may not expose
-      // windows initialization on this API level; omit to keep compatibility.
+      // Windows initialization is not enabled here due analyzer plugin compatibility in this workspace.
+      // If the plugin supports Windows in the environment, this code can be updated to
+      // include windows: const WindowsInitializationSettings(appName: 'VaultTheSpire'),
     );
 
     await _plugin.initialize(
