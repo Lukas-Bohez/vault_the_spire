@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'dart:convert';
 import 'package:b_encode_decode/b_encode_decode.dart';
 import 'package:dtorrent_common/dtorrent_common.dart';
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart' as dt;
@@ -54,75 +53,6 @@ class TorrentEngineService {
 
   bool isRunning(String torrentId) => _tasks.containsKey(torrentId);
 
-  static const _retainUint8Keys = {
-    'pieces',
-    'piece layers',
-    'root hash',
-    'pieces root',
-  };
-
-  dynamic _normalizeBencodeData(dynamic value, {String? key}) {
-    if (value is Uint8List) {
-      if (key != null && _retainUint8Keys.contains(key)) return value;
-      try {
-        return utf8.decode(value);
-      } catch (_) {
-        return value;
-      }
-    }
-
-    if (value is List) {
-      final normalizedList = <dynamic>[];
-      for (final item in value) {
-        normalizedList.add(_normalizeBencodeData(item, key: key));
-      }
-      return normalizedList;
-    }
-
-    if (value is Map) {
-      final normalizedMap = <String, dynamic>{};
-      for (final entry in value.entries) {
-        final rawKey = entry.key;
-        final rawValue = entry.value;
-
-        String keyString;
-        if (rawKey is String) {
-          keyString = rawKey;
-        } else if (rawKey is Uint8List) {
-          try {
-            keyString = utf8.decode(rawKey);
-          } catch (_) {
-            keyString = String.fromCharCodes(rawKey);
-          }
-        } else {
-          keyString = rawKey.toString();
-        }
-
-        normalizedMap[keyString] = _normalizeBencodeData(rawValue, key: keyString);
-      }
-
-      if (normalizedMap.containsKey('announce')) {
-        final announceValue = normalizedMap['announce'];
-        if (announceValue is List && announceValue.isNotEmpty) {
-          final first = announceValue.first;
-          if (first is String) {
-            normalizedMap['announce'] = first;
-          } else if (first is Uint8List) {
-            try {
-              normalizedMap['announce'] = utf8.decode(first);
-            } catch (_) {
-              normalizedMap.remove('announce');
-            }
-          }
-        }
-      }
-
-      return normalizedMap;
-    }
-
-    return value;
-  }
-
   Future<void> startTorrent(String torrentId, {String? destinationPath}) async {
     if (isRunning(torrentId)) return;
     final torrent = await TorrentService.instance.getTorrentById(torrentId);
@@ -141,13 +71,10 @@ class TorrentEngineService {
     TorrentModel torrent, {
     String? destinationPath,
   }) async {
-    final bytes = await File(torrent.filePath!).readAsBytes();
-    final decoded = decode(Uint8List.fromList(bytes));
-    if (decoded is! Map<String, dynamic>) {
-      throw FormatException('Invalid torrent file format');
-    }
-    final normalized = _normalizeBencodeData(decoded) as Map<String, dynamic>;
-    final dtModel = dt.TorrentParser.parseFromMap(normalized);
+    // dt.TorrentModel.parse handles all reading, decoding, and parsing internally.
+    // Do NOT manually read bytes, decode, normalize, and call parseFromMap —
+    // that chain corrupts the internal piece structure.
+    final dtModel = await dt.TorrentModel.parse(torrent.filePath!);
     final saveDir = destinationPath?.trim().isNotEmpty == true
         ? destinationPath!
         : await _defaultDownloadDir();
@@ -159,34 +86,19 @@ class TorrentEngineService {
     }
 
     final task = dt.TorrentTask.newTask(dtModel, saveDir);
-
-    // Wire events BEFORE start() so no early events are missed.
     _tasks[torrent.id] = task;
     _wireEvents(torrent.id, task);
 
-    // ── MUST call start() first ─────────────────────────────────────────────
-    // DHT and the tracker subsystem are not initialized until start() runs.
-    // Any startAnnounceUrl / addDHTNode call before start() is silently
-    // discarded into uninitialized subsystems — this is what causes the
-    // "stuck at bootstrapping DHT" symptom.
     await task.start();
-    // ────────────────────────────────────────────────────────────────────────
 
-    // Announce to every tracker in the .torrent file.
     for (final url in dtModel.announces) {
       task.startAnnounceUrl(url, dtModel.infoHashBuffer);
     }
-
-    // findPublicTrackers() streams a live list of working public trackers.
-    // Must be called after start() — tracker client doesn't exist before that.
     findPublicTrackers().listen((urls) {
       for (final url in urls) {
         task.startAnnounceUrl(url, dtModel.infoHashBuffer);
       }
     });
-
-    // Add DHT bootstrap nodes from the torrent file.
-    // Must be after start() — DHT isn't running before that.
     for (final node in dtModel.nodes) {
       task.addDHTNode(node);
     }
@@ -208,18 +120,15 @@ class TorrentEngineService {
     final completer = Completer<dt.TorrentModel>();
 
     downloader.createListener()
-      ..on<dt.MetaDataDownloadComplete>((event) {
+      ..on<dt.MetaDataDownloadComplete>((event) async {
         if (completer.isCompleted) return;
         try {
-          final raw = event.data;
-          final rawData = Uint8List.fromList(raw);
+          final Uint8List rawData = Uint8List.fromList(event.data);
           final msg = decode(rawData);
           if (msg is! Map<String, dynamic>) {
             throw FormatException('Invalid magnet metadata format');
           }
-          final normalized = _normalizeBencodeData(msg) as Map<String, dynamic>;
-
-          final model = dt.TorrentParser.parseFromMap({'info': normalized});
+          final model = await _parseTorrentModelFromRawBencode(<String, dynamic>{'info': msg});
           completer.complete(model);
         } catch (e) {
           completer.completeError(e);
@@ -297,6 +206,22 @@ class TorrentEngineService {
     await TorrentService.instance.updateTorrentStatus(torrent.id, 'downloading');
     _startPollTimer(torrent.id, task);
     _startScrapeTimer(torrent.id, task);
+  }
+
+  Future<dt.TorrentModel> _parseTorrentModelFromRawBencode(Map<String, dynamic> rawData) async {
+    final tempFile = File('${Directory.systemTemp.path}${Platform.pathSeparator}vts_${DateTime.now().millisecondsSinceEpoch}.torrent');
+    await tempFile.writeAsBytes(encode(rawData));
+    try {
+      return await dt.TorrentModel.parse(tempFile.path);
+    } finally {
+      try {
+        if (await tempFile.exists()) {
+          await tempFile.delete();
+        }
+      } catch (_) {
+        // ignore cleanup errors
+      }
+    }
   }
 
   void _wireEvents(String torrentId, dt.TorrentTask task) {

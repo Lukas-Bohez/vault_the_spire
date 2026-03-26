@@ -157,7 +157,6 @@ class _BrowserScreenState extends State<BrowserScreen>
         if (_isTorrentOrMagnetUrl(url)) {
           await controller.stop();
           await _handleTorrentOrMagnetUrl(url);
-          setState(() => _showHomeScreen = true);
           return;
         }
         setState(() {
@@ -191,7 +190,6 @@ class _BrowserScreenState extends State<BrowserScreen>
         if (message is String && _isTorrentOrMagnetUrl(message)) {
           await _handleTorrentOrMagnetUrl(message);
           await controller.stop();
-          setState(() => _showHomeScreen = true);
         }
       });
 
@@ -471,7 +469,7 @@ class _BrowserScreenState extends State<BrowserScreen>
           ),
           IconButton(
             icon: const Icon(Icons.home_outlined, size: 20),
-            onPressed: () => _navigateTo(_homeUrl),
+            onPressed: () => setState(() => _showHomeScreen = true),
             tooltip: 'Home',
           ),
           Expanded(
