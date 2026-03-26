@@ -70,6 +70,7 @@ Future<void> main() async {
 
       if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
         await setupDesktopWindow();
+        await StartupService.ensureDesktopShortcut();
 
         if (SettingsService.instance.launchOnStartup) {
           await StartupService.enable();

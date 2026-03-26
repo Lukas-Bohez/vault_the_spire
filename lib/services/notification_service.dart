@@ -19,10 +19,12 @@ class NotificationService {
     const iosSettings = DarwinInitializationSettings();
     const linuxSettings = LinuxInitializationSettings(defaultActionName: 'Open');
 
-    const initSettings = InitializationSettings(
+    final initSettings = InitializationSettings(
       android: androidSettings,
       iOS: iosSettings,
       linux: linuxSettings,
+      // flutter_local_notifications ^18 (as in this project) may not expose
+      // windows initialization on this API level; omit to keep compatibility.
     );
 
     await _plugin.initialize(

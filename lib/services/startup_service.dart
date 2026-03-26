@@ -30,6 +30,67 @@ class StartupService {
     return false;
   }
 
+  /// Creates a desktop shortcut/icon if one does not already exist.
+  /// Called once on first run so the user can find the app again.
+  /// Safe to call on every startup — checks for existence before creating.
+  static Future<void> ensureDesktopShortcut() async {
+    if (Platform.isWindows) {
+      await _ensureDesktopShortcutWindows();
+    } else if (Platform.isLinux) {
+      await _ensureDesktopShortcutLinux();
+    }
+    // macOS: the app bundle is the icon; no shortcut needed.
+  }
+
+  static Future<void> _ensureDesktopShortcutWindows() async {
+    try {
+      final userProfile = Platform.environment['USERPROFILE'];
+      if (userProfile == null) return;
+      final desktopPath = p.join(userProfile, 'Desktop');
+      final linkPath = p.join(desktopPath, 'VaultTheSpire.lnk');
+      // Only create if it does not already exist.
+      if (await File(linkPath).exists()) return;
+      final exePath = Platform.resolvedExecutable;
+      final script = '''
+\$w = New-Object -ComObject WScript.Shell
+\$s = \$w.CreateShortcut("$linkPath")
+\$s.TargetPath = "$exePath"
+\$s.WorkingDirectory = "${p.dirname(exePath)}"
+\$s.Description = "VaultTheSpire — Private Torrent & Messaging"
+\$s.Save()
+''';
+      await Process.run('powershell', ['-NoProfile', '-Command', script]);
+    } catch (_) {
+      // Non-fatal — if shortcut creation fails, the app still runs fine.
+    }
+  }
+
+  static Future<void> _ensureDesktopShortcutLinux() async {
+    try {
+      final home = Platform.environment['HOME'];
+      if (home == null) return;
+      final desktopPath = p.join(home, 'Desktop');
+      final shortcutPath = p.join(desktopPath, 'vault_the_spire.desktop');
+      if (await File(shortcutPath).exists()) return;
+      // Only create if the Desktop directory actually exists.
+      if (!await Directory(desktopPath).exists()) return;
+      final exePath = Platform.resolvedExecutable;
+      final content = '''[Desktop Entry]
+Type=Application
+Name=VaultTheSpire
+Comment=Private Torrent and Messaging
+Exec=$exePath
+Terminal=false
+Categories=Network;
+''';
+      await File(shortcutPath).writeAsString(content);
+      // Mark as executable so the desktop environment treats it as a launcher.
+      await Process.run('chmod', ['+x', shortcutPath]);
+    } catch (_) {
+      // Non-fatal.
+    }
+  }
+
   static Future<bool> _enableWindows() async {
     try {
       final appData = Platform.environment['APPDATA'];

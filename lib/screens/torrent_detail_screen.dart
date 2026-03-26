@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:vault_the_spire/models/torrent.dart';
 import 'package:vault_the_spire/services/torrent_engine_service.dart';
-import 'package:vault_the_spire/widgets/connection_status_tile.dart';
 
 class TorrentDetailScreen extends StatefulWidget {
   final TorrentModel torrent;
@@ -109,44 +108,47 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    ConnectionStatusTile(
-                      dhtNodes: status.dhtNodes,
-                      peers: status.peers,
-                      downloadSpeed: status.downloadSpeed / 1024,
-                      statusMessage: statusMessage,
-                      connectionMessage: status.connectionMessage,
-                      hasError: hasError,
-                      onRefresh: () async {
-                        final messenger = ScaffoldMessenger.of(context);
-                        await TorrentEngineService.instance.forceRefresh(
-                          widget.torrent.id,
-                        );
-                        if (!mounted) return;
-                        messenger.showSnackBar(
-                          const SnackBar(
-                            content: Text('Connection refresh triggered'),
-                          ),
-                        );
-                      },
-                      onCopyLogs: () async {
-                        final messenger = ScaffoldMessenger.of(context);
-                        final logs = TorrentEngineService.instance.getLogs(
-                          widget.torrent.id,
-                        );
-                        await Clipboard.setData(
-                          ClipboardData(text: logs.join('\n')),
-                        );
-                        if (!mounted) return;
-                        void showCopied() {
-                          messenger.showSnackBar(
-                            const SnackBar(
-                              content: Text('Connection logs copied'),
-                            ),
-                          );
-                        }
-
-                        showCopied();
-                      },
+                    Text('Connection: ${status.connectionMessage}'),
+                    Text('DHT nodes: ${status.dhtNodes}, peers: ${status.peers}'),
+                    Text('Download: ${(status.downloadSpeed / 1024).toStringAsFixed(2)} kB/s'),
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        ElevatedButton(
+                          onPressed: () async {
+                            final messenger = ScaffoldMessenger.of(context);
+                            await TorrentEngineService.instance.forceRefresh(
+                              widget.torrent.id,
+                            );
+                            if (!mounted) return;
+                            messenger.showSnackBar(
+                              const SnackBar(
+                                content: Text('Connection refresh triggered'),
+                              ),
+                            );
+                          },
+                          child: const Text('Refresh'),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton(
+                          onPressed: () async {
+                            final messenger = ScaffoldMessenger.of(context);
+                            final logs = TorrentEngineService.instance.getLogs(
+                              widget.torrent.id,
+                            );
+                            await Clipboard.setData(
+                              ClipboardData(text: logs.join('\n')),
+                            );
+                            if (!mounted) return;
+                            messenger.showSnackBar(
+                              const SnackBar(
+                                content: Text('Connection logs copied'),
+                              ),
+                            );
+                          },
+                          child: const Text('Copy Logs'),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 8),
                     Text('State: ${status.state}'),
