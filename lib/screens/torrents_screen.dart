@@ -1,6 +1,10 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'dart:io';
+
+import 'package:flutter/material.dart';
 import 'package:vault_the_spire/models/torrent.dart';
 import 'package:vault_the_spire/platform/drag_drop.dart';
+import 'package:vault_the_spire/services/settings_service.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:vault_the_spire/services/torrent_engine_service.dart';
 import 'package:vault_the_spire/services/torrent_service.dart';
 
@@ -64,6 +68,45 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
       );
     }
     await _refresh();
+  }
+
+  Future<void> _openTorrentFolder(TorrentModel torrent) async {
+    final String pathToOpen;
+    if (torrent.filePath != null && torrent.filePath!.isNotEmpty) {
+      pathToOpen = torrent.filePath!;
+    } else {
+      pathToOpen = SettingsService.instance.downloadDestination;
+    }
+
+    if (pathToOpen.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No path available to open.')),
+      );
+      return;
+    }
+
+    String directoryPath;
+
+    if (Directory(pathToOpen).existsSync()) {
+      directoryPath = pathToOpen;
+    } else if (File(pathToOpen).existsSync()) {
+      directoryPath = File(pathToOpen).parent.path;
+    } else {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Specified path does not exist.')),
+      );
+      return;
+    }
+
+    final uri = Uri.file(directoryPath);
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to open folder.')),
+      );
+    }
   }
 
   Future<void> _handleDropPath(String path) async {
@@ -141,6 +184,9 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
                   final isActive = (torrent.status ?? '').toLowerCase().contains('download') ||
                       (torrent.status ?? '').toLowerCase().contains('seed');
 
+                  final isComplete = progress >= 1.0 ||
+                      (torrent.status ?? '').toLowerCase() == 'complete';
+
                   return Card(
                     margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     child: ListTile(
@@ -158,11 +204,18 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
                       trailing: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          IconButton(
-                            icon: Icon(isActive ? Icons.pause : Icons.play_arrow),
-                            tooltip: isActive ? 'Pause' : 'Play',
-                            onPressed: () => _toggleTorrent(torrent),
-                          ),
+                          if (isComplete)
+                            IconButton(
+                              icon: const Icon(Icons.folder_open),
+                              tooltip: 'Open folder',
+                              onPressed: () => _openTorrentFolder(torrent),
+                            )
+                          else
+                            IconButton(
+                              icon: Icon(isActive ? Icons.pause : Icons.play_arrow),
+                              tooltip: isActive ? 'Pause' : 'Play',
+                              onPressed: () => _toggleTorrent(torrent),
+                            ),
                           IconButton(
                             icon: const Icon(Icons.delete),
                             tooltip: 'Delete',

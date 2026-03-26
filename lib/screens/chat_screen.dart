@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:vault_the_spire/models/chat_message.dart';
 import 'package:vault_the_spire/models/server.dart';
 import 'package:vault_the_spire/services/chat_service.dart';
+import 'package:vault_the_spire/services/settings_service.dart';
 import 'package:vault_the_spire/services/sound_service.dart';
 
 class _ChatSendMessageIntent extends Intent {
@@ -78,10 +79,14 @@ class _ChatScreenState extends State<ChatScreen> {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
 
+    final sender = SettingsService.instance.displayName.isNotEmpty
+        ? SettingsService.instance.displayName
+        : 'Anonymous';
+
     await ChatService.instance.sendMessage(
       widget.server.id,
       widget.channelId,
-      'you',
+      sender,
       text,
     );
 

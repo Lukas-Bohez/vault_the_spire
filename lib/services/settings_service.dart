@@ -7,6 +7,7 @@ class SettingsService {
   static const _kSoundEffectsEnabled = 'sound_effects_enabled';
   static const _kUsePersistentSidebar = 'use_persistent_sidebar';
   static const _kDownloadDestination = 'download_destination';
+  static const _kDisplayName = 'display_name';
   static const _kTorrentSortMode = 'torrent_sort_mode';
   static const _kBrowserHomeUrl = 'browser_home_url';
   static const _kBrowserFavorites = 'browser_favorites';
@@ -29,11 +30,13 @@ class SettingsService {
     'https://news.ycombinator.com/',
     'https://www.wikipedia.org/',
   ];
+  String displayName = 'Anonymous';
   String browserLastUrl = '';
   List<String> browserHistory = <String>[];
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
+    displayName = prefs.getString(_kDisplayName) ?? 'Anonymous';
     useSystemTray = prefs.getBool(_kUseSystemTray) ?? true;
     minimizeToTrayOnClose = prefs.getBool(_kMinimizeToTrayOnClose) ?? true;
     launchOnStartup = prefs.getBool(_kLaunchOnStartup) ?? false;
@@ -82,6 +85,12 @@ class SettingsService {
     downloadDestination = destination;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_kDownloadDestination, destination);
+  }
+
+  Future<void> setDisplayName(String name) async {
+    displayName = name;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kDisplayName, name);
   }
 
   Future<void> setTorrentSortMode(int value) async {

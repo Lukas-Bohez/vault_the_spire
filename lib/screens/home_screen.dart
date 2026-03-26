@@ -25,6 +25,7 @@ import 'package:vault_the_spire/services/torrent_engine_service.dart';
 import 'package:vault_the_spire/services/torrent_service.dart';
 import 'package:vault_the_spire/screens/about_screen.dart';
 import 'package:vault_the_spire/screens/browser_screen.dart';
+import 'package:vault_the_spire/screens/settings_screen.dart';
 import 'package:vault_the_spire/screens/torrent_detail_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -2478,6 +2479,17 @@ class _HomeScreenState extends State<HomeScreen> {
             onPressed: () => _scaffoldKey.currentState?.openDrawer(),
             tooltip: 'Open sidebar',
           ),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.settings),
+              tooltip: 'Settings',
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const SettingsScreen(),
+                ),
+              ),
+            ),
+          ],
         ),
         drawer: Drawer(child: _buildServerPanel(theme, inDrawer: true)),
         body: _buildMainArea(theme),
