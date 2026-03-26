@@ -328,7 +328,8 @@ class TorrentEngineService {
   Future<void> forceRefresh(String torrentId) async {
     final task = _tasks[torrentId];
     if (task == null) {
-      throw StateError('Torrent not found: $torrentId');
+      debugPrint('forceRefresh: torrent not active in memory: $torrentId');
+      return;
     }
     await _refreshConnection(torrentId, task);
   }
