@@ -1,12 +1,13 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:vault_the_spire/bittorrent/dht.dart';
 import 'package:vault_the_spire/bittorrent/piece_manager.dart';
 import 'package:vault_the_spire/bittorrent/torrent_file.dart';
 import 'package:vault_the_spire/bittorrent/magnet_link.dart';
+import 'package:vault_the_spire/services/torrent_engine_service.dart';
 import 'package:vault_the_spire/vault_swarm/vault_piece.dart';
 
 class TorrentStatus {
@@ -40,7 +41,8 @@ abstract class TorrentSession {
     final currentPieces = await pieceManager.getPieceMap();
 
     final downloaded =
-        currentPieces.where((have) => have).length * (metadata?.pieceLength ?? 0);
+        currentPieces.where((have) => have).length *
+        (metadata?.pieceLength ?? 0);
     _statusCtrl.add(
       TorrentStatus(
         downloaded: downloaded,
@@ -53,13 +55,13 @@ abstract class TorrentSession {
       ),
     );
 
-    if ((metadata?.trackers.isNotEmpty ?? false) && dhtEngine != null) {
+    if ((metadata?.trackers.isNotEmpty ?? false)) {
       for (final tracker in metadata!.trackers) {
-        await _announceTracker(tracker);
+        await _announceTrackerWithRetry(tracker);
       }
     }
 
-    if ((metadata?.infoHashV1.isNotEmpty ?? false) && dhtEngine != null) {
+    if ((metadata?.infoHashV1.isNotEmpty ?? false)) {
       final peers = await _bootstrapDht(metadata!.infoHashV1);
       _statusCtrl.add(
         TorrentStatus(
@@ -87,13 +89,70 @@ abstract class TorrentSession {
     );
   }
 
+  Future<List<DhtNodeInfo>> _bootstrapDht(String infoHash) async {
+    if (dhtEngine == null) {
+      debugPrint('DHT engine not initialized; skipping bootstrap lookup');
+      return [];
+    }
+    final nodes = dhtEngine!.routingTable.findClosest(infoHash, 8);
+    if (nodes.isEmpty) {
+      debugPrint('No DHT nodes found for infoHash=$infoHash');
+    }
+    return nodes;
+  }
+
+  Future<void> _announceTrackerWithRetry(
+    String tracker, {
+    int retries = 3,
+    Duration delay = const Duration(seconds: 2),
+  }) async {
+    for (var attempt = 1; attempt <= retries; attempt++) {
+      try {
+        await _announceTracker(tracker);
+        return;
+      } catch (e, st) {
+        final err = e is SocketException
+            ? 'SocketException(code=${e.osError?.errorCode}, message=${e.message})'
+            : '$e';
+        debugPrint(
+          'Tracker announce attempt $attempt failed for $tracker: $err',
+        );
+        debugPrint(st.toString());
+        if (attempt < retries) {
+          await Future.delayed(delay);
+        }
+      }
+    }
+    throw StateError('All tracker announce attempts failed for $tracker');
+  }
+
   Future<void> _announceTracker(String tracker) async {
-    if (metadata == null || metadata!.infoHashV1.isEmpty) return;
-    try {
-      final bencoded = Uri(
+    if (metadata == null || metadata!.infoHashV1.isEmpty) {
+      throw StateError('Cannot announce tracker without infoHash or metadata');
+    }
+
+    final infoHash = metadata!.infoHashV1;
+    final peerId = '-VS0001-012345678901';
+
+    final uri = Uri.parse(tracker);
+    if (uri.scheme == 'udp') {
+      try {
+        final infoHashBytes = _hexToBytes(infoHash);
+        await TorrentEngineService.instance.announceTrackerUri(
+          uri,
+          infoHashBytes,
+        );
+        return;
+      } catch (e, st) {
+        debugPrint('UDP announce dispatcher failed for $tracker: $e');
+        debugPrint(st.toString());
+        rethrow;
+      }
+    } else if (uri.scheme == 'http' || uri.scheme == 'https') {
+      final query = Uri(
         queryParameters: {
-          'info_hash': Uri.encodeComponent(metadata!.infoHashV1),
-          'peer_id': '-VS0001-012345678901',
+          'info_hash': Uri.encodeComponent(infoHash),
+          'peer_id': peerId,
           'port': '6881',
           'uploaded': '0',
           'downloaded': '0',
@@ -102,14 +161,35 @@ abstract class TorrentSession {
           'event': 'started',
         },
       ).query;
-      final url = '$tracker?$bencoded';
-      await http.get(Uri.parse(url)).timeout(const Duration(seconds: 5));
-    } catch (_) {}
+
+      final url = '$tracker?$query';
+      try {
+        final response = await http
+            .get(Uri.parse(url))
+            .timeout(const Duration(seconds: 10));
+        debugPrint(
+          'HTTP tracker announce response for $tracker: ${response.statusCode}',
+        );
+      } catch (e, st) {
+        debugPrint('HTTP tracker announce failed for $tracker: $e');
+        debugPrint(st.toString());
+        rethrow;
+      }
+    } else {
+      throw FormatException('Unsupported tracker scheme: $tracker');
+    }
   }
 
-  Future<List<DhtNodeInfo>> _bootstrapDht(String infoHash) async {
-    if (dhtEngine == null) return [];
-    return dhtEngine!.routingTable.findClosest(infoHash, 8);
+  static Uint8List _hexToBytes(String hex) {
+    final sanitized = hex.replaceAll(RegExp(r'[^0-9a-fA-F]'), '');
+    if (sanitized.length % 2 != 0) {
+      throw FormatException('Invalid hex string length: ${sanitized.length}');
+    }
+    final bytes = Uint8List(sanitized.length ~/ 2);
+    for (var i = 0; i < bytes.length; i++) {
+      bytes[i] = int.parse(sanitized.substring(i * 2, i * 2 + 2), radix: 16);
+    }
+    return bytes;
   }
 
   void dispose() {
@@ -121,7 +201,11 @@ abstract class TorrentSession {
     Directory appDir,
     DhtEngine dhtEngine,
   ) async {
-    return StandardTorrentSession.openFromTorrentFile(torrentData, appDir, dhtEngine);
+    return StandardTorrentSession.openFromTorrentFile(
+      torrentData,
+      appDir,
+      dhtEngine,
+    );
   }
 }
 
@@ -178,7 +262,9 @@ class StandardTorrentSession extends TorrentSession {
       webSeeds: [],
     );
     final manager = PieceManager(
-      infoHash: metadata.infoHashV1.isNotEmpty ? metadata.infoHashV1 : metadata.infoHashV2!,
+      infoHash: metadata.infoHashV1.isNotEmpty
+          ? metadata.infoHashV1
+          : metadata.infoHashV2!,
       pieceLength: 16384,
       totalPieces: 0,
       appDirectory: appDir,
@@ -207,4 +293,3 @@ class VaultTorrentSession extends TorrentSession {
     await pieceManager.writePiece(index, decryptedPiece);
   }
 }
-

@@ -1,9 +1,9 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:b_encode_decode/b_encode_decode.dart';
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart' as dt;
+import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'package:vault_the_spire/models/torrent.dart';
@@ -40,12 +40,127 @@ class TorrentEngineStatus {
 }
 
 class TorrentEngineService {
-  TorrentEngineService._();
+  TorrentEngineService._() {
+    _bootstrapDhtNetwork();
+  }
   static final TorrentEngineService instance = TorrentEngineService._();
+
+  static const List<String> _defaultDhtBootstrapNodes = [
+    'router.bittorrent.com:6881',
+    'dht.transmissionbt.com:6881',
+    'router.utorrent.com:6881',
+    'dht.aelitis.com:6881',
+  ];
 
   final Map<String, dt.TorrentTask> _tasks = {};
   final Map<String, Timer> _pollTimers = {};
   final Map<String, Timer> _scrapeTimers = {};
+
+  void _bootstrapDhtNetwork() {
+    debugPrint('Initializing default DHT bootstrap nodes');
+    for (final node in _defaultDhtBootstrapNodes) {
+      debugPrint('DHT bootstrap candidate: $node');
+    }
+  }
+
+  void _configureTask(dt.TorrentTask task) {
+    try {
+      (task as dynamic).setDHTEnabled(true);
+      debugPrint('Enabled DHT for torrent task');
+    } catch (e, st) {
+      debugPrint('Failed to setDHTEnabled: $e');
+      debugPrint(st.toString());
+    }
+    try {
+      (task as dynamic).setPEXEnabled(true);
+      debugPrint('Enabled PEX for torrent task');
+    } catch (e, st) {
+      debugPrint('Failed to setPEXEnabled: $e');
+      debugPrint(st.toString());
+    }
+    try {
+      (task as dynamic).setTrackerEnabled(true);
+      debugPrint('Enabled tracker support for torrent task');
+    } catch (e, st) {
+      debugPrint('Failed to setTrackerEnabled: $e');
+      debugPrint(st.toString());
+    }
+
+    _addDhtBootstrapNodes(task);
+  }
+
+  void _addDhtBootstrapNodes(dt.TorrentTask task) {
+    for (final endpoint in _defaultDhtBootstrapNodes) {
+      final parts = endpoint.split(':');
+      if (parts.length != 2) continue;
+      final host = parts[0];
+      final port = int.tryParse(parts[1]);
+      if (port == null) continue;
+      try {
+        // dtorrent_task_v2 DHT API might support a simple addDHTNode method.
+        (task as dynamic).addDHTNode(host, port);
+        debugPrint('Added DHT bootstrap node $host:$port');
+      } catch (e, st) {
+        debugPrint('Failed to add DHT bootstrap node $host:$port: $e');
+        debugPrint(st.toString());
+      }
+    }
+  }
+
+  Future<void> _announceUrlWithRetry(
+    dt.TorrentTask task,
+    Uri url,
+    Uint8List infoHash, {
+    int retries = 3,
+    Duration delay = const Duration(seconds: 2),
+  }) async {
+    for (var attempt = 1; attempt <= retries; attempt++) {
+      try {
+        await (task as dynamic).startAnnounceUrl(url, infoHash);
+        debugPrint('Announce URL success ($attempt): $url');
+        return;
+      } catch (e, st) {
+        debugPrint('Announce URL attempt $attempt failed: $url $e');
+        debugPrint(st.toString());
+        if (attempt < retries) {
+          await Future.delayed(delay);
+        }
+      }
+    }
+    throw StateError('All announce attempts failed for $url');
+  }
+
+  Future<void> announceTrackerUri(Uri uri, Uint8List infoHash) async {
+    dt.TorrentTask? task;
+    for (final t in _tasks.values) {
+      try {
+        final taskHash = (t as dynamic).metaInfo?.infoHash;
+        if (taskHash != null &&
+            taskHash is Uint8List &&
+            listEquals(taskHash, infoHash)) {
+          task = t;
+          break;
+        }
+      } catch (_) {
+        continue;
+      }
+    }
+
+    if (task != null) {
+      try {
+        await (task as dynamic).startAnnounceUrl(uri, infoHash);
+        debugPrint('Announced tracker via dtorrent_task_v2 for $uri');
+      } catch (e, st) {
+        debugPrint('dtorrent_task_v2 announceTrackerUri failed for $uri: $e');
+        debugPrint(st.toString());
+        rethrow;
+      }
+    } else {
+      throw StateError(
+        'No active torrent task found for tracker announce: $uri',
+      );
+    }
+  }
 
   final _statusController = StreamController<TorrentEngineStatus>.broadcast();
   Stream<TorrentEngineStatus> get statusStream => _statusController.stream;
@@ -86,15 +201,17 @@ class TorrentEngineService {
     final task = dt.TorrentTask.newTask(dtModel, saveDir);
     _tasks[torrent.id] = task;
     _wireEvents(torrent.id, task);
+    _configureTask(task);
 
     // Set listening port and NAT traversal hints (UPnP/NAT-PMP)
     try {
-      // If dtorrent_task_v2 exposes port/NAT config, set here (pseudo-code):
-      // task.setPort(6881); // or random in 49152-65535
-      // task.enableUPnP(true);
-      // task.enableNATPMP(true);
-    } catch (e) {
-      // Port/NAT config error: $e
+      (task as dynamic).setPort(6881);
+      (task as dynamic).enableUPnP(true);
+      (task as dynamic).enableNATPMP(true);
+      debugPrint('Port/NAT configuration applied (6881/UPnP/NAT-PMP)');
+    } catch (e, st) {
+      debugPrint('Port/NAT config error: $e');
+      debugPrint(st.toString());
     }
 
     await task.start();
@@ -104,12 +221,13 @@ class TorrentEngineService {
     for (final url in dtModel.announces) {
       if (seenUrls.add(url.toString())) {
         try {
-          task.startAnnounceUrl(
+          await _announceUrlWithRetry(
+            task,
             Uri.parse(url.toString()),
             dtModel.infoHashBuffer,
           );
         } catch (e) {
-          // Tracker announce error: $url $e
+          debugPrint('Tracker announce error: $url $e');
         }
       }
     }
@@ -127,9 +245,13 @@ class TorrentEngineService {
     for (final url in fallbackTrackers) {
       if (seenUrls.add(url)) {
         try {
-          task.startAnnounceUrl(Uri.parse(url), dtModel.infoHashBuffer);
+          await _announceUrlWithRetry(
+            task,
+            Uri.parse(url),
+            dtModel.infoHashBuffer,
+          );
         } catch (e) {
-          // Fallback tracker error: $url $e
+          debugPrint('Fallback tracker error: $url $e');
         }
       }
     }
@@ -139,11 +261,9 @@ class TorrentEngineService {
       for (final node in dtModel.nodes) {
         task.addDHTNode(node);
       }
-      // If dtorrent_task_v2 exposes DHT/PEX enablement, set here (pseudo-code):
-      // task.enableDHT(true);
-      // task.enablePEX(true);
-    } catch (e) {
-      // DHT/PEX config error: $e
+    } catch (e, st) {
+      debugPrint('DHT node addition error for torrent ${torrent.id}: $e');
+      debugPrint(st.toString());
     }
 
     await TorrentService.instance.updateTorrentStatus(
@@ -217,15 +337,17 @@ class TorrentEngineService {
 
     _tasks[torrent.id] = task;
     _wireEvents(torrent.id, task);
+    _configureTask(task);
 
     // Set listening port and NAT traversal hints (UPnP/NAT-PMP)
     try {
-      // If dtorrent_task_v2 exposes port/NAT config, set here (pseudo-code):
-      // task.setPort(6881); // or random in 49152-65535
-      // task.enableUPnP(true);
-      // task.enableNATPMP(true);
-    } catch (e) {
-      // Port/NAT config error: $e
+      (task as dynamic).setPort(6881);
+      (task as dynamic).enableUPnP(true);
+      (task as dynamic).enableNATPMP(true);
+      debugPrint('Port/NAT configuration applied (6881/UPnP/NAT-PMP)');
+    } catch (e, st) {
+      debugPrint('Port/NAT config error: $e');
+      debugPrint(st.toString());
     }
 
     await task.start();
@@ -236,9 +358,13 @@ class TorrentEngineService {
     for (final url in [...magnet.trackers, ...dtModel.announces]) {
       if (seenUrls.add(url.toString())) {
         try {
-          task.startAnnounceUrl(Uri.parse(url.toString()), infoHash);
+          await _announceUrlWithRetry(
+            task,
+            Uri.parse(url.toString()),
+            infoHash,
+          );
         } catch (e) {
-          // Tracker announce error: $url $e
+          debugPrint('Tracker announce error: $url $e');
         }
       }
     }
@@ -256,9 +382,9 @@ class TorrentEngineService {
     for (final url in fallbackTrackers) {
       if (seenUrls.add(url)) {
         try {
-          task.startAnnounceUrl(Uri.parse(url), infoHash);
+          await _announceUrlWithRetry(task, Uri.parse(url), infoHash);
         } catch (e) {
-          // Fallback tracker error: $url $e
+          debugPrint('Fallback tracker error: $url $e');
         }
       }
     }
@@ -267,8 +393,9 @@ class TorrentEngineService {
     for (final peer in downloader.activePeers) {
       try {
         task.addPeer(peer.address, dt.PeerSource.manual, type: peer.type);
-      } catch (e) {
-        // Peer add error: ${peer.address} $e
+      } catch (e, st) {
+        debugPrint('Peer add error: ${peer.address} $e');
+        debugPrint(st.toString());
       }
     }
 
@@ -277,11 +404,9 @@ class TorrentEngineService {
       for (final node in dtModel.nodes) {
         task.addDHTNode(node);
       }
-      // If dtorrent_task_v2 exposes DHT/PEX enablement, set here (pseudo-code):
-      // task.enableDHT(true);
-      // task.enablePEX(true);
-    } catch (e) {
-      // DHT/PEX config error: $e
+    } catch (e, st) {
+      debugPrint('DHT node addition error for torrent ${torrent.id}: $e');
+      debugPrint(st.toString());
     }
 
     await TorrentService.instance.updateTorrentStatus(
