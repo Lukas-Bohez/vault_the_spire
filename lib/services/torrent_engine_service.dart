@@ -125,10 +125,9 @@ class TorrentEngineService {
         try {
           final Uint8List rawData = Uint8List.fromList(event.data);
           final msg = decode(rawData);
-          if (msg is! Map<String, dynamic>) {
-            throw FormatException('Invalid magnet metadata format');
-          }
-          final model = await _parseTorrentModelFromRawBencode(<String, dynamic>{'info': msg});
+          // msg is Map<dynamic, dynamic> with Uint8List keys — do NOT type-check it.
+          // _parseTorrentModelFromRawBencode re-encodes it to bytes and parses correctly.
+          final model = await _parseTorrentModelFromRawBencode(msg);
           completer.complete(model);
         } catch (e) {
           completer.completeError(e);
@@ -208,19 +207,24 @@ class TorrentEngineService {
     _startScrapeTimer(torrent.id, task);
   }
 
-  Future<dt.TorrentModel> _parseTorrentModelFromRawBencode(Map<String, dynamic> rawData) async {
-    final tempFile = File('${Directory.systemTemp.path}${Platform.pathSeparator}vts_${DateTime.now().millisecondsSinceEpoch}.torrent');
-    await tempFile.writeAsBytes(encode(rawData));
+  Future<dt.TorrentModel> _parseTorrentModelFromRawBencode(dynamic infoDict) async {
+    // infoDict is the raw decoded bencode info-dict (Map<dynamic, dynamic> with
+    // Uint8List keys). Wrap it in a minimal torrent map, re-encode to bytes,
+    // write to temp file, and let TorrentModel.parse handle everything correctly.
+    final torrentMap = <dynamic, dynamic>{
+      Uint8List.fromList('info'.codeUnits): infoDict,
+    };
+    final bytes = encode(torrentMap);
+    final tempPath =
+        '${Directory.systemTemp.path}${Platform.pathSeparator}vts_${DateTime.now().millisecondsSinceEpoch}.torrent';
+    final tempFile = File(tempPath);
+    await tempFile.writeAsBytes(bytes);
     try {
       return await dt.TorrentModel.parse(tempFile.path);
     } finally {
       try {
-        if (await tempFile.exists()) {
-          await tempFile.delete();
-        }
-      } catch (_) {
-        // ignore cleanup errors
-      }
+        if (await tempFile.exists()) await tempFile.delete();
+      } catch (_) {}
     }
   }
 
@@ -370,7 +374,7 @@ class TorrentEngineService {
       downloaded: firstTask.downloaded ?? 0,
       uploaded: 0,
       progress: firstTask.progress,
-      state: firstTask.state.toString(),
+      state: 'downloading',
       peers: firstTask.connectedPeersNumber,
       dhtNodes: dhtNodes,
       downloadSpeed: firstTask.currentDownloadSpeed * 1000,
