@@ -153,6 +153,7 @@ class TorrentEngineService {
       candidatePorts.add(49152 + random.nextInt(65535 - 49152));
     }
 
+    bool bound = false;
     for (final candidate in candidatePorts) {
       try {
         (task as dynamic).setPort(candidate);
@@ -163,12 +164,33 @@ class TorrentEngineService {
           (task as dynamic).enableNATPMP(true);
         }
         debugPrint('Attempted port mapping on port $candidate (UPnP/NAT-PMP)');
-        // Once one mapping is configured, use it.
+        bound = true;
         break;
-      } catch (e, st) {
-        debugPrint('Port mapping attempt failed on port $candidate: $e');
-        debugPrint(st.toString());
+      } catch (e) {
+        if (e is SocketException) {
+          debugPrint(
+            'Port binding failed on $candidate: $e. Retrying with port 0.',
+          );
+          try {
+            (task as dynamic).setPort(0);
+            debugPrint('Successfully rebound to random port (0).');
+            bound = true;
+            break;
+          } catch (e2) {
+            debugPrint('Failed to bind to random port: $e2');
+          }
+        } else {
+          debugPrint('Port mapping attempt failed on port $candidate: $e');
+        }
         continue;
+      }
+    }
+    if (!bound) {
+      try {
+        (task as dynamic).setPort(0);
+        debugPrint('Fallback: Successfully bound to random port (0).');
+      } catch (e) {
+        debugPrint('Fallback: Failed to bind to random port: $e');
       }
     }
   }

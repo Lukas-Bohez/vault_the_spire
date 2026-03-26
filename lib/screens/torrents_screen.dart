@@ -227,20 +227,29 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
           if (!mounted) return;
 
           if (existing != null) {
-            ScaffoldMessenger.of(context).showSnackBar(
+            final messenger = ScaffoldMessenger.of(context);
+            messenger.showSnackBar(
               const SnackBar(content: Text('Torrent exists. Opening details.')),
             );
+            final navigator = Navigator.of(context);
             await TorrentEngineService.instance.forceRefresh(existing.id);
-            try {
-              Navigator.of(
-                context,
-              ).pushNamed('/torrent_detail', arguments: existing);
-            } catch (_) {
-              Navigator.of(context).push(
+
+            void pushNamed() {
+              navigator.pushNamed('/torrent_detail', arguments: existing);
+            }
+
+            void pushMaterial() {
+              navigator.push(
                 MaterialPageRoute(
                   builder: (context) => TorrentDetailScreen(torrent: existing),
                 ),
               );
+            }
+
+            try {
+              pushNamed();
+            } catch (_) {
+              pushMaterial();
             }
             return;
           }
@@ -283,17 +292,24 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
         e.torrentId,
       );
       if (existing != null && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        final messenger = ScaffoldMessenger.of(context);
+        messenger.showSnackBar(
           const SnackBar(
             content: Text('Torrent already exists. Opening details.'),
           ),
         );
+        final navigator = Navigator.of(context);
         await TorrentEngineService.instance.forceRefresh(existing.id);
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (context) => TorrentDetailScreen(torrent: existing),
-          ),
-        );
+
+        void pushMaterial() {
+          navigator.push(
+            MaterialPageRoute(
+              builder: (context) => TorrentDetailScreen(torrent: existing),
+            ),
+          );
+        }
+
+        pushMaterial();
         return;
       }
       if (mounted) {

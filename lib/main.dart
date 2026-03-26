@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'dart:async';
 import 'dart:io';
 
@@ -41,6 +43,11 @@ Future<void> _requestAndroidPermissions() async {
 }
 
 Future<void> main() async {
+  PlatformDispatcher.instance.onError = (error, stack) {
+    debugPrint('UNCAUGHT PLATFORM ERROR: $error');
+    debugPrint(stack.toString());
+    return true; // handled
+  };
   await runZonedGuarded(
     () async {
       WidgetsFlutterBinding.ensureInitialized();
@@ -97,6 +104,10 @@ Future<void> main() async {
   );
 }
 
+// NOTE: Flutter on Windows may produce ui::AXTree warnings in debug mode
+// (AccessibilityBridge internal logging). These are harmless engine diagnostics
+// and are suppressed/optimized out in --release mode. No functional action is
+// needed in production; this is a known desktop engine issue.
 class MainApp extends StatefulWidget {
   const MainApp({super.key});
 

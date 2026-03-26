@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/widgets.dart';
 
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/foundation.dart';
@@ -9,36 +10,58 @@ class SoundService {
   SoundService._();
   static final SoundService instance = SoundService._();
 
-  final AudioPlayer _player = AudioPlayer();
+  static final AudioPlayer _player = AudioPlayer();
+  static bool _initialized = false;
 
   Future<void> _play(String asset) async {
     if (!SettingsService.instance.soundEffectsEnabled) return;
     if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
       HapticFeedback.lightImpact();
     }
-    try {
-      // For desktop (Windows/Linux/macOS), prefer explicit source+resume to avoid
-      // intermittent codec/URL issues seen in older audioplayers versions.
-      await _player.setSource(AssetSource(asset));
-      await _player.setVolume(0.85);
-      await _player.resume();
-    } catch (e) {
-      // non-fatal, just keep UX moving
-      debugPrint('Sound play error: $e');
+    // On Windows, ensure the first sound is played after a short delay and on the main thread.
+    if (Platform.isWindows && !_initialized) {
+      _initialized = true;
+      await Future.delayed(const Duration(milliseconds: 500));
     }
+    void playOnMainThread() async {
+      try {
+        WidgetsBinding.instance.addPostFrameCallback((_) async {
+          try {
+            await _player.setSource(AssetSource(asset));
+            await _player.setVolume(0.85);
+            await _player.resume();
+          } catch (e) {
+            debugPrint('Sound play error: $e');
+          }
+        });
+      } catch (e) {
+        debugPrint('Sound play error: $e');
+      }
+    }
+
+    playOnMainThread();
   }
 
-  Future<void> playClick() async => _play('sounds/click.wav');
-  Future<void> playSend() async => _play('sounds/send.wav');
-  Future<void> playNotification() async => _play('sounds/notification.wav');
-  Future<void> playMention() async => _play('sounds/mention.wav');
+  Future<void> playClick() async => _play('sounds/click.mp3');
+  Future<void> playSend() async => _play('sounds/send.mp3');
+  Future<void> playNotification() async => _play('sounds/notification.mp3');
+  // Future<void> playMention() async => _play('sounds/mention.mp3'); // mention.mp3 asset missing
 
   Future<void> startVoiceSession() async {
     // ramp up a sustained tone simulation (notification sound loop) for voice chat.
     if (!SettingsService.instance.soundEffectsEnabled) return;
     try {
       await _player.setReleaseMode(ReleaseMode.loop);
-      await _player.play(AssetSource('sounds/notification.wav'), volume: 0.35);
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        try {
+          await _player.play(
+            AssetSource('sounds/notification.mp3'),
+            volume: 0.35,
+          );
+        } catch (e) {
+          debugPrint('Voice session start failed: $e');
+        }
+      });
     } catch (e) {
       debugPrint('Voice session start failed: $e');
     }

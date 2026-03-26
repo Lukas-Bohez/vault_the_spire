@@ -395,11 +395,12 @@ class _BrowserScreenState extends State<BrowserScreen>
     if (Platform.isWindows || _webViewController == null) return;
     final back = await _webViewController!.canGoBack();
     final fwd = await _webViewController!.canGoForward();
-    if (mounted)
+    if (mounted) {
       setState(() {
         _canGoBack = back;
         _canGoForward = fwd;
       });
+    }
   }
 
   Future<void> _openExternally() async {

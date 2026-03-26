@@ -117,17 +117,19 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
                       connectionMessage: status.connectionMessage,
                       hasError: hasError,
                       onRefresh: () async {
+                        final messenger = ScaffoldMessenger.of(context);
                         await TorrentEngineService.instance.forceRefresh(
                           widget.torrent.id,
                         );
                         if (!mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
+                        messenger.showSnackBar(
                           const SnackBar(
                             content: Text('Connection refresh triggered'),
                           ),
                         );
                       },
                       onCopyLogs: () async {
+                        final messenger = ScaffoldMessenger.of(context);
                         final logs = TorrentEngineService.instance.getLogs(
                           widget.torrent.id,
                         );
@@ -135,11 +137,15 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
                           ClipboardData(text: logs.join('\n')),
                         );
                         if (!mounted) return;
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Connection logs copied'),
-                          ),
-                        );
+                        void showCopied() {
+                          messenger.showSnackBar(
+                            const SnackBar(
+                              content: Text('Connection logs copied'),
+                            ),
+                          );
+                        }
+
+                        showCopied();
                       },
                     ),
                     const SizedBox(height: 8),

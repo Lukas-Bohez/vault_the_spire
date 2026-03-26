@@ -52,7 +52,6 @@ flutter:
   assets:
     - assets/icons/app_icon.ico
     - assets/icons/favicon-192x192.png
-    - assets/sounds/click.wav
-    - assets/sounds/send.wav
-    - assets/sounds/notification.wav
-    - assets/sounds/mention.wav
+    - assets/sounds/click.mp3
+    - assets/sounds/send.mp3
+    - assets/sounds/notification.mp3

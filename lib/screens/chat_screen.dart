@@ -54,7 +54,7 @@ class _ChatScreenState extends State<ChatScreen> {
       text,
     );
     if (ChatService.instance.messageMentions('you', text)) {
-      await SoundService.instance.playMention();
+      // await SoundService.instance.playMention(); // mention.mp3 asset missing
     } else {
       await SoundService.instance.playSend();
     }
@@ -76,21 +76,21 @@ class _ChatScreenState extends State<ChatScreen> {
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
                 : _messages.isEmpty
-                    ? const Center(child: Text('No messages yet.'))
-                    : ListView.builder(
-                        padding: const EdgeInsets.all(12),
-                        itemCount: _messages.length,
-                        itemBuilder: (context, index) {
-                          final m = _messages[index];
-                          return ListTile(
-                            title: Text(m.author),
-                            subtitle: Text(m.text),
-                            trailing: Text(
-                              '${m.timestamp.hour}:${m.timestamp.minute.toString().padLeft(2, '0')}',
-                            ),
-                          );
-                        },
-                      ),
+                ? const Center(child: Text('No messages yet.'))
+                : ListView.builder(
+                    padding: const EdgeInsets.all(12),
+                    itemCount: _messages.length,
+                    itemBuilder: (context, index) {
+                      final m = _messages[index];
+                      return ListTile(
+                        title: Text(m.author),
+                        subtitle: Text(m.text),
+                        trailing: Text(
+                          '${m.timestamp.hour}:${m.timestamp.minute.toString().padLeft(2, '0')}',
+                        ),
+                      );
+                    },
+                  ),
           ),
           SafeArea(
             child: Row(
@@ -101,12 +101,10 @@ class _ChatScreenState extends State<ChatScreen> {
                     decoration: const InputDecoration(
                       hintText: 'Type a message',
                     ),
+                    onSubmitted: (_) => _send(),
                   ),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.send),
-                  onPressed: _send,
-                ),
+                IconButton(icon: const Icon(Icons.send), onPressed: _send),
               ],
             ),
           ),

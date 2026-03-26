@@ -85,7 +85,7 @@ class _DMScreenState extends State<DMScreen> {
 
     if (ChatService.instance.messageMentions(widget.user, text) ||
         ChatService.instance.messageMentions(widget.peer, text)) {
-      await SoundService.instance.playMention();
+      // await SoundService.instance.playMention(); // mention.mp3 asset missing
     } else {
       await SoundService.instance.playSend();
     }
@@ -104,172 +104,180 @@ class _DMScreenState extends State<DMScreen> {
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
                 : _messages.isEmpty
-                    ? const Center(
-                        child: Text('No DMs yet. Start the conversation.'),
-                      )
-                    : ListView.builder(
-                        controller: _scrollController,
-                        padding: const EdgeInsets.all(12),
-                        itemCount: _messages.length,
-                        itemBuilder: (context, index) {
-                          final m = _messages[index];
-                    final mentionsCurrent = ChatService.instance
-                        .messageMentions(widget.user, m.text);
-                    return ListTile(
-                      title: Text(
-                        '${m.author} • ${m.timestamp.hour}:${m.timestamp.minute.toString().padLeft(2, '0')}',
-                      ),
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            m.text,
-                            style: TextStyle(
-                              color: mentionsCurrent
-                                  ? Colors.orangeAccent
-                                  : null,
+                ? const Center(
+                    child: Text('No DMs yet. Start the conversation.'),
+                  )
+                : ListView.builder(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.all(12),
+                    itemCount: _messages.length,
+                    itemBuilder: (context, index) {
+                      final m = _messages[index];
+                      final mentionsCurrent = ChatService.instance
+                          .messageMentions(widget.user, m.text);
+                      return ListTile(
+                        title: Text(
+                          '${m.author} • ${m.timestamp.hour}:${m.timestamp.minute.toString().padLeft(2, '0')}',
+                        ),
+                        subtitle: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              m.text,
+                              style: TextStyle(
+                                color: mentionsCurrent
+                                    ? Colors.orangeAccent
+                                    : null,
+                              ),
                             ),
-                          ),
-                          Wrap(
-                            spacing: 4,
-                            children: m.reactions.entries
-                                .map(
-                                  (entry) => Chip(
-                                    label: Text('${entry.key} ${entry.value}'),
-                                  ),
-                                )
-                                .toList(),
-                          ),
-                        ],
-                      ),
-                      onLongPress: () async {
-                        final parentContext = context;
-                        final action = await showModalBottomSheet<String>(
-                          context: parentContext,
-                          builder: (ctx) {
-                            return Wrap(
+                            Wrap(
                               spacing: 4,
-                              children: [
-                                ListTile(
-                                  leading: const Icon(Icons.emoji_emotions),
-                                  title: const Text('React'),
-                                  onTap: () => Navigator.of(ctx).pop('react'),
-                                ),
-                                ListTile(
-                                  leading: const Icon(Icons.edit),
-                                  title: const Text('Edit'),
-                                  onTap: () => Navigator.of(ctx).pop('edit'),
-                                ),
-                                ListTile(
-                                  leading: const Icon(Icons.repeat),
-                                  title: const Text('Reply'),
-                                  onTap: () => Navigator.of(ctx).pop('reply'),
-                                ),
-                                ListTile(
-                                  leading: const Icon(Icons.delete),
-                                  title: const Text('Delete'),
-                                  onTap: () => Navigator.of(ctx).pop('delete'),
-                                ),
-                              ],
-                            );
-                          },
-                        );
-                        if (action == 'react') {
-                          final emoji = await showModalBottomSheet<String>(
+                              children: m.reactions.entries
+                                  .map(
+                                    (entry) => Chip(
+                                      label: Text(
+                                        '${entry.key} ${entry.value}',
+                                      ),
+                                    ),
+                                  )
+                                  .toList(),
+                            ),
+                          ],
+                        ),
+                        onLongPress: () async {
+                          final parentContext = context;
+                          final action = await showModalBottomSheet<String>(
                             context: parentContext,
                             builder: (ctx) {
                               return Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: ['👍', '❤️', '😂', '😮', '😢', '🔥']
-                                    .map(
-                                      (e) => ChoiceChip(
-                                        label: Text(e),
-                                        selected: false,
-                                        onSelected: (_) {
-                                          Navigator.of(ctx).pop(e);
-                                        },
-                                      ),
-                                    )
-                                    .toList(),
-                              );
-                            },
-                          );
-                          if (emoji != null) {
-                            await ChatService.instance.addReaction(m.id, emoji);
-                            if (!mounted) return;
-                            setState(() {});
-                          }
-                        } else if (action == 'reply') {
-                          setState(() {
-                            _replyTarget = m;
-                          });
-                        } else if (action == 'edit') {
-                          final editController = TextEditingController(
-                            text: m.text,
-                          );
-                          final edited = await showDialog<String>(
-                            context: parentContext,
-                            builder: (ctx) {
-                              return AlertDialog(
-                                title: const Text('Edit message'),
-                                content: TextField(
-                                  controller: editController,
-                                  autofocus: true,
-                                ),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () => Navigator.of(ctx).pop(),
-                                    child: const Text('Cancel'),
+                                spacing: 4,
+                                children: [
+                                  ListTile(
+                                    leading: const Icon(Icons.emoji_emotions),
+                                    title: const Text('React'),
+                                    onTap: () => Navigator.of(ctx).pop('react'),
                                   ),
-                                  TextButton(
-                                    onPressed: () => Navigator.of(
-                                      ctx,
-                                    ).pop(editController.text.trim()),
-                                    child: const Text('Save'),
+                                  ListTile(
+                                    leading: const Icon(Icons.edit),
+                                    title: const Text('Edit'),
+                                    onTap: () => Navigator.of(ctx).pop('edit'),
+                                  ),
+                                  ListTile(
+                                    leading: const Icon(Icons.repeat),
+                                    title: const Text('Reply'),
+                                    onTap: () => Navigator.of(ctx).pop('reply'),
+                                  ),
+                                  ListTile(
+                                    leading: const Icon(Icons.delete),
+                                    title: const Text('Delete'),
+                                    onTap: () =>
+                                        Navigator.of(ctx).pop('delete'),
                                   ),
                                 ],
                               );
                             },
                           );
-                          if (edited != null &&
-                              edited.isNotEmpty &&
-                              edited != m.text) {
-                            await ChatService.instance.updateMessageText(
-                              m.id,
-                              edited,
+                          if (action == 'react') {
+                            final emoji = await showModalBottomSheet<String>(
+                              context: parentContext,
+                              builder: (ctx) {
+                                return Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: ['👍', '❤️', '😂', '😮', '😢', '🔥']
+                                      .map(
+                                        (e) => ChoiceChip(
+                                          label: Text(e),
+                                          selected: false,
+                                          onSelected: (_) {
+                                            Navigator.of(ctx).pop(e);
+                                          },
+                                        ),
+                                      )
+                                      .toList(),
+                                );
+                              },
                             );
-                            if (!mounted) return;
-                            setState(() {});
+                            if (emoji != null) {
+                              await ChatService.instance.addReaction(
+                                m.id,
+                                emoji,
+                              );
+                              if (!mounted) return;
+                              setState(() {});
+                            }
+                          } else if (action == 'reply') {
+                            setState(() {
+                              _replyTarget = m;
+                            });
+                          } else if (action == 'edit') {
+                            final editController = TextEditingController(
+                              text: m.text,
+                            );
+                            final edited = await showDialog<String>(
+                              context: parentContext,
+                              builder: (ctx) {
+                                return AlertDialog(
+                                  title: const Text('Edit message'),
+                                  content: TextField(
+                                    controller: editController,
+                                    autofocus: true,
+                                  ),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.of(ctx).pop(),
+                                      child: const Text('Cancel'),
+                                    ),
+                                    TextButton(
+                                      onPressed: () => Navigator.of(
+                                        ctx,
+                                      ).pop(editController.text.trim()),
+                                      child: const Text('Save'),
+                                    ),
+                                  ],
+                                );
+                              },
+                            );
+                            if (edited != null &&
+                                edited.isNotEmpty &&
+                                edited != m.text) {
+                              await ChatService.instance.updateMessageText(
+                                m.id,
+                                edited,
+                              );
+                              if (!mounted) return;
+                              setState(() {});
+                            }
+                          } else if (action == 'delete') {
+                            final confirm = await showDialog<bool>(
+                              context: parentContext,
+                              builder: (ctx) => AlertDialog(
+                                title: const Text('Delete message?'),
+                                content: const Text('This cannot be undone.'),
+                                actions: [
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.of(ctx).pop(false),
+                                    child: const Text('Cancel'),
+                                  ),
+                                  TextButton(
+                                    onPressed: () =>
+                                        Navigator.of(ctx).pop(true),
+                                    child: const Text('Delete'),
+                                  ),
+                                ],
+                              ),
+                            );
+                            if (confirm == true) {
+                              await ChatService.instance.deleteMessage(m.id);
+                              if (!mounted) return;
+                              setState(() {});
+                            }
                           }
-                        } else if (action == 'delete') {
-                          final confirm = await showDialog<bool>(
-                            context: parentContext,
-                            builder: (ctx) => AlertDialog(
-                              title: const Text('Delete message?'),
-                              content: const Text('This cannot be undone.'),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.of(ctx).pop(false),
-                                  child: const Text('Cancel'),
-                                ),
-                                TextButton(
-                                  onPressed: () => Navigator.of(ctx).pop(true),
-                                  child: const Text('Delete'),
-                                ),
-                              ],
-                            ),
-                          );
-                          if (confirm == true) {
-                            await ChatService.instance.deleteMessage(m.id);
-                            if (!mounted) return;
-                            setState(() {});
-                          }
-                        }
-                      },
-                    );
-                  },
-                ),
+                        },
+                      );
+                    },
+                  ),
           ),
           SafeArea(
             child: Row(
