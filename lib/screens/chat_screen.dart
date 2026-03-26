@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:vault_the_spire/models/chat_message.dart';
 import 'package:vault_the_spire/models/server.dart';
 import 'package:vault_the_spire/services/chat_service.dart';
@@ -16,6 +17,8 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> {
   final _controller = TextEditingController();
+  final FocusNode _focusNode = FocusNode();
+  final ScrollController _scrollController = ScrollController();
   List<ChatMessage> _messages = [];
   bool _loading = true;
 
@@ -28,7 +31,25 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void dispose() {
     _controller.dispose();
+    _focusNode.dispose();
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  void _scrollToBottom({bool animate = true}) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_scrollController.hasClients) return;
+      final position = _scrollController.position;
+      if (animate) {
+        _scrollController.animateTo(
+          position.maxScrollExtent,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+        );
+      } else {
+        _scrollController.jumpTo(position.maxScrollExtent);
+      }
+    });
   }
 
   Future<void> _loadMessages() async {
@@ -42,24 +63,30 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() {
       _loading = false;
     });
+    _scrollToBottom(animate: false);
   }
 
   Future<void> _send() async {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
+
     await ChatService.instance.sendMessage(
       widget.server.id,
       widget.channelId,
       'you',
       text,
     );
+
     if (ChatService.instance.messageMentions('you', text)) {
       // await SoundService.instance.playMention(); // mention.mp3 asset missing
     } else {
       await SoundService.instance.playSend();
     }
+
     _controller.clear();
+    _focusNode.requestFocus();
     await _loadMessages();
+    setState(() {});
   }
 
   @override
@@ -78,34 +105,105 @@ class _ChatScreenState extends State<ChatScreen> {
                 : _messages.isEmpty
                 ? const Center(child: Text('No messages yet.'))
                 : ListView.builder(
+                    controller: _scrollController,
                     padding: const EdgeInsets.all(12),
                     itemCount: _messages.length,
                     itemBuilder: (context, index) {
                       final m = _messages[index];
-                      return ListTile(
-                        title: Text(m.author),
-                        subtitle: Text(m.text),
-                        trailing: Text(
-                          '${m.timestamp.hour}:${m.timestamp.minute.toString().padLeft(2, '0')}',
+                      final isMe = m.author.toLowerCase() == 'you';
+                      final ts = m.timestamp is DateTime
+                          ? m.timestamp as DateTime
+                          : DateTime.tryParse(m.timestamp.toString()) ??
+                                DateTime.now();
+                      return Align(
+                        alignment: isMe
+                            ? Alignment.centerRight
+                            : Alignment.centerLeft,
+                        child: Container(
+                          constraints: const BoxConstraints(maxWidth: 520),
+                          margin: const EdgeInsets.symmetric(vertical: 4),
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: isMe
+                                ? Theme.of(context).colorScheme.primaryContainer
+                                : Theme.of(context).colorScheme.surfaceVariant,
+                            borderRadius: BorderRadius.only(
+                              topLeft: const Radius.circular(12),
+                              topRight: const Radius.circular(12),
+                              bottomLeft: Radius.circular(isMe ? 12 : 2),
+                              bottomRight: Radius.circular(isMe ? 2 : 12),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                m.author,
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(fontWeight: FontWeight.bold),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(m.text),
+                              const SizedBox(height: 6),
+                              Text(
+                                '${ts.hour.toString().padLeft(2, '0')}:${ts.minute.toString().padLeft(2, '0')}',
+                                style: Theme.of(
+                                  context,
+                                ).textTheme.bodySmall?.copyWith(fontSize: 10),
+                              ),
+                            ],
+                          ),
                         ),
                       );
                     },
                   ),
           ),
           SafeArea(
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    decoration: const InputDecoration(
-                      hintText: 'Type a message',
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              child: RawKeyboardListener(
+                focusNode: _focusNode,
+                onKey: (event) async {
+                  if (event is RawKeyDownEvent &&
+                      event.logicalKey == LogicalKeyboardKey.enter) {
+                    if (event.isShiftPressed) {
+                      final selection = _controller.selection;
+                      final text = _controller.text;
+                      final newText = text.replaceRange(
+                        selection.start,
+                        selection.end,
+                        '\n',
+                      );
+                      _controller.value = TextEditingValue(
+                        text: newText,
+                        selection: TextSelection.collapsed(
+                          offset: selection.start + 1,
+                        ),
+                      );
+                    } else {
+                      await _send();
+                    }
+                  }
+                },
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        focusNode: _focusNode,
+                        controller: _controller,
+                        minLines: 1,
+                        maxLines: 6,
+                        keyboardType: TextInputType.multiline,
+                        decoration: const InputDecoration(
+                          hintText: 'Type a message...',
+                          border: OutlineInputBorder(),
+                        ),
+                      ),
                     ),
-                    onSubmitted: (_) => _send(),
-                  ),
+                    IconButton(icon: const Icon(Icons.send), onPressed: _send),
+                  ],
                 ),
-                IconButton(icon: const Icon(Icons.send), onPressed: _send),
-              ],
+              ),
             ),
           ),
         ],

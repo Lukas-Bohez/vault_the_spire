@@ -4,8 +4,14 @@ import 'package:flutter/material.dart';
 class TorrentDragDrop extends StatefulWidget {
   final void Function(String path) onTorrentFile;
   final void Function(String path)? onPath;
+  final Widget? child;
 
-  const TorrentDragDrop({super.key, required this.onTorrentFile, this.onPath});
+  const TorrentDragDrop({
+    super.key,
+    required this.onTorrentFile,
+    this.onPath,
+    this.child,
+  });
 
   @override
   State<TorrentDragDrop> createState() => _TorrentDragDropState();
@@ -29,16 +35,18 @@ class _TorrentDragDropState extends State<TorrentDragDrop> {
           }
         }
       },
-      child: Container(
-        height: 120,
-        margin: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: _dragging ? Colors.blue.shade100 : Colors.grey.shade200,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.blue),
-        ),
-        child: const Center(child: Text('Drag & drop .torrent files here')),
-      ),
+      child:
+          widget.child ??
+          Container(
+            height: 120,
+            margin: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: _dragging ? Colors.blue.shade100 : Colors.grey.shade200,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.blue),
+            ),
+            child: const Center(child: Text('Drag & drop .torrent files here')),
+          ),
     );
   }
 }
