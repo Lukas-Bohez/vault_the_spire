@@ -72,10 +72,10 @@ void onServiceStart(ServiceInstance service) async {
 
   // Periodically update notification based on current engine stats.
   Timer.periodic(const Duration(seconds: 5), (timer) async {
-      if (!await FlutterBackgroundService().isRunning()) {
-        timer.cancel();
-        return;
-      }
+    if (!await FlutterBackgroundService().isRunning()) {
+      timer.cancel();
+      return;
+    }
     final status = TorrentEngineService.instance.aggregateStatus();
     final speedMBs = (status.downloadSpeed / 1024 / 1024).toStringAsFixed(2);
     final progressPct = (status.progress * 100).toStringAsFixed(1);

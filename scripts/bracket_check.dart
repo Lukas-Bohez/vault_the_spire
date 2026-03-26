@@ -1,9 +1,10 @@
 // ignore_for_file: avoid_print
 import 'dart:io';
+
 void main() {
   final file = File('lib/screens/torrents_screen.dart');
   final code = file.readAsStringSync();
-  final stack = <Map<String,dynamic>>[];
+  final stack = <Map<String, dynamic>>[];
   var line = 1;
   var col = 0;
   var inSingle = false;
@@ -21,7 +22,8 @@ void main() {
     }
     col++;
     if (inLineComment || inBlockComment) {
-      if (inBlockComment && i > 0 && code[i - 1] == '*' && c == '/') inBlockComment = false;
+      if (inBlockComment && i > 0 && code[i - 1] == '*' && c == '/')
+        inBlockComment = false;
       continue;
     }
     if (inSingle) {
@@ -69,7 +71,11 @@ void main() {
       }
       final top = stack.last;
       final open = top['ch'];
-      final need = open == '(' ? ')' : open == '[' ? ']' : '}';
+      final need = open == '('
+          ? ')'
+          : open == '['
+          ? ']'
+          : '}';
       if (c == need) {
         stack.removeLast();
       } else {

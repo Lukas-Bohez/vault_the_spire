@@ -23,7 +23,9 @@ class VaultLink {
       // Security: vault URI fragment carries secret key material and can leak via
       // clipboard/history logs. Any integration using this should treat fragments as ephemeral.
       if (uri.contains(' ')) {
-        throw FormatException('Vault URI fragment must not contain whitespace or be logged');
+        throw FormatException(
+          'Vault URI fragment must not contain whitespace or be logged',
+        );
       }
 
       return VaultLink(infoHash: infoHash, keyBase64: key);

@@ -73,7 +73,7 @@ void main() {
     );
     await pieceManager.initialize();
 
-    // vault key is 32 bytes, but decrypt is identity in this variant (from existing vault_piece). 
+    // vault key is 32 bytes, but decrypt is identity in this variant (from existing vault_piece).
     final vaultKey = Uint8List.fromList(List<int>.generate(32, (i) => i));
     final session = VaultTorrentSession(
       metadata: metadata,
@@ -83,7 +83,10 @@ void main() {
     );
 
     // Encrypt the input first, because VaultSession.decryptPiece expects an encrypted payload.
-    final encryptedPiece = VaultPiece.encryptPiece(Uint8List.fromList([5, 6]), vaultKey);
+    final encryptedPiece = VaultPiece.encryptPiece(
+      Uint8List.fromList([5, 6]),
+      vaultKey,
+    );
     await session.onPieceReceived(0, encryptedPiece);
     final stored = await pieceManager.readPiece(0);
 

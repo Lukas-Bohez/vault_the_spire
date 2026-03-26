@@ -13,7 +13,7 @@ class VaultSession extends TorrentSession {
   final Uint8List key;
 
   VaultSession._(this.link, this.key, PieceManager pieceManager)
-      : super(metadata: null, pieceManager: pieceManager, dhtEngine: null);
+    : super(metadata: null, pieceManager: pieceManager, dhtEngine: null);
 
   static Future<VaultSession> createFromVaultLink(
     String vaultUri,

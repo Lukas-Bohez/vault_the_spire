@@ -42,7 +42,8 @@ class SettingsService {
     downloadDestination = prefs.getString(_kDownloadDestination) ?? '';
     torrentSortMode = prefs.getInt(_kTorrentSortMode) ?? 0;
     browserHomeUrl = prefs.getString(_kBrowserHomeUrl) ?? browserHomeUrl;
-    browserFavorites = prefs.getStringList(_kBrowserFavorites) ?? browserFavorites;
+    browserFavorites =
+        prefs.getStringList(_kBrowserFavorites) ?? browserFavorites;
     browserLastUrl = prefs.getString(_kBrowserLastUrl) ?? '';
     browserHistory = prefs.getStringList(_kBrowserHistory) ?? <String>[];
   }

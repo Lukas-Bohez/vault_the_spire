@@ -12,13 +12,16 @@ Future<void> setupServiceLocator() async {
   sl.registerLazySingleton<SettingsService>(() => SettingsService.instance);
   sl.registerLazySingleton<ThemeService>(() => ThemeService.instance);
   sl.registerLazySingleton<StartupService>(() => StartupService());
-  sl.registerLazySingleton<TrayService>(() => TrayService(
-        shouldMinimiseToTray: () => SettingsService.instance.minimizeToTrayOnClose,
-        onTrayShow: () async {
-          await Future.value();
-        },
-        onTrayQuit: () async {
-          await Future.value();
-        },
-      ));
+  sl.registerLazySingleton<TrayService>(
+    () => TrayService(
+      shouldMinimiseToTray: () =>
+          SettingsService.instance.minimizeToTrayOnClose,
+      onTrayShow: () async {
+        await Future.value();
+      },
+      onTrayQuit: () async {
+        await Future.value();
+      },
+    ),
+  );
 }

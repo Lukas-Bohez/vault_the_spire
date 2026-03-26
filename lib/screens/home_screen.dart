@@ -12,8 +12,13 @@ import 'package:vault_the_spire/services/theme_service.dart';
 import 'package:vault_the_spire/services/tray_service.dart';
 import 'package:vault_the_spire/services/server_service.dart';
 import 'package:vault_the_spire/models/chat_message.dart';
+import 'package:vault_the_spire/models/conversation.dart';
+import 'package:vault_the_spire/models/dm_message.dart';
+import 'package:vault_the_spire/models/chat_user.dart';
 import 'package:vault_the_spire/models/server.dart';
 import 'package:vault_the_spire/models/torrent.dart';
+import 'package:vault_the_spire/db/dm_messages_dao.dart';
+import 'package:vault_the_spire/db/users_dao.dart';
 import 'package:vault_the_spire/services/startup_service.dart';
 import 'package:vault_the_spire/constants.dart';
 import 'package:vault_the_spire/services/torrent_engine_service.dart';
@@ -44,6 +49,9 @@ class _HomeScreenState extends State<HomeScreen> {
   ServerModel? selectedServer;
   String? selectedChannelId;
   int _mobileNavIndex = 0;
+  String _currentUser = 'you';
+  String? _currentUserId;
+  String? _selectedConversationId;
   String _selectedDmPeer = '';
   String _dmSearchQuery = '';
   String _selectedThreadMessageId = '';
@@ -55,7 +63,10 @@ class _HomeScreenState extends State<HomeScreen> {
   TorrentSortMode _sortMode = TorrentSortMode.reputation;
   final Map<String, TorrentEngineStatus> _engineStatuses = {};
   StreamSubscription<TorrentEngineStatus>? _engineSubscription;
-  final Set<String> _dmContacts = <String>{};
+  final List<Conversation> _dmConversations = [];
+  final List<DmMessage> _dmMessages = [];
+  final Map<String, String> _conversationPeer = {};
+  final Map<String, String> _dmUserNames = {};
   final Map<String, int> _dmUnread = <String, int>{};
   final Map<String, bool> _voiceMuted = <String, bool>{};
   final TextEditingController _serverNameController = TextEditingController();
@@ -64,6 +75,8 @@ class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _torrentInputController = TextEditingController();
   final TextEditingController _dmPeerController = TextEditingController();
   final FocusNode _hotkeyFocusNode = FocusNode();
+  final FocusNode _dmMessageFocusNode = FocusNode();
+  final FocusNode _serverMessageFocusNode = FocusNode();
   final TextEditingController _dmMessageController = TextEditingController();
   final TextEditingController _inlineMessageController =
       TextEditingController();
@@ -84,6 +97,11 @@ class _HomeScreenState extends State<HomeScreen> {
     _serverChatScrollController.dispose();
     _dmChatScrollController.dispose();
     _hotkeyFocusNode.dispose();
+    _dmMessageFocusNode.dispose();
+    _serverMessageFocusNode.dispose();
+    if (_currentUser.isNotEmpty) {
+      ChatService.instance.setUserStatus(_currentUser, UserStatus.offline);
+    }
     _engineSubscription?.cancel();
     super.dispose();
   }
@@ -120,6 +138,100 @@ class _HomeScreenState extends State<HomeScreen> {
         _engineStatuses[status.torrentId] = status;
       });
     });
+
+    _loadDmConversations();
+  }
+
+  Future<void> _loadDmConversations() async {
+    final displayName = IdentityService.instance.identity?.displayName?.trim();
+    _currentUser = (displayName == null || displayName.isEmpty)
+        ? 'you'
+        : displayName;
+
+    await ChatService.instance.setUserStatus(_currentUser, UserStatus.online);
+
+    final currentUser = await UsersDao.instance.getUserByName(_currentUser);
+    if (currentUser == null) {
+      // should not happen, but ensure user exists.
+      await ChatService.instance.setUserStatus(_currentUser, UserStatus.online);
+    }
+
+    final convos = await ChatService.instance.conversationsFor(_currentUser);
+    final peerMap = <String, String>{};
+    final unreadMap = <String, int>{};
+    final currentUserInfo = await UsersDao.instance.getUserByName(_currentUser);
+    _currentUserId = currentUserInfo?.id;
+
+    for (final c in convos) {
+      final peerId = c.participant1Id == currentUserInfo?.id
+          ? c.participant2Id
+          : c.participant1Id;
+      final peer = await UsersDao.instance.getUserById(peerId);
+      peerMap[c.id] = peer?.username ?? '?';
+      if (peer != null) {
+        _dmUserNames[peer.id] = peer.username;
+      }
+
+      if (currentUserInfo != null) {
+        _dmUserNames[currentUserInfo.id] = currentUserInfo.username;
+      }
+
+      final unread = await DmMessagesDao.instance.getUnreadCountForConversation(
+        c.id,
+        currentUserInfo?.id ?? '',
+      );
+      unreadMap[c.id] = unread;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _dmConversations.clear();
+      _dmConversations.addAll(convos);
+      _conversationPeer
+        ..clear()
+        ..addAll(peerMap);
+      _dmUnread
+        ..clear()
+        ..addAll(unreadMap);
+      if (_selectedConversationId == null && _dmConversations.isNotEmpty) {
+        _selectedConversationId = _dmConversations.first.id;
+        _selectedDmPeer = _conversationPeer[_selectedConversationId] ?? '';
+      }
+    });
+  }
+
+  Future<void> _loadSelectedConversationMessages() async {
+    if (_selectedConversationId == null) return;
+    final convo = _dmConversations.firstWhere(
+      (c) => c.id == _selectedConversationId,
+      orElse: () => throw StateError('Selected conversation not found'),
+    );
+
+    final messages = await ChatService.instance.getConversationMessages(
+      convo,
+      limit: 100,
+    );
+    await ChatService.instance.markConversationRead(convo.id, _currentUser);
+
+    if (!mounted) return;
+    setState(() {
+      _dmMessages.clear();
+      _dmMessages.addAll(messages);
+      _dmUnread[convo.id] = 0;
+    });
+    _scrollToEnd(_dmChatScrollController, animate: true);
+  }
+
+  void _selectConversation(Conversation convo) async {
+    _selectedConversationId = convo.id;
+    _selectedDmPeer = _conversationPeer[convo.id] ?? '';
+    await ChatService.instance.markConversationRead(convo.id, _currentUser);
+    await _loadDmConversations();
+    await _loadSelectedConversationMessages();
+  }
+
+  String _peerNameForConversation(Conversation convo) {
+    return _conversationPeer[convo.id] ?? '?';
   }
 
   Future<void> _toggleSystemTray(bool value) async {
@@ -333,12 +445,76 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  void _scrollToEnd(ScrollController controller) {
+  void _scrollToEnd(ScrollController controller, {bool animate = false}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (controller.hasClients) {
+      if (!controller.hasClients) return;
+      if (animate) {
+        controller.animateTo(
+          controller.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOut,
+        );
+      } else {
         controller.jumpTo(controller.position.maxScrollExtent);
       }
     });
+  }
+
+  Future<void> _sendDmMessage() async {
+    if (_selectedConversationId == null) return;
+    final text = _dmMessageController.text.trim();
+    if (text.isEmpty) return;
+    final conversation = _dmConversations.firstWhere(
+      (c) => c.id == _selectedConversationId,
+      orElse: () => throw StateError('Selected conversation not found'),
+    );
+    final peer = _peerNameForConversation(conversation);
+
+    try {
+      await ChatService.instance.sendDirectMessage(_currentUser, peer, text);
+      await _loadDmConversations();
+      await _loadSelectedConversationMessages();
+      _dmMessageController.clear();
+      _dmMessageFocusNode.requestFocus();
+      _scrollToEnd(_dmChatScrollController, animate: true);
+      if (!mounted) return;
+      setState(() {});
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('DM send failed: $error')));
+    }
+  }
+
+  Future<void> _sendServerMessage() async {
+    if (selectedServer == null || selectedChannelId == null) return;
+    final text = _inlineMessageController.text.trim();
+    if (text.isEmpty) return;
+
+    try {
+      await ChatService.instance.sendMessage(
+        selectedServer!.id,
+        selectedChannelId!,
+        'you',
+        text,
+      );
+      if (ChatService.instance.messageMentions('you', text)) {
+        await SoundService.instance.playMention();
+      } else {
+        await SoundService.instance.playSend();
+      }
+      _inlineMessageController.clear();
+      _serverMessageFocusNode.requestFocus();
+      _scrollToEnd(_serverChatScrollController, animate: true);
+      if (!mounted) return;
+      setState(() {});
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Send failed: $error')));
+    }
   }
 
   void _markDmRead(String peer) {
@@ -845,6 +1021,38 @@ class _HomeScreenState extends State<HomeScreen> {
               );
             }),
             const SizedBox(height: 8),
+            if (selectedServer != null) ...[
+              Text('Invite code', style: theme.textTheme.labelMedium),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Expanded(
+                    child: SelectableText(
+                      ServerService.instance.generateInvite(selectedServer!),
+                      style: const TextStyle(fontFamily: 'monospace'),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.copy),
+                    tooltip: 'Copy invite code',
+                    onPressed: () {
+                      final inviteCode = ServerService.instance.generateInvite(
+                        selectedServer!,
+                      );
+                      Clipboard.setData(ClipboardData(text: inviteCode));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Invite code copied to clipboard!'),
+                          behavior: SnackBarBehavior.floating,
+                          duration: Duration(milliseconds: 1200),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+            ],
             TextField(
               controller: _inviteCodeController,
               decoration: const InputDecoration(
@@ -1372,452 +1580,368 @@ class _HomeScreenState extends State<HomeScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('Direct Messages', style: theme.textTheme.headlineMedium),
-          const SizedBox(height: 10),
           Row(
             children: [
               Expanded(
-                child: TextField(
-                  controller: _dmPeerController,
-                  decoration: const InputDecoration(
-                    labelText: 'Peer username',
-                    hintText: 'Enter username to chat with',
-                    isDense: true,
-                  ),
-                  onChanged: (value) => setState(() {
-                    _selectedDmPeer = value.trim();
-                  }),
-                ),
-              ),
-              const SizedBox(width: 8),
-              ElevatedButton(
-                onPressed: _selectedDmPeer.isEmpty
-                    ? null
-                    : () {
-                        setState(() {
-                          _dmContacts.add(_selectedDmPeer);
-                          _dmUnread[_selectedDmPeer] = 0;
-                        });
-                      },
-                child: const Text('Open'),
-              ),
-              const SizedBox(width: 8),
-              OutlinedButton.icon(
-                onPressed: () async {
-                  final messenger = ScaffoldMessenger.of(context);
-                  final item = await Clipboard.getData('text/plain');
-                  final payload = item?.text?.trim() ?? '';
-                  if (payload.isEmpty) {
-                    messenger.showSnackBar(
-                      const SnackBar(content: Text('Clipboard is empty')),
-                    );
-                    return;
-                  }
-                  setState(() {
-                    _dmPeerController.text = payload;
-                    _selectedDmPeer = payload;
-                    _dmContacts.add(payload);
-                    _dmUnread[payload] = 0;
-                  });
-                  messenger.showSnackBar(
-                    const SnackBar(
-                      content: Text('Friend identity pasted and added'),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.paste),
-                label: const Text('Paste friend'),
-              ),
-              const SizedBox(width: 8),
-              ElevatedButton(
-                onPressed: _selectedDmPeer.isEmpty
-                    ? null
-                    : () async {
-                        final peer = _selectedDmPeer;
-                        await ChatService.instance.sendDirectMessage(
-                          peer,
-                          'you',
-                          'Hey from $peer (simulated)',
-                        );
-                        setState(() {
-                          _dmContacts.add(peer);
-                          if (_selectedDmPeer != peer) {
-                            _dmUnread[peer] = (_dmUnread[peer] ?? 0) + 1;
-                          }
-                        });
-                      },
-                child: const Text('Simulate incoming'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          if (_dmContacts.isNotEmpty)
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                TextField(
-                  decoration: const InputDecoration(
-                    hintText: 'Search contacts',
-                    isDense: true,
-                    border: OutlineInputBorder(),
-                    contentPadding: EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 8,
-                    ),
-                  ),
-                  onChanged: (value) => setState(() {
-                    _dmSearchQuery = value.toLowerCase();
-                  }),
-                ),
-                const SizedBox(height: 6),
-                Container(
-                  height: 140,
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  decoration: BoxDecoration(
-                    color: theme.colorScheme.surfaceContainerHighest,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Builder(
-                    builder: (context) {
-                      final filtered = _dmContacts
-                          .where(
-                            (peer) =>
-                                peer.toLowerCase().contains(_dmSearchQuery),
-                          )
-                          .toList();
-                      if (filtered.isEmpty) {
-                        return Center(
-                          child: Text(
-                            'No matching contacts.',
-                            style: theme.textTheme.bodySmall,
-                          ),
-                        );
-                      }
-                      return ListView.builder(
-                        itemCount: filtered.length,
-                        itemBuilder: (context, index) {
-                          final peer = filtered[index];
-                          final unread = _dmUnread[peer] ?? 0;
-                          final selected = peer == _selectedDmPeer;
-                          final peerTyping = ChatService.instance.isUserTyping(
-                            peer,
-                          );
-                          return Container(
-                            margin: const EdgeInsets.symmetric(vertical: 2),
-                            decoration: BoxDecoration(
-                              color: selected
-                                  ? theme.colorScheme.primaryContainer
-                                  : Colors.transparent,
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            child: ListTile(
-                              dense: true,
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 10,
-                              ),
-                              leading: Stack(
-                                alignment: Alignment.bottomRight,
-                                children: [
-                                  CircleAvatar(
-                                    radius: 14,
-                                    backgroundImage: AssetImage(kAppFavicon192),
-                                  ),
-                                  if (peerTyping)
-                                    Container(
-                                      width: 8,
-                                      height: 8,
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        color: Colors.green,
-                                        border: Border.all(
-                                          color: theme.colorScheme.surface,
-                                          width: 1.2,
-                                        ),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                              title: Text(peer),
-                              subtitle: peerTyping
-                                  ? const Text(
-                                      'typing...',
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        color: Colors.green,
-                                      ),
-                                    )
-                                  : null,
-                              trailing: unread > 0
-                                  ? CircleAvatar(
-                                      radius: 10,
-                                      backgroundColor:
-                                          theme.colorScheme.primary,
-                                      child: Text(
-                                        '$unread',
-                                        style: theme.textTheme.bodySmall
-                                            ?.copyWith(
-                                              color:
-                                                  theme.colorScheme.onPrimary,
-                                            ),
-                                      ),
-                                    )
-                                  : null,
-                              onTap: () {
-                                setState(() {
-                                  _selectedDmPeer = peer;
-                                  _markDmRead(peer);
-                                });
-                              },
-                            ),
-                          );
-                        },
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          if (_selectedDmPeer.isEmpty)
-            const Text('Select a peer to start a direct conversation.')
-          else
-            Expanded(
-              child: FutureBuilder<List<dynamic>>(
-                future: ChatService.instance.directMessagesBetween(
-                  'you',
-                  _selectedDmPeer,
-                ),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  if (snapshot.hasError) {
-                    return Text('DM load error: ${snapshot.error}');
-                  }
-                  final messages = snapshot.data ?? [];
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    _scrollToEnd(_dmChatScrollController);
-                  });
-                  if (messages.isEmpty) {
-                    return const Center(child: Text('No direct messages yet.'));
-                  }
-
-                  final threadRoots = messages
-                      .where(
-                        (m) => messages.any(
-                          (reply) => reply.replyToMessageId == m.id,
-                        ),
-                      )
-                      .toList();
-
-                  return Column(
-                    children: [
-                      Expanded(
-                        child: ListView.builder(
-                          controller: _dmChatScrollController,
-                          padding: const EdgeInsets.all(8),
-                          itemCount: messages.length,
-                          itemBuilder: (context, index) {
-                            final m = messages[index];
-                            final isMe = m.author == 'you';
-                            return Align(
-                              alignment: isMe
-                                  ? Alignment.centerRight
-                                  : Alignment.centerLeft,
-                              child: Card(
-                                color: isMe
-                                    ? theme.colorScheme.primaryContainer
-                                    : theme.colorScheme.secondaryContainer,
-                                shape: RoundedRectangleBorder(
-                                  side: m.id == _selectedThreadMessageId
-                                      ? BorderSide(
-                                          color: theme.colorScheme.primary,
-                                          width: 2,
-                                        )
-                                      : BorderSide.none,
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Padding(
-                                  padding: const EdgeInsets.all(12),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Row(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.center,
-                                        children: [
-                                          CircleAvatar(
-                                            radius: 10,
-                                            backgroundColor: isMe
-                                                ? theme.colorScheme.primary
-                                                : theme.colorScheme.secondary,
-                                            child: Text(
-                                              m.author.isNotEmpty
-                                                  ? m.author[0].toUpperCase()
-                                                  : '?',
-                                              style: const TextStyle(
-                                                fontSize: 10,
-                                                color: Colors.white,
-                                              ),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 6),
-                                          Expanded(
-                                            child: Text(
-                                              m.author,
-                                              style: theme.textTheme.labelSmall,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                      const SizedBox(height: 4),
-                                      if (m.replyToMessageId != null)
-                                        Text(
-                                          'Replying to ${messages.firstWhere((msg) => msg.id == m.replyToMessageId, orElse: () => m).author}',
-                                          style: theme.textTheme.bodySmall,
-                                        ),
-                                      Text(m.text),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        '${m.timestamp.hour.toString().padLeft(2, '0')}:${m.timestamp.minute.toString().padLeft(2, '0')}',
-                                        style: theme.textTheme.bodySmall,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                      if (threadRoots.isNotEmpty) ...[
-                        const Divider(),
-                        Container(
-                          height: 160,
-                          padding: const EdgeInsets.only(top: 6),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Text(
-                                'Threads',
-                                style: theme.textTheme.titleSmall,
-                              ),
-                              Expanded(
-                                child: ListView.builder(
-                                  itemCount: threadRoots.length,
-                                  itemBuilder: (context, index) {
-                                    final thread = threadRoots[index];
-                                    return ListTile(
-                                      dense: true,
-                                      title: Text(
-                                        thread.text,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      subtitle: Text(
-                                        '${messages.where((m) => m.replyToMessageId == thread.id).length} replies',
-                                        style: theme.textTheme.bodySmall,
-                                      ),
-                                      selected:
-                                          thread.id == _selectedThreadMessageId,
-                                      onTap: () {
-                                        setState(() {
-                                          _selectedThreadMessageId = thread.id;
-                                        });
-                                      },
-                                    );
-                                  },
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ],
-                  );
-                },
-              ),
-            ),
-          const SizedBox(height: 8),
-          if (_dmReplyTarget != null) ...[
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-              decoration: BoxDecoration(
-                color: theme.colorScheme.primaryContainer.withAlpha(50),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      'Replying to ${_dmReplyTarget!.author}: ${_dmReplyTarget!.text}',
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall,
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.close, size: 18),
-                    onPressed: () {
-                      setState(() {
-                        _dmReplyTarget = null;
-                      });
-                    },
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 8),
-          ],
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _dmMessageController,
-                  decoration: const InputDecoration(
-                    hintText: 'Message peer',
-                    isDense: true,
-                  ),
+                child: Text(
+                  'Direct Messages',
+                  style: theme.textTheme.headlineMedium,
                 ),
               ),
               IconButton(
-                icon: const Icon(Icons.send),
-                onPressed: _selectedDmPeer.isEmpty
-                    ? null
-                    : () async {
-                        final text = _dmMessageController.text.trim();
-                        if (text.isEmpty) return;
-                        try {
-                          await ChatService.instance.sendDirectMessage(
-                            'you',
-                            _selectedDmPeer,
-                            text,
-                            replyToMessageId: _dmReplyTarget?.id,
-                          );
-                          if (ChatService.instance.messageMentions(
-                            _selectedDmPeer,
-                            text,
-                          )) {
-                            await SoundService.instance.playMention();
-                          } else {
-                            await SoundService.instance.playSend();
-                          }
-                          _dmReplyTarget = null;
-                          _dmMessageController.clear();
-                          if (!mounted) return;
-                          setState(() {});
-                          _scrollToEnd(_dmChatScrollController);
-                        } catch (error) {
-                          if (!mounted) return;
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('Send failed: $error')),
-                          );
-                        }
-                      },
+                tooltip: 'Start new DM',
+                onPressed: () async {
+                  final username = await showDialog<String>(
+                    context: context,
+                    builder: (context) {
+                      final controller = TextEditingController();
+                      return AlertDialog(
+                        title: const Text('New direct message'),
+                        content: TextFormField(
+                          controller: controller,
+                          decoration: const InputDecoration(
+                            labelText: 'Peer username',
+                            hintText: 'Enter peer username',
+                          ),
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            child: const Text('Cancel'),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              if (controller.text.trim().isNotEmpty) {
+                                Navigator.of(
+                                  context,
+                                ).pop(controller.text.trim());
+                              }
+                            },
+                            child: const Text('Create'),
+                          ),
+                        ],
+                      );
+                    },
+                  );
+                  if (username != null && username.isNotEmpty) {
+                    try {
+                      final conversation = await ChatService.instance
+                          .getOrCreateConversation(_currentUser, username);
+                      await _loadDmConversations();
+                      _selectConversation(conversation);
+                    } catch (error) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Failed to start DM: $error')),
+                      );
+                    }
+                  }
+                },
+                icon: const Icon(Icons.add),
               ),
+              Text('You: $_currentUser', style: theme.textTheme.bodySmall),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 260,
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    TextField(
+                      controller: _dmPeerController,
+                      decoration: const InputDecoration(
+                        labelText: 'Peer username',
+                        hintText: 'Enter username',
+                        isDense: true,
+                      ),
+                      onChanged: (value) => setState(() {
+                        _selectedDmPeer = value.trim();
+                      }),
+                    ),
+                    const SizedBox(height: 8),
+                    ElevatedButton(
+                      onPressed: _selectedDmPeer.isEmpty
+                          ? null
+                          : () async {
+                              _currentUser = _currentUser.trim();
+                              final peerName = _selectedDmPeer.trim();
+                              if (peerName.isEmpty) return;
+                              final conversation = await ChatService.instance
+                                  .getOrCreateConversation(
+                                    _currentUser,
+                                    peerName,
+                                  );
+                              await _loadDmConversations();
+                              _selectConversation(conversation);
+                            },
+                      child: const Text('Open Conversation'),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      decoration: const InputDecoration(
+                        hintText: 'Search',
+                        isDense: true,
+                        border: OutlineInputBorder(),
+                      ),
+                      onChanged: (value) => setState(() {
+                        _dmSearchQuery = value.toLowerCase();
+                      }),
+                    ),
+                    const SizedBox(height: 10),
+                    Expanded(
+                      child: _dmConversations.isEmpty
+                          ? const Center(child: Text('No conversations yet'))
+                          : ListView.builder(
+                              itemCount: _dmConversations.length,
+                              itemBuilder: (context, index) {
+                                final conversation = _dmConversations[index];
+                                final peer = _peerNameForConversation(
+                                  conversation,
+                                );
+                                if (_dmSearchQuery.isNotEmpty &&
+                                    !peer.toLowerCase().contains(
+                                      _dmSearchQuery,
+                                    )) {
+                                  return const SizedBox.shrink();
+                                }
+                                final unread = _dmUnread[conversation.id] ?? 0;
+                                final isSelected =
+                                    conversation.id == _selectedConversationId;
+                                final isOnline = ChatService.instance
+                                    .isUserOnline(peer);
+                                return ListTile(
+                                  selected: isSelected,
+                                  selectedTileColor:
+                                      theme.colorScheme.primaryContainer,
+                                  leading: CircleAvatar(
+                                    child: Text(
+                                      peer.isNotEmpty
+                                          ? peer[0].toUpperCase()
+                                          : '?',
+                                    ),
+                                  ),
+                                  title: Text(peer),
+                                  subtitle: Text(
+                                    isOnline ? 'online' : 'offline',
+                                  ),
+                                  trailing: unread > 0
+                                      ? CircleAvatar(
+                                          radius: 10,
+                                          backgroundColor: Colors.red,
+                                          child: Text(
+                                            '$unread',
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        )
+                                      : null,
+                                  onTap: () =>
+                                      _selectConversation(conversation),
+                                );
+                              },
+                            ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(child: _buildDmConversationPane(theme)),
             ],
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildDmConversationPane(ThemeData theme) {
+    final isPeerTyping =
+        _selectedConversationId != null &&
+        ChatService.instance.isUserTyping(
+          _peerNameForConversation(
+            _dmConversations.firstWhere(
+              (c) => c.id == _selectedConversationId!,
+              orElse: () => Conversation(
+                id: '',
+                participant1Id: '',
+                participant2Id: '',
+                createdAt: DateTime.now(),
+              ),
+            ),
+          ),
+        );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Expanded(
+          child: _selectedConversationId == null
+              ? Center(
+                  child: Text(
+                    'Pick a conversation on left',
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                )
+              : FutureBuilder<List<DmMessage>>(
+                  future: _loadSelectedConversationMessages().then(
+                    (_) => _dmMessages,
+                  ),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return const Center(child: CircularProgressIndicator());
+                    }
+                    if (snapshot.hasError) {
+                      return Center(
+                        child: Text(
+                          'Unable to load messages: ${snapshot.error}',
+                        ),
+                      );
+                    }
+                    final messages = snapshot.data ?? [];
+                    WidgetsBinding.instance.addPostFrameCallback(
+                      (_) =>
+                          _scrollToEnd(_dmChatScrollController, animate: true),
+                    );
+                    if (messages.isEmpty) {
+                      return const Center(
+                        child: Text('No messages yet. Start the conversation.'),
+                      );
+                    }
+
+                    return ListView.builder(
+                      controller: _dmChatScrollController,
+                      padding: const EdgeInsets.all(10),
+                      itemCount: messages.length,
+                      itemBuilder: (context, index) {
+                        final m = messages[index];
+                        final sender = _dmUserNames[m.senderId] ?? m.senderId;
+                        final isMe = m.senderId == _currentUserId;
+                        return Align(
+                          alignment: isMe
+                              ? Alignment.centerRight
+                              : Alignment.centerLeft,
+                          child: Container(
+                            constraints: const BoxConstraints(maxWidth: 520),
+                            margin: const EdgeInsets.symmetric(vertical: 4),
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: isMe
+                                  ? theme.colorScheme.primaryContainer
+                                  : theme.colorScheme.secondaryContainer,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  sender,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(m.content),
+                                const SizedBox(height: 6),
+                                Text(
+                                  '${m.timestamp.hour.toString().padLeft(2, "0")}:${m.timestamp.minute.toString().padLeft(2, "0")}',
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    fontSize: 10,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    );
+                  },
+                ),
+        ),
+        if (isPeerTyping)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 4),
+            child: Text(
+              '${_peerNameForConversation(_dmConversations.firstWhere((c) => c.id == _selectedConversationId!))} is typing...',
+              style: const TextStyle(color: Colors.green),
+            ),
+          ),
+        const SizedBox(height: 8),
+        RawKeyboardListener(
+          focusNode: _dmMessageFocusNode,
+          onKey: (event) async {
+            if (event is RawKeyDownEvent &&
+                event.logicalKey == LogicalKeyboardKey.enter) {
+              if (event.isShiftPressed) {
+                final selection = _dmMessageController.selection;
+                final text = _dmMessageController.text;
+                final result = text.replaceRange(
+                  selection.start,
+                  selection.end,
+                  '\\n',
+                );
+                _dmMessageController.value = TextEditingValue(
+                  text: result,
+                  selection: TextSelection.collapsed(
+                    offset: selection.start + 1,
+                  ),
+                );
+              } else {
+                await _sendDmMessage();
+              }
+            }
+          },
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  focusNode: _dmMessageFocusNode,
+                  controller: _dmMessageController,
+                  decoration: const InputDecoration(
+                    hintText: 'Type a message',
+                    border: OutlineInputBorder(),
+                  ),
+                  minLines: 1,
+                  maxLines: 6,
+                  keyboardType: TextInputType.multiline,
+                  onChanged: (value) {
+                    if (_selectedConversationId != null) {
+                      final peer = _peerNameForConversation(
+                        _dmConversations.firstWhere(
+                          (c) => c.id == _selectedConversationId!,
+                        ),
+                      );
+                      final topic = ChatService.dmSwarmTopic(
+                        _currentUser,
+                        peer,
+                      );
+                      ChatService.instance.broadcastTypingStatus(
+                        topic,
+                        _currentUser,
+                        value.isNotEmpty,
+                      );
+                    }
+                  },
+                ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.send),
+                onPressed: _selectedConversationId == null
+                    ? null
+                    : _sendDmMessage,
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -1898,13 +2022,75 @@ class _HomeScreenState extends State<HomeScreen> {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                '${selectedServer!.name} / ${channel.name}',
-                style: theme.textTheme.titleLarge,
+              Expanded(
+                child: Text(
+                  '${selectedServer!.name} / ${channel.name}',
+                  style: theme.textTheme.titleLarge,
+                ),
               ),
-              IconButton(
-                icon: const Icon(Icons.refresh),
-                onPressed: () => setState(() {}),
+              Row(
+                children: [
+                  IconButton(
+                    tooltip: 'Create channel',
+                    icon: const Icon(Icons.add),
+                    onPressed: () async {
+                      final channelName = await showDialog<String>(
+                        context: context,
+                        builder: (context) {
+                          final controller = TextEditingController();
+                          return AlertDialog(
+                            title: const Text('New channel'),
+                            content: TextFormField(
+                              controller: controller,
+                              decoration: const InputDecoration(
+                                labelText: 'Channel name',
+                              ),
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.of(context).pop(),
+                                child: const Text('Cancel'),
+                              ),
+                              TextButton(
+                                onPressed: () {
+                                  if (controller.text.trim().isNotEmpty) {
+                                    Navigator.of(
+                                      context,
+                                    ).pop(controller.text.trim());
+                                  }
+                                },
+                                child: const Text('Create'),
+                              ),
+                            ],
+                          );
+                        },
+                      );
+
+                      if (channelName != null && channelName.isNotEmpty) {
+                        try {
+                          final updated = await ServerService.instance
+                              .addChannel(selectedServer!.id, channelName);
+                          setState(() {
+                            selectedServer = updated;
+                            selectedChannelId = updated.channels.last.id;
+                          });
+                        } catch (exception) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                'Failed to create channel: $exception',
+                              ),
+                            ),
+                          );
+                        }
+                      }
+                    },
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.refresh),
+                    onPressed: () => setState(() {}),
+                  ),
+                ],
               ),
             ],
           ),
@@ -1937,18 +2123,51 @@ class _HomeScreenState extends State<HomeScreen> {
                 itemCount: messages.length,
                 itemBuilder: (context, index) {
                   final m = messages[index];
-                  return ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: Colors.blueGrey.shade600,
-                      child: Text(
-                        m.author.isNotEmpty ? m.author[0].toUpperCase() : '?',
-                        style: const TextStyle(color: Colors.white),
+                  final isMe = m.author == _currentUser;
+                  final timestamp = m.timestamp is DateTime
+                      ? m.timestamp as DateTime
+                      : DateTime.tryParse(m.timestamp.toString()) ??
+                            DateTime.now();
+
+                  return Align(
+                    alignment: isMe
+                        ? Alignment.centerRight
+                        : Alignment.centerLeft,
+                    child: Container(
+                      constraints: const BoxConstraints(maxWidth: 520),
+                      margin: const EdgeInsets.symmetric(vertical: 5),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: isMe
+                            ? theme.colorScheme.primaryContainer
+                            : theme.colorScheme.surfaceVariant,
+                        borderRadius: BorderRadius.only(
+                          topLeft: const Radius.circular(12),
+                          topRight: const Radius.circular(12),
+                          bottomLeft: Radius.circular(isMe ? 12 : 2),
+                          bottomRight: Radius.circular(isMe ? 2 : 12),
+                        ),
                       ),
-                    ),
-                    title: Text(m.author),
-                    subtitle: Text(m.text),
-                    trailing: Text(
-                      '${m.timestamp.hour}:${m.timestamp.minute.toString().padLeft(2, '0')}',
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            m.author,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(m.text),
+                          const SizedBox(height: 6),
+                          Text(
+                            '${timestamp.hour.toString().padLeft(2, "0")}:${timestamp.minute.toString().padLeft(2, "0")}',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              fontSize: 10,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   );
                 },
@@ -1958,53 +2177,51 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         Padding(
           padding: const EdgeInsets.all(8.0),
-          child: Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _inlineMessageController,
-                  decoration: const InputDecoration(
-                    hintText: 'Type a message...',
+          child: RawKeyboardListener(
+            focusNode: _serverMessageFocusNode,
+            onKey: (event) async {
+              if (event is RawKeyDownEvent &&
+                  event.logicalKey == LogicalKeyboardKey.enter) {
+                if (event.isShiftPressed) {
+                  final selection = _inlineMessageController.selection;
+                  final text = _inlineMessageController.text;
+                  final result = text.replaceRange(
+                    selection.start,
+                    selection.end,
+                    '\n',
+                  );
+                  _inlineMessageController.value = TextEditingValue(
+                    text: result,
+                    selection: TextSelection.collapsed(
+                      offset: selection.start + 1,
+                    ),
+                  );
+                } else {
+                  await _sendServerMessage();
+                }
+              }
+            },
+            child: Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    focusNode: _serverMessageFocusNode,
+                    controller: _inlineMessageController,
+                    decoration: const InputDecoration(
+                      hintText: 'Type a message...',
+                      border: OutlineInputBorder(),
+                    ),
+                    minLines: 1,
+                    maxLines: 6,
+                    keyboardType: TextInputType.multiline,
                   ),
                 ),
-              ),
-              IconButton(
-                icon: const Icon(Icons.send),
-                onPressed: () async {
-                  final text = _inlineMessageController.text.trim();
-                  if (text.isEmpty) return;
-                  if (selectedServer == null || selectedChannelId == null) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Select server/channel first'),
-                      ),
-                    );
-                    return;
-                  }
-                  try {
-                    await ChatService.instance.sendMessage(
-                      selectedServer!.id,
-                      selectedChannelId!,
-                      'you',
-                      text,
-                    );
-                    if (ChatService.instance.messageMentions('you', text)) {
-                      await SoundService.instance.playMention();
-                    } else {
-                      await SoundService.instance.playSend();
-                    }
-                    _inlineMessageController.clear();
-                    if (!mounted) return;
-                    setState(() {});
-                  } catch (error) {
-                    if (!mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Send failed: $error')),
-                    );
-                  }
-                },
-              ),
-            ],
+                IconButton(
+                  icon: const Icon(Icons.send),
+                  onPressed: _sendServerMessage,
+                ),
+              ],
+            ),
           ),
         ),
       ],

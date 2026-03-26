@@ -23,7 +23,7 @@ class AppDatabase {
     final dbPath = await _getDatabasePath();
     _database = await openDatabase(
       dbPath,
-      version: 4,
+      version: 5,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onConfigure: (db) async {
@@ -99,6 +99,7 @@ class AppDatabase {
     ''');
 
     await _createChatTables(db);
+    await _createDmTables(db);
   }
 
   Future<void> _createChatTables(Database db) async {
@@ -131,6 +132,47 @@ class AppDatabase {
     await db.execute('''
       INSERT OR IGNORE INTO servers (id, name, description, icon, channels)
       VALUES ('_dm', 'Direct Messages', 'System direct message channel', '💬', '[]');
+    ''');
+  }
+
+  Future<void> _createDmTables(Database db) async {
+    await db.execute('''
+      CREATE TABLE users (
+        id TEXT PRIMARY KEY,
+        username TEXT UNIQUE NOT NULL,
+        status TEXT NOT NULL DEFAULT 'offline',
+        last_seen INTEGER NOT NULL
+      );
+    ''');
+
+    await db.execute('''
+      CREATE TABLE conversations (
+        id TEXT PRIMARY KEY,
+        participant1_id TEXT NOT NULL,
+        participant2_id TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY(participant1_id) REFERENCES users(id),
+        FOREIGN KEY(participant2_id) REFERENCES users(id),
+        UNIQUE(participant1_id, participant2_id)
+      );
+    ''');
+
+    await db.execute('''
+      CREATE TABLE dm_messages (
+        id TEXT PRIMARY KEY,
+        conversation_id TEXT NOT NULL,
+        sender_id TEXT NOT NULL,
+        content TEXT NOT NULL,
+        timestamp INTEGER NOT NULL,
+        is_read INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+        FOREIGN KEY(sender_id) REFERENCES users(id)
+      );
+    ''');
+
+    await db.execute('''
+      CREATE INDEX idx_dm_messages_conversation_timestamp
+      ON dm_messages (conversation_id, timestamp);
     ''');
   }
 
@@ -176,6 +218,10 @@ class AppDatabase {
       await db.execute('''
         ALTER TABLE torrents ADD COLUMN reputation REAL DEFAULT 0.0;
       ''');
+    }
+
+    if (oldVersion < 5) {
+      await _createDmTables(db);
     }
 
     await _ensureChatMessageColumns(db);

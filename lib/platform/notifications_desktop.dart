@@ -27,7 +27,9 @@ class DesktopNotificationPoller {
 
   Future<void> _poll() async {
     _pollCount += 1;
-    developer.log('[DesktopNotificationPoller] polling for notifications ($_pollCount) ...');
+    developer.log(
+      '[DesktopNotificationPoller] polling for notifications ($_pollCount) ...',
+    );
 
     // Mock integration for now: display a test notification every 5 poll cycles.
     if (_pollCount % 5 == 0) {

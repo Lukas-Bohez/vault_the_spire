@@ -26,4 +26,3 @@ List<int> _hashPiece(Uint8List pieceData) {
 // TODO: move DHT routing (find_node / peer discovery) into compute() or dedicated Isolate path.
 // Since this is the I/O/CPU-heavy engine core, we should make session routing/piece checks invoke
 // isolate boundaries exclusively before they touch UI state.
-

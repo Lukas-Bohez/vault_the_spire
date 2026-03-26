@@ -2,17 +2,203 @@ import 'dart:async';
 
 import 'package:uuid/uuid.dart';
 import 'package:vault_the_spire/db/chat_dao.dart';
+import 'package:vault_the_spire/db/conversation_dao.dart';
+import 'package:vault_the_spire/db/dm_messages_dao.dart';
+import 'package:vault_the_spire/db/users_dao.dart';
 import 'package:vault_the_spire/models/chat_message.dart';
+import 'package:vault_the_spire/models/chat_user.dart';
+import 'package:vault_the_spire/models/conversation.dart';
+import 'package:vault_the_spire/models/dm_message.dart';
 import 'package:vault_the_spire/vault_swarm/vault_swarm.dart';
 
 class ChatService {
   ChatService._() {
     _listenForSwarmMessages();
   }
+
   static final ChatService instance = ChatService._();
 
   final _uuid = const Uuid();
   StreamSubscription<Map<String, dynamic>>? _swarmSubscription;
+
+  final Map<String, DateTime> _typingStatus = {};
+  final Map<String, UserStatus> _presence = {};
+
+  Future<ChatUser> _ensureUserExists(String username) async {
+    final safeName = username.trim();
+    if (safeName.isEmpty) {
+      throw ArgumentError('Username cannot be empty');
+    }
+    final existing = await UsersDao.instance.getUserByName(safeName);
+    if (existing != null) return existing;
+
+    final user = ChatUser(
+      id: _uuid.v4(),
+      username: safeName,
+      status: UserStatus.offline,
+      lastSeen: DateTime.now(),
+    );
+    await UsersDao.instance.insertUser(user);
+    return user;
+  }
+
+  Future<ChatUser?> getUser(String username) async {
+    return await UsersDao.instance.getUserByName(username.trim());
+  }
+
+  Future<void> setUserStatus(String username, UserStatus status) async {
+    final user = await _ensureUserExists(username);
+    final updated = user.copyWith(status: status, lastSeen: DateTime.now());
+    await UsersDao.instance.insertUser(updated);
+    _presence[username] = status;
+
+    VaultSwarm.instance.broadcastMessage('presence', {
+      'type': 'presence',
+      'payload': {
+        'userId': username,
+        'status': status.name,
+        'lastSeen': updated.lastSeen.millisecondsSinceEpoch,
+      },
+    });
+  }
+
+  bool isUserOnline(String username) {
+    final status = _presence[username];
+    return status == UserStatus.online;
+  }
+
+  Future<Conversation> getOrCreateConversation(String a, String b) async {
+    if (a.trim().isEmpty || b.trim().isEmpty) {
+      throw ArgumentError('Participant username cannot be empty');
+    }
+
+    final me = await _ensureUserExists(a);
+    final peer = await _ensureUserExists(b);
+
+    final existing = await ConversationDao.instance.findByParticipants(
+      me.id,
+      peer.id,
+    );
+    if (existing != null) return existing;
+
+    final participants = [me.id, peer.id]..sort();
+    final conversation = Conversation(
+      id: _uuid.v4(),
+      participant1Id: participants[0],
+      participant2Id: participants[1],
+      createdAt: DateTime.now(),
+    );
+    await ConversationDao.instance.insertConversation(conversation);
+    return conversation;
+  }
+
+  Future<List<Conversation>> conversationsFor(String username) async {
+    final user = await _ensureUserExists(username);
+    return await ConversationDao.instance.getConversationsFor(user.id);
+  }
+
+  Future<List<DmMessage>> getConversationMessages(
+    Conversation conversation, {
+    int limit = 50,
+    int offset = 0,
+  }) async {
+    return await DmMessagesDao.instance.getMessagesForConversation(
+      conversation.id,
+      limit: limit,
+      offset: offset,
+    );
+  }
+
+  Future<void> markConversationRead(
+    String conversationId,
+    String readerUsername,
+  ) async {
+    final reader = await _ensureUserExists(readerUsername);
+    final conv = await ConversationDao.instance.getConversationById(
+      conversationId,
+    );
+    if (conv == null) throw StateError('Conversation not found');
+    if (!conv.involves(reader.id)) {
+      throw StateError('User cannot mark this conversation as read');
+    }
+    await DmMessagesDao.instance.markConversationRead(
+      conversationId,
+      reader.id,
+    );
+  }
+
+  Future<void> sendDirectMessage(
+    String from,
+    String to,
+    String content, {
+    String? replyToMessageId,
+  }) async {
+    final cleanText = _sanitize(content);
+    if (cleanText.isEmpty) {
+      throw ArgumentError('Message cannot be empty');
+    }
+
+    final sender = await _ensureUserExists(from);
+    final recipient = await _ensureUserExists(to);
+
+    final conversation = await getOrCreateConversation(from, to);
+
+    final message = DmMessage(
+      id: _uuid.v4(),
+      conversationId: conversation.id,
+      senderId: sender.id,
+      content: cleanText,
+      timestamp: DateTime.now(),
+      isRead: false,
+    );
+
+    await DmMessagesDao.instance.insertMessage(message);
+
+    // Broadcast to both participants via the swarm topic.
+    final ids = [sender.id, recipient.id]..sort();
+    final topic = 'dm:${ids.join('_')}';
+    await VaultSwarm.instance.joinSwarm(topic);
+    await VaultSwarm.instance.broadcastMessage(topic, {
+      'type': 'dm_chat',
+      'payload': {
+        'conversationId': conversation.id,
+        'message': message.toMap(),
+      },
+    });
+  }
+
+  void broadcastTypingStatus(
+    String channelOrDmTopic,
+    String userId,
+    bool isTyping,
+  ) {
+    final now = DateTime.now();
+    if (isTyping) {
+      _typingStatus[userId] = now;
+    } else {
+      _typingStatus.remove(userId);
+    }
+
+    VaultSwarm.instance.broadcastMessage(channelOrDmTopic, {
+      'type': 'typing',
+      'payload': {
+        'userId': userId,
+        'isTyping': isTyping,
+        'timestamp': now.millisecondsSinceEpoch,
+      },
+    });
+  }
+
+  bool isUserTyping(String userId) {
+    final last = _typingStatus[userId];
+    if (last == null) return false;
+    return DateTime.now().difference(last).inSeconds < 5;
+  }
+
+  Future<List<DmMessage>> getUnreadMessages(String username) async {
+    final user = await _ensureUserExists(username);
+    return await DmMessagesDao.instance.getUnreadMessages(user.id);
+  }
 
   Future<List<ChatMessage>> messagesFor(
     String serverId,
@@ -25,46 +211,91 @@ class ChatService {
     String serverId,
     String channelId,
     String author,
-    String text, {
-    String? replyToMessageId,
-  }) async {
-    final msg = ChatMessage(
+    String text,
+  ) async {
+    final clean = _sanitize(text);
+    if (clean.isEmpty) {
+      throw ArgumentError('Cannot send empty message');
+    }
+
+    final message = ChatMessage(
       id: _uuid.v4(),
       serverId: serverId,
       channelId: channelId,
       author: author,
-      text: text,
+      text: clean,
       timestamp: DateTime.now(),
-      replyToMessageId: replyToMessageId,
-      reactions: {},
     );
-    await ChatDao.instance.insertChatMessage(msg);
+
+    await ChatDao.instance.insertChatMessage(message);
   }
 
-  static String dmChannelId(String userA, String userB) {
-    final sorted = [userA.trim(), userB.trim()]..sort();
-    return 'dm-${sorted[0]}-${sorted[1]}';
+  Future<List<ChatMessage>> directMessagesBetween(
+    String userA,
+    String userB,
+  ) async {
+    final conversation = await getOrCreateConversation(userA, userB);
+    final dmMessages = await DmMessagesDao.instance.getMessagesForConversation(
+      conversation.id,
+      limit: 500,
+      offset: 0,
+    );
+
+    final userAInfo = await UsersDao.instance.getUserByName(userA);
+    final userBInfo = await UsersDao.instance.getUserByName(userB);
+
+    return dmMessages
+        .map(
+          (dm) => ChatMessage(
+            id: dm.id,
+            serverId: '',
+            channelId: conversation.id,
+            author: dm.senderId == userAInfo?.id ? userA : userB,
+            text: dm.content,
+            timestamp: dm.timestamp,
+          ),
+        )
+        .toList();
   }
 
-  final Map<String, DateTime> _typingStatus = {};
+  Future<void> addReaction(String messageId, String emoji) async {
+    // Reactions not persisted for DM messages in current schema, no-op for now.
+    return;
+  }
 
-  void setTypingStatus(String userId, bool isTyping) {
-    if (isTyping) {
-      _typingStatus[userId] = DateTime.now();
-    } else {
-      _typingStatus.remove(userId);
+  Future<void> updateMessageText(String messageId, String updatedText) async {
+    final dmMessage = await DmMessagesDao.instance.getMessageById(messageId);
+    if (dmMessage != null) {
+      await DmMessagesDao.instance.updateMessage(
+        dmMessage.copyWith(content: updatedText),
+      );
     }
   }
 
-  bool isUserTyping(String userId) {
-    final last = _typingStatus[userId];
-    if (last == null) return false;
-    return DateTime.now().difference(last).inSeconds < 5;
+  Future<void> deleteMessage(String messageId) async {
+    await DmMessagesDao.instance.deleteMessage(messageId);
+  }
+
+  static String dmChannelId(String userA, String userB) {
+    final ids = [userA.trim(), userB.trim()]..sort();
+    return 'dm-${ids[0]}-${ids[1]}';
   }
 
   static String dmSwarmTopic(String userA, String userB) {
-    final sorted = [userA.trim(), userB.trim()]..sort();
-    return 'dm:${sorted[0]}_${sorted[1]}';
+    final ids = [userA.trim(), userB.trim()]..sort();
+    return 'dm:${ids.join('_')}';
+  }
+
+  bool messageMentions(String userId, String text) {
+    final mentionToken = '@${userId.trim()}';
+    return text.split(RegExp(r'\s+')).contains(mentionToken);
+  }
+
+  String _sanitize(String text) {
+    return text
+        .trim()
+        .replaceAll(RegExp(r"[\x00-\x1F]"), '')
+        .replaceAll(RegExp(r'<[^>]*>'), '');
   }
 
   Future<void> _listenForSwarmMessages() async {
@@ -72,9 +303,17 @@ class ChatService {
       event,
     ) async {
       final type = event['type'] as String?;
-      final topic = event['topic'] as String?;
       final payload = event['payload'] as Map<String, dynamic>?;
-      if (type == 'typing' && payload != null && topic != null) {
+
+      if (type == 'presence' && payload != null) {
+        final userId = payload['userId'] as String?;
+        final status = payload['status'] as String?;
+        if (userId != null && status != null) {
+          _presence[userId] = userStatusFromString(status);
+        }
+      }
+
+      if (type == 'typing' && payload != null) {
         final userId = payload['userId'] as String?;
         final isTyping = payload['isTyping'] as bool?;
         final ts = payload['timestamp'] as int?;
@@ -85,128 +324,16 @@ class ChatService {
             _typingStatus.remove(userId);
           }
         }
-      } else if (type == 'chat' && payload != null && topic != null) {
+      }
+
+      if (type == 'dm_chat' && payload != null) {
         final messageMap = payload['message'] as Map<String, dynamic>?;
-        if (messageMap != null) {
-          try {
-            final message = ChatMessage.fromMap(messageMap);
-            await ChatDao.instance.insertChatMessage(message);
-          } catch (_) {
-            // ignore malformed message event
-          }
+        final conversationId = payload['conversationId'] as String?;
+        if (messageMap != null && conversationId != null) {
+          final mv = DmMessage.fromMap(messageMap);
+          await DmMessagesDao.instance.insertMessage(mv);
         }
       }
     });
-  }
-
-  void broadcastTypingStatus(
-    String channelOrDmTopic,
-    String userId,
-    bool isTyping,
-  ) {
-    if (isTyping) {
-      _typingStatus[userId] = DateTime.now();
-    } else {
-      _typingStatus.remove(userId);
-    }
-
-    VaultSwarm.instance.broadcastMessage(channelOrDmTopic, {
-      'type': 'typing',
-      'userId': userId,
-      'isTyping': isTyping,
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
-    });
-  }
-
-  Future<List<ChatMessage>> directMessagesBetween(
-    String userA,
-    String userB,
-  ) async {
-    final topic = dmSwarmTopic(userA, userB);
-    final channel = dmChannelId(userA, userB);
-    await VaultSwarm.instance.joinSwarm(topic);
-    _listenForSwarmMessages();
-    return await ChatDao.instance.getMessagesFor(topic, channel);
-  }
-
-  Future<void> sendDirectMessage(
-    String from,
-    String to,
-    String text, {
-    String? replyToMessageId,
-  }) async {
-    final topic = dmSwarmTopic(from, to);
-    final channel = dmChannelId(from, to);
-
-    await VaultSwarm.instance.joinSwarm(topic);
-    _listenForSwarmMessages();
-
-    final message = ChatMessage(
-      id: _uuid.v4(),
-      serverId: topic,
-      channelId: channel,
-      author: from,
-      text: text,
-      timestamp: DateTime.now(),
-      replyToMessageId: replyToMessageId,
-      reactions: {},
-    );
-
-    await ChatDao.instance.insertChatMessage(message);
-
-    // Broadcast into the swarm for peers to sync.
-    await VaultSwarm.instance.broadcastMessage(topic, {
-      'type': 'chat',
-      'message': message.toMap(),
-    });
-  }
-
-  Future<void> addReaction(String messageId, String emoji) async {
-    final msg = await ChatDao.instance.getMessageById(messageId);
-    if (msg == null) return;
-    final newReactions = Map<String, int>.from(msg.reactions);
-    newReactions[emoji] = (newReactions[emoji] ?? 0) + 1;
-
-    final updated = ChatMessage(
-      id: msg.id,
-      serverId: msg.serverId,
-      channelId: msg.channelId,
-      author: msg.author,
-      text: msg.text,
-      timestamp: msg.timestamp,
-      replyToMessageId: msg.replyToMessageId,
-      editedAt: DateTime.now(),
-      reactions: newReactions,
-    );
-    await ChatDao.instance.updateMessage(updated);
-  }
-
-  Future<void> updateMessageText(String messageId, String newText) async {
-    final msg = await ChatDao.instance.getMessageById(messageId);
-    if (msg == null) return;
-
-    final updated = ChatMessage(
-      id: msg.id,
-      serverId: msg.serverId,
-      channelId: msg.channelId,
-      author: msg.author,
-      text: newText,
-      timestamp: msg.timestamp,
-      replyToMessageId: msg.replyToMessageId,
-      editedAt: DateTime.now(),
-      reactions: msg.reactions,
-    );
-    await ChatDao.instance.updateMessage(updated);
-  }
-
-  Future<void> deleteMessage(String messageId) async {
-    await ChatDao.instance.deleteMessage(messageId);
-  }
-
-  bool messageMentions(String userId, String text) {
-    final mentionToken = '@${userId.trim()}';
-    return text
-        .split(RegExp(r'\s+'))
-        .any((part) => part.trim() == mentionToken);
   }
 }

@@ -6,10 +6,22 @@ import 'package:vault_the_spire/services/torrent_service.dart';
 
 void main() {
   test('isTorrentOrMagnetUrl identifies magnet and torrent URLs', () {
-    expect(TorrentService.isTorrentOrMagnetUrl('magnet:?xt=urn:btih:abc'), isTrue);
-    expect(TorrentService.isTorrentOrMagnetUrl('http://example.com/file.torrent'), isTrue);
-    expect(TorrentService.isTorrentOrMagnetUrl('file:///tmp/foo.torrent'), isTrue);
-    expect(TorrentService.isTorrentOrMagnetUrl('https://example.com/'), isFalse);
+    expect(
+      TorrentService.isTorrentOrMagnetUrl('magnet:?xt=urn:btih:abc'),
+      isTrue,
+    );
+    expect(
+      TorrentService.isTorrentOrMagnetUrl('http://example.com/file.torrent'),
+      isTrue,
+    );
+    expect(
+      TorrentService.isTorrentOrMagnetUrl('file:///tmp/foo.torrent'),
+      isTrue,
+    );
+    expect(
+      TorrentService.isTorrentOrMagnetUrl('https://example.com/'),
+      isFalse,
+    );
     expect(TorrentService.isTorrentOrMagnetUrl('just some text'), isFalse);
   });
 
@@ -33,23 +45,26 @@ void main() {
     expect(status.seeders, equals(1));
   });
 
-  test('SettingsService can persist browser favorites through SharedPreferences', () async {
-    SharedPreferences.setMockInitialValues(<String, Object>{});
+  test(
+    'SettingsService can persist browser favorites through SharedPreferences',
+    () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
 
-    const favorites = ['https://example.com', 'https://dart.dev'];
-    await SettingsService.instance.setBrowserFavorites(favorites);
+      const favorites = ['https://example.com', 'https://dart.dev'];
+      await SettingsService.instance.setBrowserFavorites(favorites);
 
-    final prefs = await SharedPreferences.getInstance();
-    final persisted = prefs.getStringList('browser_favorites');
+      final prefs = await SharedPreferences.getInstance();
+      final persisted = prefs.getStringList('browser_favorites');
 
-    expect(persisted, isNotNull);
-    expect(persisted, equals(favorites));
+      expect(persisted, isNotNull);
+      expect(persisted, equals(favorites));
 
-    // Reload from prefs into instance to validate load() behavior.
-    SettingsService.instance.browserFavorites = [];
-    await SettingsService.instance.load();
-    expect(SettingsService.instance.browserFavorites, equals(favorites));
-  });
+      // Reload from prefs into instance to validate load() behavior.
+      SettingsService.instance.browserFavorites = [];
+      await SettingsService.instance.load();
+      expect(SettingsService.instance.browserFavorites, equals(favorites));
+    },
+  );
 
   test('SettingsService can persist browser last URL and history', () async {
     SharedPreferences.setMockInitialValues(<String, Object>{});
@@ -72,11 +87,26 @@ void main() {
     expect(SettingsService.instance.browserHistory, equals(history));
   });
 
-  test('normalizeTorrentUrl preserves magnet and local torrent and adds scheme for plain URLs', () {
-    expect(TorrentService.normalizeTorrentUrl('magnet:?xt=urn:btih:abc'), 'magnet:?xt=urn:btih:abc');
-    expect(TorrentService.normalizeTorrentUrl('file:///tmp/foo.torrent'), 'file:///tmp/foo.torrent');
-    expect(TorrentService.normalizeTorrentUrl('http://example.com/file.torrent'), 'http://example.com/file.torrent');
-    expect(TorrentService.normalizeTorrentUrl('example.com'), 'https://example.com');
-    expect(TorrentService.normalizeTorrentUrl('  '), '');
-  });
+  test(
+    'normalizeTorrentUrl preserves magnet and local torrent and adds scheme for plain URLs',
+    () {
+      expect(
+        TorrentService.normalizeTorrentUrl('magnet:?xt=urn:btih:abc'),
+        'magnet:?xt=urn:btih:abc',
+      );
+      expect(
+        TorrentService.normalizeTorrentUrl('file:///tmp/foo.torrent'),
+        'file:///tmp/foo.torrent',
+      );
+      expect(
+        TorrentService.normalizeTorrentUrl('http://example.com/file.torrent'),
+        'http://example.com/file.torrent',
+      );
+      expect(
+        TorrentService.normalizeTorrentUrl('example.com'),
+        'https://example.com',
+      );
+      expect(TorrentService.normalizeTorrentUrl('  '), '');
+    },
+  );
 }
