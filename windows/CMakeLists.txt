@@ -49,6 +49,28 @@ endfunction()
 set(FLUTTER_MANAGED_DIR "${CMAKE_CURRENT_SOURCE_DIR}/flutter")
 add_subdirectory(${FLUTTER_MANAGED_DIR})
 
+# Code-side OpenSSL guard for sqlcipher_flutter_libs plugin.
+# If not provided by environment, set safe defaults for common install locations.
+if(NOT DEFINED OPENSSL_ROOT_DIR)
+  if(EXISTS "C:/Program Files/OpenSSL-Win64")
+    set(OPENSSL_ROOT_DIR "C:/Program Files/OpenSSL-Win64" CACHE PATH "" FORCE)
+  elseif(EXISTS "C:/Program Files (x86)/OpenSSL-Win32")
+    set(OPENSSL_ROOT_DIR "C:/Program Files (x86)/OpenSSL-Win32" CACHE PATH "" FORCE)
+  endif()
+endif()
+
+if(NOT DEFINED OPENSSL_INCLUDE_DIR AND DEFINED OPENSSL_ROOT_DIR)
+  set(OPENSSL_INCLUDE_DIR "${OPENSSL_ROOT_DIR}/include" CACHE PATH "" FORCE)
+endif()
+
+if(NOT DEFINED OPENSSL_CRYPTO_LIBRARY AND DEFINED OPENSSL_ROOT_DIR)
+  set(OPENSSL_CRYPTO_LIBRARY "${OPENSSL_ROOT_DIR}/lib/libcrypto.lib" CACHE FILEPATH "" FORCE)
+endif()
+
+if(NOT DEFINED OPENSSL_SSL_LIBRARY AND DEFINED OPENSSL_ROOT_DIR)
+  set(OPENSSL_SSL_LIBRARY "${OPENSSL_ROOT_DIR}/lib/libssl.lib" CACHE FILEPATH "" FORCE)
+endif()
+
 # Application build; see runner/CMakeLists.txt.
 add_subdirectory("runner")
 
