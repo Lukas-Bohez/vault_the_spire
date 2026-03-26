@@ -40,7 +40,7 @@ dependencies:
   dtorrent_task_v2: ^0.4.8
   dtorrent_common: ^1.0.8
   flutter_background_service: ^5.1.0
-  flutter_local_notifications: ^13.0.0
+  flutter_local_notifications: ^18.0.0
 
 dev_dependencies:
   flutter_test:
@@ -55,3 +55,4 @@ flutter:
     - assets/sounds/click.mp3
     - assets/sounds/send.mp3
     - assets/sounds/notification.mp3
+    - assets/sounds/mention.mp3

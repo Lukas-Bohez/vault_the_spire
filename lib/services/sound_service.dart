@@ -45,7 +45,7 @@ class SoundService {
   Future<void> playClick() async => _play('sounds/click.mp3');
   Future<void> playSend() async => _play('sounds/send.mp3');
   Future<void> playNotification() async => _play('sounds/notification.mp3');
-  // Future<void> playMention() async => _play('sounds/mention.mp3'); // mention.mp3 asset missing
+  Future<void> playMention() async => _play('sounds/mention.mp3');
 
   Future<void> startVoiceSession() async {
     // ramp up a sustained tone simulation (notification sound loop) for voice chat.
