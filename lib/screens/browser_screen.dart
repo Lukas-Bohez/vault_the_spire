@@ -14,7 +14,10 @@ import '../platform/crash_dump_stub.dart'
 import '../services/settings_service.dart';
 import '../services/torrent_service.dart';
 import '../services/torrent_engine_service.dart';
+import '../services/search_service.dart';
 import 'torrent_detail_screen.dart';
+
+enum SearchSource { web, vaultSwarm }
 
 class BrowserScreen extends StatefulWidget {
   final String initialUrl;
@@ -43,6 +46,12 @@ class _BrowserScreenState extends State<BrowserScreen>
   late List<String> _favorites;
   bool _showHistory = false;
   List<String> _history = [];
+
+  SearchSource _searchSource = SearchSource.web;
+  final TextEditingController _swarmQueryController = TextEditingController();
+  List<SearchResult> _swarmSearchResults = [];
+  StreamSubscription<List<SearchResult>>? _swarmResultSubscription;
+  bool _swarmSearching = false;
 
   WebViewController? _webViewController;
   bool _isLoading = true;
@@ -76,6 +85,15 @@ class _BrowserScreenState extends State<BrowserScreen>
         : _homeUrl;
 
     _addressController.text = startUrl;
+
+    // start swarm search subscription
+    _swarmResultSubscription = SearchService.instance.resultsStream.listen((results) {
+      if (!mounted) return;
+      setState(() {
+        _swarmSearchResults = results;
+        _swarmSearching = false;
+      });
+    });
 
     // If we have a real URL to restore (not the home page), show the webview
     // immediately rather than the home screen.
@@ -451,6 +469,8 @@ class _BrowserScreenState extends State<BrowserScreen>
     _memoryPollTimer?.cancel();
     _windowsWebViewController?.dispose();
     _addressController.dispose();
+    _swarmQueryController.dispose();
+    _swarmResultSubscription?.cancel();
     super.dispose();
   }
 
@@ -548,6 +568,103 @@ class _BrowserScreenState extends State<BrowserScreen>
   }
 
   // ── Home screen (favourites + history) ───────────────────────────────────
+
+  Widget _buildSwarmSearchBody() {
+    return Padding(
+      padding: const EdgeInsets.all(12.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _swarmQueryController,
+                  decoration: const InputDecoration(
+                    labelText: 'Search torrents in Vault Swarm',
+                    border: OutlineInputBorder(),
+                  ),
+                  textInputAction: TextInputAction.search,
+                  onSubmitted: (_) => _startVaultSwarmSearch(),
+                ),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton(
+                onPressed: _swarmSearching ? null : _startVaultSwarmSearch,
+                child: Text(_swarmSearching ? 'Searching...' : 'Search'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Expanded(
+            child: _swarmSearchResults.isEmpty
+                ? Center(
+                    child: Text(
+                      _swarmSearching
+                          ? 'Waiting for Vault Swarm results...'
+                          : 'No results. Enter a query to search in Vault Swarm.',
+                      style: const TextStyle(color: Colors.white70),
+                    ),
+                  )
+                : ListView.separated(
+                    itemCount: _swarmSearchResults.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final item = _swarmSearchResults[index];
+                      return ListTile(
+                        leading: const Icon(Icons.power),
+                        title: Text(item.name),
+                        subtitle: Text('Size: ${item.size ?? 0} • Responder: ${item.responderId}'),
+                        trailing: ElevatedButton.icon(
+                          icon: const Icon(Icons.download),
+                          label: const Text('Download'),
+                          onPressed: item.magnetLink.isNotEmpty
+                              ? () async {
+                                  try {
+                                    await TorrentService.instance.addTorrentFromMagnet(item.magnetLink);
+                                    if (!mounted) return;
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('Magnet added to torrent queue')),
+                                    );
+                                  } catch (e) {
+                                    if (!mounted) return;
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text('Failed to add magnet: $e')),
+                                    );
+                                  }
+                                }
+                              : null,
+                        ),
+                      );
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _startVaultSwarmSearch() {
+    final query = _swarmQueryController.text.trim();
+    if (query.isEmpty) return;
+
+    setState(() {
+      _swarmSearching = true;
+      _swarmSearchResults = [];
+    });
+
+    SearchService.instance.broadcastSearch(query).then((_) {
+      // in response callback subscription handles results
+    }).catchError((e) {
+      if (!mounted) return;
+      setState(() {
+        _swarmSearching = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Vault Swarm search failed: $e')),
+      );
+    });
+  }
 
   Widget _buildHomeScreen(ThemeData theme) {
     return SingleChildScrollView(
@@ -741,17 +858,45 @@ class _BrowserScreenState extends State<BrowserScreen>
     final column = Column(
       children: [
         _buildTopBar(theme),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8.0),
+          child: Row(
+            children: [
+              const Text('Search Source:'),
+              const SizedBox(width: 8),
+              DropdownButton<SearchSource>(
+                value: _searchSource,
+                items: const [
+                  DropdownMenuItem(
+                    value: SearchSource.web,
+                    child: Text('Web'),
+                  ),
+                  DropdownMenuItem(
+                    value: SearchSource.vaultSwarm,
+                    child: Text('Vault Swarm'),
+                  ),
+                ],
+                onChanged: (value) {
+                  if (value == null) return;
+                  setState(() => _searchSource = value);
+                },
+              ),
+            ],
+          ),
+        ),
         if (isLoading)
           LinearProgressIndicator(
             value: Platform.isWindows ? null : _progress,
             minHeight: 2,
           ),
         Expanded(
-          child: _showHomeScreen
-              ? _buildHomeScreen(theme)
-              : _lastLoadError != null
-              ? _buildLoadError()
-              : _buildWebViewBody(),
+          child: _searchSource == SearchSource.web
+              ? (_showHomeScreen
+                  ? _buildHomeScreen(theme)
+                  : _lastLoadError != null
+                      ? _buildLoadError()
+                      : _buildWebViewBody())
+              : _buildSwarmSearchBody(),
         ),
       ],
     );

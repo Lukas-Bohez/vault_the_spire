@@ -115,19 +115,23 @@ class _DMScreenState extends State<DMScreen> {
                       final m = _messages[index];
                       final mentionsCurrent = ChatService.instance
                           .messageMentions(widget.user, m.text);
+                      final isMe = m.author == widget.user;
                       return ListTile(
+                        tileColor: isMe
+                            ? Theme.of(context).colorScheme.primaryContainer
+                            : Theme.of(context).colorScheme.surfaceVariant,
                         title: Text(
                           '${m.author} • ${m.timestamp.hour}:${m.timestamp.minute.toString().padLeft(2, '0')}',
                         ),
                         subtitle: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
+                            SelectableText(
                               m.text,
                               style: TextStyle(
                                 color: mentionsCurrent
                                     ? Colors.orangeAccent
-                                    : null,
+                                    : Theme.of(context).colorScheme.onSurface,
                               ),
                             ),
                             Wrap(
@@ -306,6 +310,10 @@ class _DMScreenState extends State<DMScreen> {
                         ),
                       TextField(
                         controller: _controller,
+                        textInputAction: TextInputAction.send,
+                        onSubmitted: (_) async {
+                          await _send();
+                        },
                         decoration: InputDecoration(
                           hintText: _replyTarget != null
                               ? 'Replying to ${_replyTarget!.author}'

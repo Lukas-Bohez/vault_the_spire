@@ -81,6 +81,8 @@ class TorrentEngineService {
     return nodes;
   }
 
+  int get activeSpiresCount => currentDhtNodeCount;
+
   int get totalPeerCount {
     int peers = 0;
     for (final task in _tasks.values) {

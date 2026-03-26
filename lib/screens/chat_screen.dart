@@ -163,7 +163,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                     ?.copyWith(fontWeight: FontWeight.bold),
                               ),
                               const SizedBox(height: 4),
-                              Text(m.text),
+                              SelectableText(m.text),
                               const SizedBox(height: 6),
                               Text(
                                 '${ts.hour.toString().padLeft(2, '0')}:${ts.minute.toString().padLeft(2, '0')}',
@@ -226,6 +226,9 @@ class _ChatScreenState extends State<ChatScreen> {
                           minLines: 1,
                           maxLines: 6,
                           keyboardType: TextInputType.multiline,
+                          onSubmitted: (_) async {
+                            await _send();
+                          },
                           decoration: const InputDecoration(
                             hintText: 'Type a message...',
                             border: OutlineInputBorder(),

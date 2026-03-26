@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
@@ -6,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 import 'package:vault_the_spire/bittorrent/bencode.dart';
+import 'package:vault_the_spire/vault_swarm/vault_swarm.dart';
 import 'package:vault_the_spire/bittorrent/magnet_link.dart';
 import 'package:vault_the_spire/bittorrent/torrent_file.dart';
 import 'package:vault_the_spire/db/torrents_dao.dart';
@@ -416,8 +418,54 @@ class TorrentService {
 
   Future<void> addTorrentFromMagnet(String uri) => addTorrentFromMagnetLink(uri);
 
-  Future<void> addTorrentFromMagnetLink(String uri) async {
-    final magnet = MagnetLink.parse(uri);
+  Future<void> handleIncomingSearch(String query, {required String requesterId}) async {
+    final lowerQuery = query.toLowerCase().trim();
+    if (lowerQuery.isEmpty) return;
+
+    final all = await allTorrents();
+    final matches = all.where((torrent) {
+      final status = torrent.status?.toLowerCase() ?? '';
+      final isComplete = status.contains('complete') || status.contains('seed');
+      final nameMatch = torrent.name.toLowerCase().contains(lowerQuery);
+      return isComplete && nameMatch;
+    }).toList();
+
+    for (final match in matches) {
+      await VaultSwarm.instance.broadcastMessage('swarm_search', {
+        'type': 'search_response',
+        'payload': {
+          'requesterId': requesterId,
+          'responderId': 'local',
+          'query': query,
+          'result': {
+            'torrentId': match.id,
+            'name': match.name,
+            'size': match.totalSize,
+            'magnetLink': match.magnetLink ?? '',
+            'responderId': 'local',
+          },
+        },
+      });
+    }
+  }
+
+  Future<void> addTorrentFromMagnetLink(dynamic uri) async {
+    String magnetUri;
+    try {
+      if (uri is Uint8List) {
+        magnetUri = utf8.decode(uri);
+      } else if (uri is String) {
+        magnetUri = uri;
+      } else {
+        magnetUri = uri?.toString() ?? '';
+      }
+    } catch (e) {
+      final message = 'Invalid magnet URI type: ${uri.runtimeType}';
+      debugPrint('$message: $e');
+      throw FormatException(message);
+    }
+
+    final magnet = MagnetLink.parse(magnetUri);
     final infoHash = magnet.infoHashV1 ?? magnet.infoHashV2;
     if (infoHash == null || infoHash.isEmpty) {
       throw FormatException('Magnet link must contain btih or btmh infohash');

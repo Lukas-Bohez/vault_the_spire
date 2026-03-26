@@ -1,9 +1,12 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'dart:async';
+
+import 'package:flutter/material.dart';
 import 'package:vault_the_spire/screens/browser_screen.dart';
-import 'package:vault_the_spire/screens/messages_screen.dart';
+import 'package:vault_the_spire/screens/chat_hub_screen.dart';
 import 'package:vault_the_spire/screens/settings_screen.dart';
 import 'package:vault_the_spire/screens/torrents_screen.dart';
-import 'package:vault_the_spire/services/message_service.dart';
+import 'package:vault_the_spire/services/theme_service.dart';
+import 'package:vault_the_spire/services/torrent_engine_service.dart';
 import 'package:vault_the_spire/widgets/network_health_indicator.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -15,7 +18,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
-  int _unreadPeerCount = 0;
+  int _activeSpires = 0;
 
   static const _titles = [
     'Dashboard',
@@ -24,21 +27,21 @@ class _HomeScreenState extends State<HomeScreen> {
     'Settings',
   ];
 
+  Timer? _swarmPulseTimer;
+
   @override
   void initState() {
     super.initState();
-    _refreshUnreadPeerBadge();
+    _refreshActiveSpires();
+    _swarmPulseTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      _refreshActiveSpires();
+    });
   }
 
-  Future<void> _refreshUnreadPeerBadge() async {
-    final messages = await MessageService.instance.getMessages();
-    final peerCount = messages
-        .where((m) => m.sender != 'me' && !m.isSent)
-        .map((m) => m.sender)
-        .toSet()
-        .length;
+  Future<void> _refreshActiveSpires() async {
+    final count = TorrentEngineService.instance.activeSpiresCount;
     if (!mounted) return;
-    setState(() => _unreadPeerCount = peerCount);
+    setState(() => _activeSpires = count);
   }
 
   Widget _buildChatIcon(bool selected) {
@@ -46,7 +49,7 @@ class _HomeScreenState extends State<HomeScreen> {
     const baseSelectedIcon = Icons.chat_bubble;
 
     final icon = Icon(selected ? baseSelectedIcon : baseIcon);
-    if (_unreadPeerCount <= 0) {
+    if (_activeSpires <= 0) {
       return icon;
     }
 
@@ -66,7 +69,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
             child: Text(
-              '$_unreadPeerCount',
+              '$_activeSpires',
               style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
               textAlign: TextAlign.center,
             ),
@@ -77,11 +80,28 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   @override
+  void dispose() {
+    _swarmPulseTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text('VaultTheSpire - ${_titles[_selectedIndex]}'),
-        actions: const [NetworkHealthIndicator()],
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.brightness_6),
+            tooltip: 'Toggle theme',
+            onPressed: () {
+              final current = ThemeService.instance.themeMode;
+              final next = current == ThemeMode.dark ? ThemeMode.light : ThemeMode.dark;
+              ThemeService.instance.setThemeMode(next);
+            },
+          ),
+          const NetworkHealthIndicator(),
+        ],
       ),
       body: Row(
         children: [
@@ -126,7 +146,7 @@ class _HomeScreenState extends State<HomeScreen> {
               children: const [
                 TorrentsScreen(),
                 BrowserScreen(),
-                MessagesScreen(),
+                ChatHubScreen(),
                 SettingsScreen(),
               ],
             ),
