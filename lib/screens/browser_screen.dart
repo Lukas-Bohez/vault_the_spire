@@ -1,4 +1,5 @@
 ﻿import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -290,11 +291,27 @@ class _BrowserScreenState extends State<BrowserScreen>
   bool _isTorrentOrMagnetUrl(String url) =>
       TorrentService.isTorrentOrMagnetUrl(url);
 
-  Future<void> _handleTorrentOrMagnetUrl(String url) async {
-    if (url.trim().isEmpty) return;
+  Future<String> _ensureString(dynamic value) async {
+    if (value == null) return '';
+    if (value is String) return value;
+    if (value is Uri) return value.toString();
+    if (value is Uint8List) {
+      try {
+        return utf8.decode(value, allowMalformed: true);
+      } catch (_) {
+        return value.toString();
+      }
+    }
+    return value.toString();
+  }
+
+  Future<void> _handleTorrentOrMagnetUrl(dynamic url) async {
+    final safeUrl = await _ensureString(url);
+    if (safeUrl.trim().isEmpty) return;
+    final normalizedUrl = safeUrl.trim();
     try {
-      if (url.toLowerCase().startsWith('magnet:')) {
-        await TorrentService.instance.addTorrentFromMagnetLink(url);
+      if (normalizedUrl.toLowerCase().startsWith('magnet:')) {
+        await TorrentService.instance.addTorrentFromMagnetLink(normalizedUrl);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Magnet link added to torrent queue')),

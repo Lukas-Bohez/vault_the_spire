@@ -27,6 +27,25 @@ class TorrentService {
 
   static final TorrentService instance = TorrentService._();
 
+  static String _ensureString(dynamic value) {
+    if (value == null) return '';
+    if (value is String) return value;
+    if (value is Uint8List) {
+      try {
+        return utf8.decode(value, allowMalformed: true);
+      } catch (e) {
+        debugPrint('TorrentService._ensureString decode error: $e');
+        return value.toString();
+      }
+    }
+    try {
+      return value.toString();
+    } catch (e) {
+      debugPrint('TorrentService._ensureString toString error: $e');
+      return '';
+    }
+  }
+
   static bool isTorrentOrMagnetUrl(String url) {
     final lower = url.trim().toLowerCase();
     return lower.startsWith('magnet:') || lower.endsWith('.torrent');
@@ -373,9 +392,11 @@ class TorrentService {
 
     final bytes = await file.readAsBytes();
     final metadata = TorrentFileParser.parse(bytes);
+    final infoHash = _ensureString(metadata.infoHashV1);
+    final torrentName = _ensureString(metadata.name);
 
     final existing = await TorrentsDao.instance.getTorrentById(
-      metadata.infoHashV1,
+      infoHash,
     );
     if (existing != null) {
       await TorrentEngineService.instance.forceRefresh(existing.id);
@@ -387,14 +408,14 @@ class TorrentService {
       (sum, entry) => sum + entry.length,
     );
     final magnetLink = createMagnetLink(
-      metadata.infoHashV1,
-      metadata.name,
+      infoHash,
+      torrentName,
       metadata.trackers,
     );
 
     final torrent = TorrentModel(
-      id: metadata.infoHashV1,
-      name: metadata.name,
+      id: infoHash,
+      name: torrentName,
       type: 'torrent_file',
       totalSize: totalSize,
       totalPieces: metadata.pieceHashes.length,
@@ -450,20 +471,7 @@ class TorrentService {
   }
 
   Future<void> addTorrentFromMagnetLink(dynamic uri) async {
-    String magnetUri;
-    try {
-      if (uri is Uint8List) {
-        magnetUri = utf8.decode(uri);
-      } else if (uri is String) {
-        magnetUri = uri;
-      } else {
-        magnetUri = uri?.toString() ?? '';
-      }
-    } catch (e) {
-      final message = 'Invalid magnet URI type: ${uri.runtimeType}';
-      debugPrint('$message: $e');
-      throw FormatException(message);
-    }
+    final magnetUri = _ensureString(uri);
 
     final magnet = MagnetLink.parse(magnetUri);
     final infoHash = magnet.infoHashV1 ?? magnet.infoHashV2;

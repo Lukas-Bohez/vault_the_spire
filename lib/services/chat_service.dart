@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 import 'package:vault_the_spire/db/chat_dao.dart';
 import 'package:vault_the_spire/db/conversation_dao.dart';
@@ -298,6 +300,25 @@ class ChatService {
         .replaceAll(RegExp(r'<[^>]*>'), '');
   }
 
+  String _ensureString(dynamic value) {
+    if (value == null) return '';
+    if (value is String) return value;
+    if (value is Uint8List) {
+      try {
+        return utf8.decode(value, allowMalformed: true);
+      } catch (e) {
+        debugPrint('ChatService._ensureString decode error: $e');
+        return value.toString();
+      }
+    }
+    try {
+      return value.toString();
+    } catch (e) {
+      debugPrint('ChatService._ensureString toString error: $e');
+      return '';
+    }
+  }
+
   Future<void> _listenForSwarmMessages() async {
     _swarmSubscription ??= VaultSwarm.instance.messageStream.listen((
       event,
@@ -330,6 +351,9 @@ class ChatService {
         final messageMap = payload['message'] as Map<String, dynamic>?;
         final conversationId = payload['conversationId'] as String?;
         if (messageMap != null && conversationId != null) {
+          messageMap['content'] = _ensureString(messageMap['content']);
+          messageMap['sender_id'] = _ensureString(messageMap['sender_id']);
+          messageMap['conversation_id'] = _ensureString(messageMap['conversation_id']);
           final mv = DmMessage.fromMap(messageMap);
           await DmMessagesDao.instance.insertMessage(mv);
         }
