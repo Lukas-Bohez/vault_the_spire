@@ -5,6 +5,14 @@ import 'package:vault_the_spire/models/server.dart';
 import 'package:vault_the_spire/services/chat_service.dart';
 import 'package:vault_the_spire/services/sound_service.dart';
 
+class _ChatSendMessageIntent extends Intent {
+  const _ChatSendMessageIntent();
+}
+
+class _ChatInsertNewlineIntent extends Intent {
+  const _ChatInsertNewlineIntent();
+}
+
 class ChatScreen extends StatefulWidget {
   final ServerModel server;
   final String channelId;
@@ -161,47 +169,60 @@ class _ChatScreenState extends State<ChatScreen> {
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-              child: RawKeyboardListener(
-                focusNode: _focusNode,
-                onKey: (event) async {
-                  if (event is RawKeyDownEvent &&
-                      event.logicalKey == LogicalKeyboardKey.enter) {
-                    if (event.isShiftPressed) {
-                      final selection = _controller.selection;
-                      final text = _controller.text;
-                      final newText = text.replaceRange(
-                        selection.start,
-                        selection.end,
-                        '\n',
-                      );
-                      _controller.value = TextEditingValue(
-                        text: newText,
-                        selection: TextSelection.collapsed(
-                          offset: selection.start + 1,
-                        ),
-                      );
-                    } else {
-                      await _send();
-                    }
-                  }
+              child: Shortcuts(
+                shortcuts: <LogicalKeySet, Intent>{
+                  LogicalKeySet(LogicalKeyboardKey.shift, LogicalKeyboardKey.enter):
+                      const _ChatInsertNewlineIntent(),
+                  LogicalKeySet(LogicalKeyboardKey.enter):
+                      const _ChatSendMessageIntent(),
                 },
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        focusNode: _focusNode,
-                        controller: _controller,
-                        minLines: 1,
-                        maxLines: 6,
-                        keyboardType: TextInputType.multiline,
-                        decoration: const InputDecoration(
-                          hintText: 'Type a message...',
-                          border: OutlineInputBorder(),
+                child: Actions(
+                  actions: <Type, Action<Intent>>{
+                    _ChatSendMessageIntent:
+                        CallbackAction<_ChatSendMessageIntent>(
+                      onInvoke: (intent) async {
+                        await _send();
+                        return null;
+                      },
+                    ),
+                    _ChatInsertNewlineIntent:
+                        CallbackAction<_ChatInsertNewlineIntent>(
+                      onInvoke: (intent) {
+                        final selection = _controller.selection;
+                        final text = _controller.text;
+                        final newText = text.replaceRange(
+                          selection.start,
+                          selection.end,
+                          '\n',
+                        );
+                        _controller.value = TextEditingValue(
+                          text: newText,
+                          selection: TextSelection.collapsed(
+                            offset: selection.start + 1,
+                          ),
+                        );
+                        return null;
+                      },
+                    ),
+                  },
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          focusNode: _focusNode,
+                          controller: _controller,
+                          minLines: 1,
+                          maxLines: 6,
+                          keyboardType: TextInputType.multiline,
+                          decoration: const InputDecoration(
+                            hintText: 'Type a message...',
+                            border: OutlineInputBorder(),
+                          ),
                         ),
                       ),
-                    ),
-                    IconButton(icon: const Icon(Icons.send), onPressed: _send),
-                  ],
+                      IconButton(icon: const Icon(Icons.send), onPressed: _send),
+                    ],
+                  ),
                 ),
               ),
             ),
