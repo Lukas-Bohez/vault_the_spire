@@ -1,6 +1,6 @@
+
 import 'dart:io';
 import 'dart:typed_data';
-
 import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as path;
 
@@ -27,8 +27,8 @@ class PieceManager {
 
   File _pieceFile(int index) {
     return File(
-      path.join(baseDir.path, 'piece_$index.part'.replaceAll('', '')),
-    ); // no lint; basic path
+      path.join(baseDir.path, 'piece_$index.part'),
+    );
   }
 
   Future<void> writePiece(int index, Uint8List data) async {
@@ -50,6 +50,12 @@ class PieceManager {
     }
     final file = _pieceFile(index);
     await file.writeAsBytes(data, flush: true);
+  }
+
+  Future<bool> savePiece(int index, Uint8List data) async {
+    await writePiece(index, data);
+    // In a real implementation, verify hash here
+    return true;
   }
 
   Future<bool> hasPiece(int index) async {

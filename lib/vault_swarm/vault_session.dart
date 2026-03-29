@@ -1,6 +1,6 @@
-import 'dart:convert';
-import 'dart:io';
 import 'dart:typed_data';
+
+import 'dart:io';
 
 import 'package:collection/collection.dart';
 import 'package:vault_the_spire/bittorrent/piece_manager.dart';
@@ -8,35 +8,39 @@ import 'package:vault_the_spire/bittorrent/torrent_session.dart';
 import 'package:vault_the_spire/vault_swarm/vault_link.dart';
 import 'package:vault_the_spire/vault_swarm/vault_piece.dart';
 
+
 class VaultSession extends TorrentSession {
   final VaultLink link;
   final Uint8List key;
+  final PieceManager pieceManager;
 
-  VaultSession._(this.link, this.key, PieceManager pieceManager)
-    : super(metadata: null, pieceManager: pieceManager, dhtEngine: null);
+  VaultSession({
+    required this.link,
+    required this.key,
+    required String infoHash,
+    required String name,
+    required List<String> trackers,
+    required int totalSize,
+    required int pieceLength,
+    required int totalPieces,
+    required List<String> pieceHashesHex,
+    required Directory appDirectory,
+  })  : pieceManager = PieceManager(
+          infoHash: infoHash,
+          pieceLength: pieceLength,
+          totalPieces: totalPieces,
+          appDirectory: appDirectory,
+        ),
+        super(
+          infoHash: infoHash,
+          name: name,
+          trackers: trackers,
+          totalSize: totalSize,
+          pieceLength: pieceLength,
+          totalPieces: totalPieces,
+          pieceHashesHex: pieceHashesHex,
+        );
 
-  static Future<VaultSession> createFromVaultLink(
-    String vaultUri,
-    Directory appDirectory,
-    int totalPieces,
-    int pieceLength,
-  ) async {
-    final link = VaultLink.parse(vaultUri);
-    final decodedKey = base64Url.decode(link.keyBase64);
-    if (decodedKey.length != 32) {
-      throw ArgumentError('vault key invalid length');
-    }
-    final manager = PieceManager(
-      infoHash: link.infoHash,
-      pieceLength: pieceLength,
-      totalPieces: totalPieces,
-      appDirectory: appDirectory,
-    );
-    await manager.initialize();
-    return VaultSession._(link, decodedKey, manager);
-  }
-
-  @override
   Future<void> onPieceReceived(int index, Uint8List data) async {
     final decryptedPiece = VaultPiece.decryptPiece(data, key);
     await pieceManager.writePiece(index, decryptedPiece);

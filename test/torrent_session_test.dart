@@ -1,44 +1,28 @@
 import 'dart:io';
-import 'dart:typed_data';
+// import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:vault_the_spire/bittorrent/bencode.dart';
-import 'package:vault_the_spire/bittorrent/dht.dart';
 import 'package:vault_the_spire/bittorrent/torrent_session.dart';
 
 void main() {
-  test('Open simple torrent session from torrent data', () async {
+  test('TorrentSession emits status updates', () async {
     final tempDir = await Directory.systemTemp.createTemp('vault_ts');
-    final dht = DhtEngine(DhtRoutingTable(DhtEngine.generateNodeId()));
-
-    final infoDict = {
-      'name': 'test',
-      'piece length': 16384,
-      'pieces': Uint8List.fromList(List.generate(20, (i) => i)),
-      'length': 12345,
-    };
-
-    final torrentMap = {'info': infoDict};
-    final torrentBytes = bencode(torrentMap);
-
-    final session = await TorrentSession.openFromTorrentFile(
-      torrentBytes,
-      tempDir,
-      dht,
+    final session = TorrentSession(
+      infoHash: '0123456789abcdef0123456789abcdef01234567',
+      name: 'test',
+      trackers: [],
+      totalSize: 16384,
+      pieceLength: 16384,
+      totalPieces: 1,
+      pieceHashesHex: List.generate(1, (i) => '00' * 20),
     );
-    expect(session.metadata!.name, 'test');
-
     final statuses = <TorrentStatus>[];
     final sub = session.statusStream.listen(statuses.add);
-
     await session.start();
     await Future.delayed(const Duration(milliseconds: 200));
-
     expect(statuses.isNotEmpty, isTrue);
-    expect(statuses.last.state, 'idle');
-
+    expect(statuses.last.name, 'test');
     await sub.cancel();
-    session.dispose();
     await tempDir.delete(recursive: true);
   });
 }

@@ -164,7 +164,7 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
                 return const Center(child: CircularProgressIndicator());
               }
               if (snapshot.hasError) {
-                return Center(child: Text('Error: ${snapshot.error}'));
+                return Center(child: Text('Error: {snapshot.error}'));
               }
               final torrents = snapshot.data ?? [];
               if (torrents.isEmpty) {
@@ -181,80 +181,90 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
                 itemCount: torrents.length,
                 itemBuilder: (context, index) {
                   final torrent = torrents[index];
-                  final progress = torrent.progress.clamp(0.0, 1.0);
-                  final isActive = (torrent.status ?? '').toLowerCase().contains('download') ||
-                      (torrent.status ?? '').toLowerCase().contains('seed');
-
-                  final isComplete = progress >= 1.0 ||
-                      (torrent.status ?? '').toLowerCase() == 'complete';
-
-                  return Card(
-                    margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    child: ListTile(
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                      title: Text(torrent.name, overflow: TextOverflow.ellipsis),
-                      subtitle: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const SizedBox(height: 6),
-                          LinearProgressIndicator(value: progress),
-                          const SizedBox(height: 4),
-                          Text('${_statusLabel(torrent)} • ${(progress * 100).toStringAsFixed(1)}%'),
-                        ],
-                      ),
-                      onLongPress: () {
-                        final magnet = torrent.magnetLink;
-                        if (magnet != null && magnet.isNotEmpty) {
-                          Clipboard.setData(ClipboardData(text: magnet));
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Magnet link copied to clipboard')),
-                          );
-                        } else {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('No magnet link available for this torrent')),
-                          );
-                        }
-                      },
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (isComplete)
-                            IconButton(
-                              icon: const Icon(Icons.folder_open),
-                              tooltip: 'Open folder',
-                              onPressed: () => _openTorrentFolder(torrent),
-                            )
-                          else
-                            IconButton(
-                              icon: Icon(isActive ? Icons.pause : Icons.play_arrow),
-                              tooltip: isActive ? 'Pause' : 'Play',
-                              onPressed: () => _toggleTorrent(torrent),
-                            ),
-                          IconButton(
-                            icon: const Icon(Icons.copy),
-                            tooltip: 'Copy magnet link',
-                            onPressed: () {
-                              final magnet = torrent.magnetLink;
-                              if (magnet != null && magnet.isNotEmpty) {
-                                Clipboard.setData(ClipboardData(text: magnet));
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('Magnet link copied to clipboard')),
-                                );
-                              } else {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('No magnet link available for this torrent')),
-                                );
-                              }
-                            },
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.delete),
-                            tooltip: 'Delete',
-                            onPressed: () => _deleteTorrent(torrent),
-                          ),
-                        ],
-                      ),
+                  return StreamBuilder<TorrentEngineStatus>(
+                    stream: TorrentEngineService.instance.statusStream.where(
+                      (status) => status.torrentId == torrent.id,
                     ),
+                    builder: (context, statusSnapshot) {
+                      final status = statusSnapshot.data;
+                      final progress = status?.progress ?? torrent.progress.clamp(0.0, 1.0);
+                      final isActive = (torrent.status ?? '').toLowerCase().contains('download') ||
+                          (torrent.status ?? '').toLowerCase().contains('seed');
+                      final isComplete = progress >= 1.0 ||
+                          (torrent.status ?? '').toLowerCase() == 'complete';
+                      return Card(
+                        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        child: ListTile(
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                          title: Text(torrent.name, overflow: TextOverflow.ellipsis),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const SizedBox(height: 6),
+                              LinearProgressIndicator(value: progress),
+                              const SizedBox(height: 4),
+                              Text(
+                                status != null
+                                    ? '${status.statusMessage} • ${(progress * 100).toStringAsFixed(1)}% • ${status.peers} peers • ${(status.downloadSpeed / 1024).toStringAsFixed(1)} KB/s'
+                                    : '${_statusLabel(torrent)} • ${(progress * 100).toStringAsFixed(1)}%',
+                              ),
+                            ],
+                          ),
+                          onLongPress: () {
+                            final magnet = torrent.magnetLink;
+                            if (magnet != null && magnet.isNotEmpty) {
+                              Clipboard.setData(ClipboardData(text: magnet));
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('Magnet link copied to clipboard')),
+                              );
+                            } else {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(content: Text('No magnet link available for this torrent')),
+                              );
+                            }
+                          },
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (isComplete)
+                                IconButton(
+                                  icon: const Icon(Icons.folder_open),
+                                  tooltip: 'Open folder',
+                                  onPressed: () => _openTorrentFolder(torrent),
+                                )
+                              else
+                                IconButton(
+                                  icon: Icon(isActive ? Icons.pause : Icons.play_arrow),
+                                  tooltip: isActive ? 'Pause' : 'Play',
+                                  onPressed: () => _toggleTorrent(torrent),
+                                ),
+                              IconButton(
+                                icon: const Icon(Icons.copy),
+                                tooltip: 'Copy magnet link',
+                                onPressed: () {
+                                  final magnet = torrent.magnetLink;
+                                  if (magnet != null && magnet.isNotEmpty) {
+                                    Clipboard.setData(ClipboardData(text: magnet));
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('Magnet link copied to clipboard')),
+                                    );
+                                  } else {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(content: Text('No magnet link available for this torrent')),
+                                    );
+                                  }
+                                },
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete),
+                                tooltip: 'Delete',
+                                onPressed: () => _deleteTorrent(torrent),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
                   );
                 },
               );

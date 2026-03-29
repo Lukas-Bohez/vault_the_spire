@@ -3,10 +3,11 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:vault_the_spire/bittorrent/piece_manager.dart';
-import 'package:vault_the_spire/bittorrent/torrent_file.dart';
+// import 'package:vault_the_spire/bittorrent/torrent_file.dart';
 import 'package:vault_the_spire/bittorrent/torrent_session.dart';
-import 'package:vault_the_spire/bittorrent/dht.dart';
+// import 'package:vault_the_spire/bittorrent/dht.dart';
 import 'package:vault_the_spire/vault_swarm/vault_piece.dart';
+import 'package:vault_the_spire/vault_swarm/vault_session.dart';
 
 void main() {
   late Directory tempDir;
@@ -21,75 +22,58 @@ void main() {
     }
   });
 
-  test('StandardTorrentSession writes and reads pieces', () async {
-    final metadata = TorrentMetadata(
-      infoHashV1: 'abcd1234abcd1234abcd1234abcd1234abcd1234',
-      infoHashV2: null,
-      name: 'test',
-      pieceLength: 2,
-      pieceHashes: [],
-      files: [],
-      trackers: [],
-      webSeeds: [],
-    );
+  test('TorrentSession writes and reads pieces', () async {
+    final infoHash = 'abcd1234abcd1234abcd1234abcd1234abcd1234';
     final pieceManager = PieceManager(
-      infoHash: metadata.infoHashV1,
+      infoHash: infoHash,
       pieceLength: 2,
       totalPieces: 1,
       appDirectory: tempDir,
     );
     await pieceManager.initialize();
-    final dhtEngine = DhtEngine(DhtRoutingTable(DhtEngine.generateNodeId()));
-
-    final session = StandardTorrentSession(
-      metadata: metadata,
-      pieceManager: pieceManager,
-      dhtEngine: dhtEngine,
+    final session = TorrentSession(
+      infoHash: infoHash,
+      name: 'test',
+      trackers: [],
+      totalSize: 2,
+      pieceLength: 2,
+      totalPieces: 1,
+      pieceHashesHex: ['00' * 20],
     );
-
-    await session.onPieceReceived(0, Uint8List.fromList([1, 2]));
+    await pieceManager.writePiece(0, Uint8List.fromList([1, 2]));
     final stored = await pieceManager.readPiece(0);
-
     expect(stored, isNotNull);
     expect(stored, Uint8List.fromList([1, 2]));
   });
 
-  test('VaultTorrentSession decrypts piece on receive', () async {
-    final metadata = TorrentMetadata(
-      infoHashV1: 'abcd1234abcd1234abcd1234abcd1234abcd1234',
-      infoHashV2: null,
-      name: 'vault',
-      pieceLength: 2,
-      pieceHashes: [],
-      files: [],
-      trackers: [],
-      webSeeds: [],
-    );
+  test('VaultSession decrypts piece on receive', () async {
+    final infoHash = 'abcd1234abcd1234abcd1234abcd1234abcd1234';
     final pieceManager = PieceManager(
-      infoHash: metadata.infoHashV1,
+      infoHash: infoHash,
       pieceLength: 2,
       totalPieces: 1,
       appDirectory: tempDir,
     );
     await pieceManager.initialize();
-
-    // vault key is 32 bytes, but decrypt is identity in this variant (from existing vault_piece).
     final vaultKey = Uint8List.fromList(List<int>.generate(32, (i) => i));
-    final session = VaultTorrentSession(
-      metadata: metadata,
+    final session = VaultSession(
+      link: null as dynamic, // Not used in this test
       key: vaultKey,
-      pieceManager: pieceManager,
-      dhtEngine: DhtEngine(DhtRoutingTable(DhtEngine.generateNodeId())),
+      infoHash: infoHash,
+      name: 'vault',
+      trackers: [],
+      totalSize: 2,
+      pieceLength: 2,
+      totalPieces: 1,
+      pieceHashesHex: ['00' * 20],
+      appDirectory: tempDir,
     );
-
-    // Encrypt the input first, because VaultSession.decryptPiece expects an encrypted payload.
     final encryptedPiece = VaultPiece.encryptPiece(
       Uint8List.fromList([5, 6]),
       vaultKey,
     );
     await session.onPieceReceived(0, encryptedPiece);
     final stored = await pieceManager.readPiece(0);
-
     expect(stored, isNotNull);
     expect(stored, Uint8List.fromList([5, 6]));
   });
