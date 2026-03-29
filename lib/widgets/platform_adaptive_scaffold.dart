@@ -26,11 +26,12 @@ class AppShell extends StatelessWidget {
     ];
 
     if (isDesktop) {
+      final sidebarWidth = MediaQuery.of(context).size.width > 1400 ? 240.0 : 200.0;
       return Scaffold(
         body: Row(
           children: [
             SizedBox(
-              width: 220,
+              width: sidebarWidth,
               child: _Sidebar(items: navItems, currentPath: location),
             ),
             const VerticalDivider(width: 1),
