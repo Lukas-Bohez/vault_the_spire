@@ -123,7 +123,35 @@ class _ChatHubScreenState extends State<ChatHubScreen> {
                 return const Center(child: CircularProgressIndicator());
               }
               if (snapshot.hasError) {
-                return Center(child: Text('Error loading chats: ${snapshot.error}'));
+                return Center(
+                  child: Container(
+                    color: Colors.red.shade100,
+                    padding: const EdgeInsets.all(16),
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.error, color: Colors.red, size: 48),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Error loading chats:',
+                            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
+                          ),
+                          const SizedBox(height: 8),
+                          Text('${snapshot.error}', style: const TextStyle(color: Colors.red)),
+                          if (snapshot.stackTrace != null)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Text(
+                                snapshot.stackTrace.toString().split('\n').take(6).join('\n'),
+                                style: const TextStyle(fontSize: 12, color: Colors.red),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ),
+                );
               }
               final entries = snapshot.data ?? [];
               final filtered = _query.isEmpty

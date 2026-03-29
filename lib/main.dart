@@ -49,6 +49,24 @@ Future<void> main() async {
     debugPrint(stack.toString());
     return true; // handled
   };
+  ErrorWidget.builder = (FlutterErrorDetails details) {
+    return Material(
+      color: Colors.red.shade100,
+      child: Center(
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Text(
+              'Flutter Error:\n\n'
+              '${details.exceptionAsString()}\n\n'
+              '${details.stack?.toString().split('\n').take(8).join('\n') ?? ''}',
+              style: const TextStyle(color: Colors.red, fontSize: 16),
+            ),
+          ),
+        ),
+      ),
+    );
+  };
   await runZonedGuarded(
     () async {
       WidgetsFlutterBinding.ensureInitialized();

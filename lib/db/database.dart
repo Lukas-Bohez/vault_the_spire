@@ -59,7 +59,7 @@ class AppDatabase {
 
   Future<void> _onCreate(Database db, int version) async {
     await db.execute('''
-      CREATE TABLE torrents (
+      CREATE TABLE IF NOT EXISTS torrents (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
         total_size INTEGER,
@@ -87,7 +87,7 @@ class AppDatabase {
     ''');
 
     await db.execute('''
-      CREATE TABLE messages (
+      CREATE TABLE IF NOT EXISTS messages (
         id TEXT PRIMARY KEY,
         sender TEXT NOT NULL,
         recipient TEXT NOT NULL,
@@ -104,7 +104,7 @@ class AppDatabase {
 
   Future<void> _createChatTables(Database db) async {
     await db.execute('''
-      CREATE TABLE servers (
+      CREATE TABLE IF NOT EXISTS servers (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
         description TEXT,
@@ -114,7 +114,7 @@ class AppDatabase {
     ''');
 
     await db.execute('''
-      CREATE TABLE chat_messages (
+      CREATE TABLE IF NOT EXISTS chat_messages (
         id TEXT PRIMARY KEY,
         server_id TEXT NOT NULL,
         channel_id TEXT NOT NULL,
@@ -137,7 +137,7 @@ class AppDatabase {
 
   Future<void> _createDmTables(Database db) async {
     await db.execute('''
-      CREATE TABLE users (
+      CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
         username TEXT UNIQUE NOT NULL,
         status TEXT NOT NULL DEFAULT 'offline',
@@ -146,7 +146,7 @@ class AppDatabase {
     ''');
 
     await db.execute('''
-      CREATE TABLE conversations (
+      CREATE TABLE IF NOT EXISTS conversations (
         id TEXT PRIMARY KEY,
         participant1_id TEXT NOT NULL,
         participant2_id TEXT NOT NULL,
@@ -158,7 +158,7 @@ class AppDatabase {
     ''');
 
     await db.execute('''
-      CREATE TABLE dm_messages (
+      CREATE TABLE IF NOT EXISTS dm_messages (
         id TEXT PRIMARY KEY,
         conversation_id TEXT NOT NULL,
         sender_id TEXT NOT NULL,
@@ -171,7 +171,7 @@ class AppDatabase {
     ''');
 
     await db.execute('''
-      CREATE INDEX idx_dm_messages_conversation_timestamp
+      CREATE INDEX IF NOT EXISTS idx_dm_messages_conversation_timestamp
       ON dm_messages (conversation_id, timestamp);
     ''');
   }
