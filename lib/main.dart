@@ -11,7 +11,8 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:vault_the_spire/platform/desktop_window.dart';
 import 'package:vault_the_spire/platform/hotkeys.dart';
 import 'package:vault_the_spire/platform/notifications_desktop.dart';
-import './screens/home_screen.dart';
+// import './screens/home_screen.dart';
+import 'router.dart';
 import 'package:vault_the_spire/services/identity_service.dart';
 import 'package:vault_the_spire/services/settings_service.dart';
 import 'package:vault_the_spire/services/service_locator.dart';
@@ -159,12 +160,12 @@ class _MainAppState extends State<MainApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return MaterialApp.router(
       title: 'VaultTheSpire',
       theme: ThemeData.light(useMaterial3: true),
       darkTheme: ThemeData.dark(useMaterial3: true),
       themeMode: themeService.themeMode,
-      home: const HomeScreen(),
+      routerConfig: appRouter,
     );
   }
 }
