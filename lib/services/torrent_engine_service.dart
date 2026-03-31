@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:b_encode_decode/b_encode_decode.dart';
+import 'package:bittorrent_dht/bittorrent_dht.dart';
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart' as dt;
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
@@ -118,7 +119,6 @@ class TorrentEngineService {
         .add('[${DateTime.now().toIso8601String()}] $message');
   }
 
-
   List<String> getLogs(String torrentId) {
     return List.unmodifiable(_connectionLogs[torrentId] ?? []);
   }
@@ -139,9 +139,13 @@ class TorrentEngineService {
     // traversal internally via PortForwardingManager, so explicit setPort
     // API is not available.
     if (_defaultPortsBlocked) {
-      debugPrint('Default ports may be blocked; relying on ephemeral port binding.');
+      debugPrint(
+        'Default ports may be blocked; relying on ephemeral port binding.',
+      );
     } else {
-      debugPrint('Using ephemeral port binding (task chooses port automatically).');
+      debugPrint(
+        'Using ephemeral port binding (task chooses port automatically).',
+      );
     }
     // Nothing else to do; _TorrentTask will bind and forward in start().
   }
@@ -229,6 +233,15 @@ class TorrentEngineService {
     return '';
   }
 
+  Uint8List? _hexToBytes(String? hex) {
+    if (hex == null || hex.length % 2 != 0) return null;
+    final result = Uint8List(hex.length ~/ 2);
+    for (int i = 0; i < result.length; i++) {
+      result[i] = int.parse(hex.substring(i * 2, i * 2 + 2), radix: 16);
+    }
+    return result;
+  }
+
   Future<void> _refreshConnection(String torrentId, dt.TorrentTask task) async {
     debugPrint(
       'Refreshing connection for $torrentId: reannounce trackers and DHT bootstrap',
@@ -236,7 +249,20 @@ class TorrentEngineService {
     _log(torrentId, 'Triggered force refresh.');
 
     final trackers = _torrentTrackers[torrentId] ?? [];
-    final infoHash = (task as dynamic).metaInfo?.infoHash as Uint8List?;
+    final dynamic maybeInfoHash = (task as dynamic).metaInfo?.infoHash;
+    Uint8List? infoHash;
+    if (maybeInfoHash is Uint8List) {
+      infoHash = maybeInfoHash;
+    } else if (maybeInfoHash is String) {
+      infoHash = _hexToBytes(maybeInfoHash);
+      if (infoHash == null) {
+        debugPrint('[HealthCheck] infoHash hex parse failed: $maybeInfoHash');
+      }
+    } else if (maybeInfoHash != null) {
+      debugPrint(
+        '[HealthCheck] Unsupported infoHash type: ${maybeInfoHash.runtimeType}',
+      );
+    }
 
     if (infoHash != null) {
       for (final url in trackers) {
@@ -272,22 +298,28 @@ class TorrentEngineService {
     _healthCheckTimers[torrentId] = Timer.periodic(const Duration(seconds: 30), (
       timer,
     ) async {
-      final peers = task.connectedPeersNumber;
-      if (peers == 0) {
-        _peerlessCounters[torrentId] = (_peerlessCounters[torrentId] ?? 0) + 1;
-        _log(
-          torrentId,
-          'No peers for interval, peerless count ${_peerlessCounters[torrentId]}',
-        );
-        if (_peerlessCounters[torrentId]! >= 4) {
+      try {
+        final peers = task.connectedPeersNumber;
+        if (peers == 0) {
+          _peerlessCounters[torrentId] =
+              (_peerlessCounters[torrentId] ?? 0) + 1;
+          _log(
+            torrentId,
+            'No peers for interval, peerless count ${_peerlessCounters[torrentId]}',
+          );
+          if (_peerlessCounters[torrentId]! >= 4) {
+            _peerlessCounters[torrentId] = 0;
+            await _refreshConnection(torrentId, task);
+          }
+        } else {
+          if ((_peerlessCounters[torrentId] ?? 0) > 0) {
+            _log(torrentId, 'Peers returned at $peers connections');
+          }
           _peerlessCounters[torrentId] = 0;
-          await _refreshConnection(torrentId, task);
         }
-      } else {
-        if ((_peerlessCounters[torrentId] ?? 0) > 0) {
-          _log(torrentId, 'Peers returned at $peers connections');
-        }
-        _peerlessCounters[torrentId] = 0;
+      } catch (e, st) {
+        debugPrint('[HealthCheck] Error (non-fatal): $e');
+        debugPrint(st.toString());
       }
     });
   }
@@ -328,6 +360,13 @@ class TorrentEngineService {
     final saveDir = destinationPath?.trim().isNotEmpty == true
         ? destinationPath!
         : await _defaultDownloadDir();
+
+    debugPrint(
+      '[SAVEPATH] Using: $saveDir exists=${Directory(saveDir).existsSync()}',
+    );
+    if (!Directory(saveDir).existsSync()) {
+      await Directory(saveDir).create(recursive: true);
+    }
 
     final totalBytes = dtModel.files.fold<int>(0, (s, f) => s + f.length);
     if (totalBytes > 0 && (torrent.totalSize ?? 0) != totalBytes) {
@@ -438,9 +477,13 @@ class TorrentEngineService {
           if (msg is Map) {
             debugPrint('Metadata keys: ${msg.keys}');
             final rawName = msg['name'];
-            debugPrint('Top-level name type: ${rawName?.runtimeType}, isUint8List=${rawName is Uint8List}');
+            debugPrint(
+              'Top-level name type: ${rawName?.runtimeType}, isUint8List=${rawName is Uint8List}',
+            );
             final rawPieces = msg['pieces'];
-            debugPrint('Top-level pieces type: ${rawPieces?.runtimeType}, isUint8List=${rawPieces is Uint8List}');
+            debugPrint(
+              'Top-level pieces type: ${rawPieces?.runtimeType}, isUint8List=${rawPieces is Uint8List}',
+            );
             if (rawName is Uint8List) {
               try {
                 debugPrint('Top-level name decoded: ${utf8.decode(rawName)}');
@@ -453,7 +496,9 @@ class TorrentEngineService {
               debugPrint('info type: ${info?.runtimeType}');
               if (info is Map) {
                 final infoName = info['name'];
-                debugPrint('info.name type: ${infoName?.runtimeType}, isUint8List=${infoName is Uint8List}');
+                debugPrint(
+                  'info.name type: ${infoName?.runtimeType}, isUint8List=${infoName is Uint8List}',
+                );
                 if (infoName is Uint8List) {
                   try {
                     debugPrint('info.name decoded: ${utf8.decode(infoName)}');
@@ -487,6 +532,13 @@ class TorrentEngineService {
         ? destinationPath!
         : await _defaultDownloadDir();
 
+    debugPrint(
+      '[SAVEPATH] Using: $saveDir exists=${Directory(saveDir).existsSync()}',
+    );
+    if (!Directory(saveDir).existsSync()) {
+      await Directory(saveDir).create(recursive: true);
+    }
+
     final totalBytes = dtModel.files.fold<int>(0, (s, f) => s + f.length);
     if (totalBytes > 0) {
       await TorrentService.instance.updateTorrent(
@@ -519,9 +571,54 @@ class TorrentEngineService {
     _startHealthCheckTimer(torrent.id, task);
 
     // _TorrentTask uses ephemeral port binding and handles NAT traversal internally.
-    debugPrint('Skipping explicit setPort/UPnP/NAT-PMP API usage for dtorrent_task_v2.');
+    debugPrint(
+      'Skipping explicit setPort/UPnP/NAT-PMP API usage for dtorrent_task_v2.',
+    );
 
     await task.start();
+
+    final dht = task.dht;
+    if (dht != null) {
+      debugPrint('[S] task.dht is initialized');
+      dht.createListener()
+        ?..on<NewPeerEvent>((event) {
+          debugPrint('[S] NewPeerEvent from DHT: ${event.address}, infoHash=${event.infoHash}');
+          try {
+            task.addPeer(event.address, dt.PeerSource.dht, type: dt.PeerType.TCP);
+          } catch (e) {
+            debugPrint('[S] task.addPeer(dht) failed: $e');
+            try {
+              task.addPeer(event.address, dt.PeerSource.dht);
+            } catch (e2) {
+              debugPrint('[S] task.addPeer(dht) fallback failed: $e2');
+            }
+          }
+        });
+    } else {
+      debugPrint('[S] task.dht is null');
+    }
+
+    debugPrint('[TASK] started — calling resume if available');
+    try {
+      (task as dynamic).resume();
+    } catch (_) {}
+    try {
+      (task as dynamic).unpause();
+    } catch (_) {}
+    try {
+      (task as dynamic).download();
+    } catch (_) {}
+
+    final dynamic dynamicTask = task;
+    Timer.periodic(const Duration(seconds: 10), (_) {
+      try {
+        debugPrint('[S] dl=${dynamicTask.downloaded ?? 0} '
+            'peers=${dynamicTask.connectedPeersNumber ?? 0} '
+            'speed=${dynamicTask.currentDownloadSpeed ?? 0}');
+      } catch (e) {
+        debugPrint('[S] err: $e');
+      }
+    });
 
     // Announce to all trackers from magnet, parsed model, and fallback list
     final infoHash = dtModel.infoHashBuffer;
@@ -612,9 +709,7 @@ class TorrentEngineService {
     final filesType = normalizedInfo['files']?.runtimeType;
     debugPrint(' - files type: $filesType');
 
-    final torrentMap = <String, dynamic>{
-      'info': normalizedInfo,
-    };
+    final torrentMap = <String, dynamic>{'info': normalizedInfo};
 
     return dt.TorrentParser.parseFromMap(torrentMap);
   }
@@ -644,20 +739,17 @@ class TorrentEngineService {
   void _ensureInfoNameIsString(Map<String, dynamic> info) {
     final nameValue = info['name'];
     if (nameValue is List) {
-      final nameParts = nameValue
-          .where((e) => e != null)
-          .map((e) {
-            if (e is String) return e;
-            if (e is Uint8List) {
-              try {
-                return utf8.decode(e);
-              } catch (_) {
-                return e.toString();
-              }
-            }
+      final nameParts = nameValue.where((e) => e != null).map((e) {
+        if (e is String) return e;
+        if (e is Uint8List) {
+          try {
+            return utf8.decode(e);
+          } catch (_) {
             return e.toString();
-          })
-          .toList();
+          }
+        }
+        return e.toString();
+      }).toList();
       info['name'] = nameParts.join('/');
     } else if (nameValue is Uint8List) {
       try {
@@ -728,8 +820,8 @@ class TorrentEngineService {
       final key = entry.key is String
           ? entry.key as String
           : entry.key is Uint8List
-              ? utf8.decode(entry.key as Uint8List)
-              : entry.key.toString();
+          ? utf8.decode(entry.key as Uint8List)
+          : entry.key.toString();
       final value = entry.value;
       if (value is Map) {
         if (value.containsKey('')) {
@@ -754,12 +846,13 @@ class TorrentEngineService {
     return result;
   }
 
-
   dynamic _normalizeBencodeMap(dynamic value) {
     if (value is Map) {
       return Map<String, dynamic>.fromEntries(
         value.entries.map((entry) {
-          final key = entry.key is String ? entry.key as String : entry.key.toString();
+          final key = entry.key is String
+              ? entry.key as String
+              : entry.key.toString();
           return MapEntry(key, _normalizeBencodeMap(entry.value));
         }),
       );
@@ -790,8 +883,7 @@ class TorrentEngineService {
         );
         final torrent = await TorrentService.instance.getTorrentById(torrentId);
         if (torrent != null) {
-          await NotificationService.instance
-              .showDownloadComplete(torrent.name);
+          await NotificationService.instance.showDownloadComplete(torrent.name);
         }
         _cleanup(torrentId);
       })
