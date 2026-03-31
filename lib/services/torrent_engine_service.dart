@@ -106,29 +106,10 @@ class TorrentEngineService {
   }
 
   Future<void> _detectRestrictedNetwork() async {
-    final host = '1.1.1.1';
-    final blockedPorts = <int>[];
-    for (var port = 6881; port <= 6889; port++) {
-      try {
-        final s = await Socket.connect(
-          host,
-          port,
-          timeout: const Duration(seconds: 3),
-        );
-        s.destroy();
-      } catch (_) {
-        blockedPorts.add(port);
-      }
-    }
-    if (blockedPorts.length >= 7) {
-      _defaultPortsBlocked = true;
-      debugPrint(
-        'Network restriction detected: default bittorrent ports 6881-6889 may be blocked or filtered',
-      );
-    } else {
-      _defaultPortsBlocked = false;
-      debugPrint('Port probe done; blocked ports: $blockedPorts');
-    }
+    // Port probe was producing false positives on some networks.
+    // Peers are found via DHT/tracker, so do not force restrictions.
+    _defaultPortsBlocked = false;
+    debugPrint('Network restriction probe disabled; assuming unrestricted.');
   }
 
   void _log(String torrentId, String message) {
@@ -271,7 +252,11 @@ class TorrentEngineService {
     try {
       for (final node in (task as dynamic).metaInfo?.nodes ?? []) {
         if (node is Map && node['host'] != null && node['port'] != null) {
-          (task as dynamic).addDHTNode(node['host'], node['port']);
+          final host = node['host'];
+          final port = node['port'];
+          if (host is String && (port is int || port is String)) {
+            task.addDHTNode(Uri.parse('udp://$host:$port'));
+          }
         }
       }
     } catch (e, st) {
