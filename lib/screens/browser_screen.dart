@@ -65,6 +65,7 @@ class _BrowserScreenState extends State<BrowserScreen>
   bool _windowsCanGoForward = false;
   bool _windowsIsLoading = true;
   String? _lastLoadError;
+  String? _webViewError;
 
   Timer? _memoryPollTimer;
 
@@ -210,7 +211,15 @@ class _BrowserScreenState extends State<BrowserScreen>
         }
       });
 
-      await controller.initialize();
+      try {
+        await controller.initialize();
+      } catch (e) {
+        debugPrint('WebView init failed: $e');
+        if (mounted) {
+          setState(() => _webViewError = e.toString());
+        }
+        return;
+      }
 
       try {
         await controller.addScriptToExecuteOnDocumentCreated('''
@@ -832,12 +841,32 @@ class _BrowserScreenState extends State<BrowserScreen>
   // ── WebView body ──────────────────────────────────────────────────────────
 
   Widget _buildWebViewBody() {
+    if (_webViewError != null) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.web_asset_off, size: 48, color: Colors.grey),
+            const SizedBox(height: 16),
+            const Text('Browser unavailable on this device'),
+            const SizedBox(height: 8),
+            Text(
+              _webViewError!,
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      );
+    }
+
     if (Platform.isWindows) {
       if (_windowsWebViewController == null) {
         return const Center(child: CircularProgressIndicator());
       }
       return webview_windows.Webview(_windowsWebViewController!);
     }
+
     if (_webViewController == null) {
       return const Center(child: CircularProgressIndicator());
     }

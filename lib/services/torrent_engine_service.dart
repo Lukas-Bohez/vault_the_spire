@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math';
 
 import 'package:b_encode_decode/b_encode_decode.dart';
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart' as dt;
@@ -148,99 +147,32 @@ class TorrentEngineService {
   }
 
   Future<void> _configureTask(dt.TorrentTask task) async {
-    try {
-      (task as dynamic).setDHTEnabled(true);
-      debugPrint('Enabled DHT for torrent task');
-    } catch (e, st) {
-      debugPrint('Failed to setDHTEnabled: $e');
-      debugPrint(st.toString());
-    }
-    try {
-      (task as dynamic).setPEXEnabled(true);
-      debugPrint('Enabled PEX for torrent task');
-    } catch (e, st) {
-      debugPrint('Failed to setPEXEnabled: $e');
-      debugPrint(st.toString());
-    }
-    try {
-      (task as dynamic).setTrackerEnabled(true);
-      debugPrint('Enabled tracker support for torrent task');
-    } catch (e, st) {
-      debugPrint('Failed to setTrackerEnabled: $e');
-      debugPrint(st.toString());
-    }
-
+    // dtorrent_task_v2 enables DHT/tracker/PEX through internal defaults.
+    // CLI-level calls are not available in this API surface.
     await _mapPorts(task);
     _addDhtBootstrapNodes(task);
   }
 
   Future<void> _mapPorts(dt.TorrentTask task) async {
-    final random = Random.secure();
-    final initialPort = _defaultPortsBlocked ? 0 : 6881;
-
-    final candidatePorts = <int>[];
-    if (initialPort > 0) {
-      candidatePorts.add(initialPort);
+    // dtorrent_task_v2 starts on a random available port and handles NAT
+    // traversal internally via PortForwardingManager, so explicit setPort
+    // API is not available.
+    if (_defaultPortsBlocked) {
+      debugPrint('Default ports may be blocked; relying on ephemeral port binding.');
+    } else {
+      debugPrint('Using ephemeral port binding (task chooses port automatically).');
     }
-    while (candidatePorts.length < 5) {
-      candidatePorts.add(49152 + random.nextInt(65535 - 49152));
-    }
-
-    bool bound = false;
-    for (final candidate in candidatePorts) {
-      try {
-        (task as dynamic).setPort(candidate);
-        if ((task as dynamic).enableUPnP != null) {
-          (task as dynamic).enableUPnP(true);
-        }
-        if ((task as dynamic).enableNATPMP != null) {
-          (task as dynamic).enableNATPMP(true);
-        }
-        debugPrint('Attempted port mapping on port $candidate (UPnP/NAT-PMP)');
-        bound = true;
-        break;
-      } catch (e) {
-        if (e is SocketException) {
-          debugPrint(
-            'Port binding failed on $candidate: $e. Retrying with port 0.',
-          );
-          try {
-            (task as dynamic).setPort(0);
-            debugPrint('Successfully rebound to random port (0).');
-            bound = true;
-            break;
-          } catch (e2) {
-            debugPrint('Failed to bind to random port: $e2');
-          }
-        } else {
-          debugPrint('Port mapping attempt failed on port $candidate: $e');
-        }
-        continue;
-      }
-    }
-    if (!bound) {
-      try {
-        (task as dynamic).setPort(0);
-        debugPrint('Fallback: Successfully bound to random port (0).');
-      } catch (e) {
-        debugPrint('Fallback: Failed to bind to random port: $e');
-      }
-    }
+    // Nothing else to do; _TorrentTask will bind and forward in start().
   }
 
   void _addDhtBootstrapNodes(dt.TorrentTask task) {
     for (final endpoint in _defaultDhtBootstrapNodes) {
-      final parts = endpoint.split(':');
-      if (parts.length != 2) continue;
-      final host = parts[0];
-      final port = int.tryParse(parts[1]);
-      if (port == null) continue;
       try {
-        // dtorrent_task_v2 DHT API might support a simple addDHTNode method.
-        (task as dynamic).addDHTNode(host, port);
-        debugPrint('Added DHT bootstrap node $host:$port');
+        final uri = Uri.parse('udp://$endpoint');
+        task.addDHTNode(uri);
+        debugPrint('Added DHT bootstrap node $endpoint');
       } catch (e, st) {
-        debugPrint('Failed to add DHT bootstrap node $host:$port: $e');
+        debugPrint('Failed to add DHT bootstrap node $endpoint: $e');
         debugPrint(st.toString());
       }
     }
@@ -601,16 +533,8 @@ class TorrentEngineService {
     ];
     _startHealthCheckTimer(torrent.id, task);
 
-    // Set listening port and NAT traversal hints (UPnP/NAT-PMP)
-    try {
-      (task as dynamic).setPort(6881);
-      (task as dynamic).enableUPnP(true);
-      (task as dynamic).enableNATPMP(true);
-      debugPrint('Port/NAT configuration applied (6881/UPnP/NAT-PMP)');
-    } catch (e, st) {
-      debugPrint('Port/NAT config error: $e');
-      debugPrint(st.toString());
-    }
+    // _TorrentTask uses ephemeral port binding and handles NAT traversal internally.
+    debugPrint('Skipping explicit setPort/UPnP/NAT-PMP API usage for dtorrent_task_v2.');
 
     await task.start();
 
