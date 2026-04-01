@@ -979,6 +979,21 @@ class TorrentEngineService {
         return null;
       }
     }
+    if (name is List) {
+      final bytes = <int>[];
+      for (final item in name) {
+        if (item is int) {
+          bytes.add(item);
+        } else {
+          return null;
+        }
+      }
+      try {
+        return utf8.decode(bytes, allowMalformed: true);
+      } catch (_) {
+        return null;
+      }
+    }
     return null;
   }
 

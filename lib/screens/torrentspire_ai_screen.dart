@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:vault_the_spire/constants.dart';
 import 'package:vault_the_spire/models/ai_chat_entry.dart';
 import 'package:vault_the_spire/models/torrent.dart';
 import 'package:vault_the_spire/services/ai_copilot_service.dart';
@@ -42,7 +43,7 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
 
   SearchResult? _selected;
   String _category = 'All';
-  String _activeModel = 'llama3';
+  String _activeModel = kDefaultAiModel;
   String _cachedAiUrl = '';
   String _cachedAiModel = '';
   String _infoCardText = 'Select a torrent to generate AI analysis.';
@@ -709,14 +710,15 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
   }
 
   Widget _buildTorrentPane(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final activeDownloads = _contextService.activeDownloads;
     final library = _contextService.library;
     final hasSearchResults = _results.isNotEmpty;
 
     return Container(
-      color: const Color(0xFF0F1115),
+      color: cs.surface,
       child: DefaultTextStyle(
-        style: const TextStyle(color: Colors.white70),
+        style: TextStyle(color: cs.onSurfaceVariant),
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Column(
@@ -727,10 +729,8 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
                   Expanded(
                     child: TextField(
                       controller: _searchController,
-                      style: const TextStyle(color: Colors.white),
                       decoration: const InputDecoration(
                         labelText: 'Search torrents',
-                        labelStyle: TextStyle(color: Colors.white70),
                         prefixIcon: Icon(Icons.search),
                       ),
                       onSubmitted: _performSearch,
@@ -739,7 +739,7 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
                   const SizedBox(width: 8),
                   DropdownButton<String>(
                     value: _category,
-                    dropdownColor: const Color(0xFF1A1F27),
+                    dropdownColor: cs.surfaceContainerHighest,
                     items:
                         const [
                               'All',
@@ -798,10 +798,8 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
                   Expanded(
                     child: TextField(
                       controller: _magnetController,
-                      style: const TextStyle(color: Colors.white),
                       decoration: const InputDecoration(
                         hintText: 'Paste magnet link',
-                        hintStyle: TextStyle(color: Colors.white54),
                       ),
                       onSubmitted: (_) => _addMagnet(),
                     ),
@@ -822,9 +820,9 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
               Expanded(
                 child: Container(
                   decoration: BoxDecoration(
-                    color: const Color(0xFF111723),
+                    color: cs.surfaceContainerLow,
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.white10),
+                    border: Border.all(color: cs.outlineVariant),
                   ),
                   child: activeDownloads.isEmpty && library.isEmpty
                       ? const Center(
@@ -890,10 +888,10 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
                             for (final item in library)
                               ListTile(
                                 dense: true,
-                                leading: const Icon(
+                                leading: Icon(
                                   Icons.check_circle_outline,
                                   size: 18,
-                                  color: Color(0xFF80CBC4),
+                                  color: cs.primary,
                                 ),
                                 title: Text(
                                   item.name,
@@ -938,8 +936,8 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
                       final source = item.source.isEmpty ? '—' : item.source;
                       return Card(
                         color: selected
-                            ? const Color(0xFF1F2733)
-                            : const Color(0xFF141922),
+                            ? cs.secondaryContainer
+                            : cs.surfaceContainerLow,
                         child: ListTile(
                           title: Text(
                             safeTitle,
@@ -972,6 +970,7 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
   }
 
   Widget _buildInfoCard() {
+    final cs = Theme.of(context).colorScheme;
     Color trustColor;
     switch (_trustSignal) {
       case 'Green':
@@ -990,9 +989,9 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
-        color: const Color(0xFF121A26),
+        color: cs.surfaceContainer,
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: Colors.white12),
+        border: Border.all(color: cs.outlineVariant),
       ),
       padding: const EdgeInsets.all(10),
       child: Column(
@@ -1044,19 +1043,23 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
   }
 
   Widget _buildChatPane(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
-      color: const Color(0xFF151920),
+      color: cs.surfaceContainerLowest,
       child: Column(
         children: [
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            color: _aiReady ? const Color(0xFF1B5E20) : const Color(0xFFFFA000),
+            color: _aiReady ? cs.tertiaryContainer : cs.errorContainer,
             child: Text(
               _aiReady
                   ? 'AI Ready'
                   : 'AI copilot offline — check your Ollama connection in Settings',
-              style: const TextStyle(fontWeight: FontWeight.w600),
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: _aiReady ? cs.onTertiaryContainer : cs.onErrorContainer,
+              ),
             ),
           ),
           Expanded(
@@ -1079,12 +1082,12 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
                     ),
                     decoration: BoxDecoration(
                       color: isUser
-                          ? const Color(0xFF2B3442)
-                          : const Color(0xFF202836),
+                          ? cs.primaryContainer
+                          : cs.surfaceContainerHigh,
                       borderRadius: BorderRadius.circular(12),
                       border: msg.isAuto
                           ? Border.all(
-                              color: const Color(0xFFFFC107),
+                              color: cs.tertiary,
                               width: 1.3,
                             )
                           : null,
@@ -1093,7 +1096,7 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         if (msg.isAuto)
-                          const Padding(
+                          Padding(
                             padding: EdgeInsets.only(bottom: 6),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
@@ -1101,14 +1104,14 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
                                 Icon(
                                   Icons.bolt,
                                   size: 14,
-                                  color: Color(0xFFFFC107),
+                                  color: cs.tertiary,
                                 ),
                                 SizedBox(width: 4),
                                 Text(
                                   'Auto',
                                   style: TextStyle(
                                     fontSize: 11,
-                                    color: Color(0xFFFFC107),
+                                    color: cs.tertiary,
                                   ),
                                 ),
                               ],
@@ -1122,13 +1125,12 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
                               MarkdownStyleSheet.fromTheme(
                                 Theme.of(context),
                               ).copyWith(
-                                p: const TextStyle(color: Colors.white),
+                                p: TextStyle(color: cs.onSurface),
                                 code: const TextStyle(
                                   fontFamily: 'monospace',
-                                  color: Colors.white,
                                 ),
                                 codeblockDecoration: BoxDecoration(
-                                  color: const Color(0xFF101418),
+                                  color: cs.surfaceContainerHighest,
                                   borderRadius: BorderRadius.circular(8),
                                 ),
                               ),
@@ -1154,10 +1156,8 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
                   Expanded(
                     child: TextField(
                       controller: _chatController,
-                      style: const TextStyle(color: Colors.white),
                       decoration: const InputDecoration(
                         hintText: 'Type a message...',
-                        hintStyle: TextStyle(color: Colors.white60),
                       ),
                       onSubmitted: (_) => _onUserSend(),
                     ),

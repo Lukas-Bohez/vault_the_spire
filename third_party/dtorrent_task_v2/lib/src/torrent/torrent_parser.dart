@@ -12,6 +12,30 @@ var _log = Logger('TorrentParser');
 
 /// Parser for .torrent files with full support for BEP 3 (v1) and BEP 52 (v2)
 class TorrentParser {
+  static String? _decodeDynamicString(dynamic value) {
+    if (value is String) {
+      return value;
+    }
+    if (value is Uint8List) {
+      return String.fromCharCodes(value);
+    }
+    if (value is List<int>) {
+      return String.fromCharCodes(value);
+    }
+    if (value is List) {
+      final bytes = <int>[];
+      for (final item in value) {
+        if (item is int) {
+          bytes.add(item);
+        } else {
+          return null;
+        }
+      }
+      return String.fromCharCodes(bytes);
+    }
+    return null;
+  }
+
   /// Parse a torrent file from disk
   static Future<TorrentModel> parse(String filePath) async {
     final file = File(filePath);
@@ -60,7 +84,7 @@ class TorrentParser {
     _log.info('Detected torrent version: $version');
 
     // Parse name
-    final name = info['name'] as String?;
+    final name = _decodeDynamicString(info['name']);
     if (name == null || name.isEmpty) {
       throw FormatException(
           'Invalid torrent file: missing name in info dictionary');
@@ -266,7 +290,7 @@ class TorrentParser {
 
     // Fallback to single announce
     if (announces.isEmpty && data.containsKey('announce')) {
-      final announce = data['announce'] as String?;
+      final announce = _decodeDynamicString(data['announce']);
       if (announce != null) {
         try {
           announces.add(Uri.parse(announce));
@@ -288,7 +312,7 @@ class TorrentParser {
       if (nodesData is List) {
         for (var node in nodesData) {
           if (node is List && node.length == 2) {
-            final host = node[0] as String?;
+            final host = _decodeDynamicString(node[0]);
             final port = node[1] as int?;
             if (host != null && port != null) {
               try {

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -17,7 +18,6 @@ class AboutScreen extends StatefulWidget {
 class _AboutScreenState extends State<AboutScreen> {
   late final SettingsService _settings;
   late final TextEditingController _ollamaUrlController;
-  late final TextEditingController _modelController;
   late final TextEditingController _downloadDirController;
   late final TextEditingController _listenPortController;
   late final TextEditingController _maxGlobalController;
@@ -27,8 +27,7 @@ class _AboutScreenState extends State<AboutScreen> {
   late final TextEditingController _uploadRateController;
   late AiCopilotService _aiService;
 
-  List<String> _availableModels = <String>[];
-  String? _selectedModel;
+  int _availableModelCount = 0;
   bool _loadingModels = false;
   String _modelStatus = '';
   bool _savingNetwork = false;
@@ -40,9 +39,6 @@ class _AboutScreenState extends State<AboutScreen> {
     _settings = SettingsService.instance;
     _ollamaUrlController = TextEditingController(
       text: _settings.aiOllamaUrl,
-    );
-    _modelController = TextEditingController(
-      text: _settings.aiDefaultModel,
     );
     _downloadDirController = TextEditingController(
       text: _settings.downloadDestination,
@@ -63,7 +59,8 @@ class _AboutScreenState extends State<AboutScreen> {
     _uploadRateController = TextEditingController(
       text: '${_settings.uploadRateLimitKib}',
     );
-    _selectedModel = _settings.aiDefaultModel;
+    // Enforce single recommended model policy.
+    unawaited(_settings.setAiDefaultModel(kDefaultAiModel));
     _themeMode = ThemeService.instance.themeMode;
     _aiService = AiCopilotService(
       baseUrl: _settings.aiOllamaUrl,
@@ -74,7 +71,6 @@ class _AboutScreenState extends State<AboutScreen> {
   @override
   void dispose() {
     _ollamaUrlController.dispose();
-    _modelController.dispose();
     _downloadDirController.dispose();
     _listenPortController.dispose();
     _maxGlobalController.dispose();
@@ -95,23 +91,19 @@ class _AboutScreenState extends State<AboutScreen> {
       final models = await _aiService.fetchModels();
       if (!mounted) return;
       setState(() {
-        _availableModels = models;
+        _availableModelCount = models.length;
         _loadingModels = false;
         if (models.isEmpty) {
-          _modelStatus = 'No models available. Connect to Ollama first.';
+          _modelStatus =
+              'No models detected from host. App will use fallback: $kDefaultAiModel';
         } else {
           _modelStatus = 'Successfully fetched ${models.length} model(s)';
-          // Validate that the selected model exists
-          if (!models.contains(_selectedModel)) {
-            _selectedModel = models.first;
-            _modelController.text = _selectedModel!;
-          }
         }
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _availableModels = <String>[];
+        _availableModelCount = 0;
         _loadingModels = false;
         _modelStatus = 'Failed to fetch models: $e';
       });
@@ -128,8 +120,7 @@ class _AboutScreenState extends State<AboutScreen> {
 
   Future<void> _saveAiSettings() async {
     await _settings.setAiOllamaUrl(_ollamaUrlController.text);
-    final modelToSave = _selectedModel ?? _modelController.text;
-    await _settings.setAiDefaultModel(modelToSave);
+    await _settings.setAiDefaultModel(kDefaultAiModel);
     if (!mounted) return;
     ScaffoldMessenger.of(
       context,
@@ -422,9 +413,9 @@ class _AboutScreenState extends State<AboutScreen> {
                 TextField(
                   controller: _ollamaUrlController,
                   onChanged: (_) => _onUrlChanged(),
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Ollama Host URL',
-                    hintText: 'http://localhost:11434',
+                    hintText: _settings.aiOllamaUrl,
                     border: OutlineInputBorder(),
                   ),
                 ),
@@ -435,43 +426,20 @@ class _AboutScreenState extends State<AboutScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          if (_availableModels.isNotEmpty)
-                            DropdownButtonFormField<String>(
-                              value: _selectedModel,
-                              decoration: const InputDecoration(
-                                labelText: 'Default AI Model',
-                                border: OutlineInputBorder(),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.all(10),
+                            decoration: BoxDecoration(
+                              border: Border.all(
+                                color: Theme.of(context).dividerColor,
                               ),
-                              items: _availableModels
-                                  .map(
-                                    (model) => DropdownMenuItem<String>(
-                                      value: model,
-                                      child: Text(model),
-                                    ),
-                                  )
-                                  .toList(),
-                              onChanged: (value) {
-                                if (value == null) return;
-                                setState(() {
-                                  _selectedModel = value;
-                                  _modelController.text = value;
-                                });
-                              },
-                            )
-                          else
-                            TextField(
-                              controller: _modelController,
-                              onChanged: (value) {
-                                setState(() {
-                                  _selectedModel = value.isNotEmpty ? value : null;
-                                });
-                              },
-                              decoration: const InputDecoration(
-                                labelText: 'Default AI Model',
-                                hintText: 'llama3',
-                                border: OutlineInputBorder(),
-                              ),
+                              borderRadius: BorderRadius.circular(10),
                             ),
+                            child: Text(
+                              'Default model is locked to $kDefaultAiModel for consistent quality.\n'
+                              'Detected local models: $_availableModelCount',
+                            ),
+                          ),
                           const SizedBox(height: 4),
                           Text(
                             _modelStatus,

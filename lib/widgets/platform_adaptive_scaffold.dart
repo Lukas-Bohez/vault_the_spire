@@ -30,6 +30,12 @@ class AppShell extends StatelessWidget {
         route: '/torrents',
       ),
       _NavItem(
+        icon: Icons.menu_book_outlined,
+        activeIcon: Icons.menu_book,
+        label: 'Guide',
+        route: '/guide',
+      ),
+      _NavItem(
         icon: Icons.campaign_outlined,
         activeIcon: Icons.campaign,
         label: 'Channels',

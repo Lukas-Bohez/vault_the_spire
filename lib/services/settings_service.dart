@@ -1,6 +1,15 @@
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:vault_the_spire/constants.dart';
 
 class SettingsService {
+  static String _defaultOllamaUrl() {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      return kAndroidLocalOllamaUrl;
+    }
+    return 'http://localhost:11434';
+  }
+
   static const _kUseSystemTray = 'use_system_tray';
   static const _kMinimizeToTrayOnClose = 'minimize_to_tray_on_close';
   static const _kLaunchOnStartup = 'launch_on_startup';
@@ -60,8 +69,8 @@ class SettingsService {
   double windowH = 0.0;
   String browserLastUrl = '';
   List<String> browserHistory = <String>[];
-  String aiOllamaUrl = 'http://localhost:11434';
-  String aiDefaultModel = 'llama3';
+  String aiOllamaUrl = _defaultOllamaUrl();
+  String aiDefaultModel = kDefaultAiModel;
   bool autoStartOnAdd = true;
   bool deleteTorrentFileOnRemove = false;
   bool deleteDataOnRemove = false;
@@ -99,8 +108,8 @@ class SettingsService {
         prefs.getStringList(_kBrowserFavorites) ?? browserFavorites;
     browserLastUrl = prefs.getString(_kBrowserLastUrl) ?? '';
     browserHistory = prefs.getStringList(_kBrowserHistory) ?? <String>[];
-    aiOllamaUrl = prefs.getString(_kAiOllamaUrl) ?? 'http://localhost:11434';
-    aiDefaultModel = prefs.getString(_kAiDefaultModel) ?? 'llama3';
+    aiOllamaUrl = prefs.getString(_kAiOllamaUrl) ?? _defaultOllamaUrl();
+    aiDefaultModel = prefs.getString(_kAiDefaultModel) ?? kDefaultAiModel;
     autoStartOnAdd = prefs.getBool(_kAutoStartOnAdd) ?? true;
     deleteTorrentFileOnRemove =
       prefs.getBool(_kDeleteTorrentFileOnRemove) ?? false;
@@ -208,13 +217,13 @@ class SettingsService {
   }
 
   Future<void> setAiOllamaUrl(String url) async {
-    aiOllamaUrl = url.trim().isEmpty ? 'http://localhost:11434' : url.trim();
+    aiOllamaUrl = url.trim().isEmpty ? _defaultOllamaUrl() : url.trim();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_kAiOllamaUrl, aiOllamaUrl);
   }
 
   Future<void> setAiDefaultModel(String model) async {
-    aiDefaultModel = model.trim().isEmpty ? 'llama3' : model.trim();
+    aiDefaultModel = model.trim().isEmpty ? kDefaultAiModel : model.trim();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_kAiDefaultModel, aiDefaultModel);
   }

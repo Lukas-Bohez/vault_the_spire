@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:vault_the_spire/constants.dart';
 import 'package:vault_the_spire/services/ai_copilot_service.dart';
 
 class AiChatScreen extends StatefulWidget {
@@ -14,10 +16,11 @@ class AiChatScreen extends StatefulWidget {
 
 class _AiChatScreenState extends State<AiChatScreen> {
   final TextEditingController _baseUrlController = TextEditingController(
-    text: 'http://localhost:11434',
+    text: !kIsWeb && defaultTargetPlatform == TargetPlatform.android
+        ? kAndroidLocalOllamaUrl
+        : 'http://localhost:11434',
   );
   final TextEditingController _chatController = TextEditingController();
-  final TextEditingController _downloadController = TextEditingController();
   final ScrollController _chatScrollController = ScrollController();
 
   late final AiCopilotService _aiService;
@@ -25,10 +28,9 @@ class _AiChatScreenState extends State<AiChatScreen> {
   List<String> _models = <String>[];
   bool _checking = false;
   bool _sending = false;
-  bool _pulling = false;
   bool _ollamaInstalled = false;
   String _status = 'Not connected';
-  String _selectedModel = 'llama3';
+  String _activeModel = kDefaultAiModel;
   Timer? _streamPaintTimer;
   DateTime _lastStreamPaint = DateTime.fromMillisecondsSinceEpoch(0);
   static const Duration _streamPaintInterval = Duration(milliseconds: 80);
@@ -46,7 +48,6 @@ class _AiChatScreenState extends State<AiChatScreen> {
     _streamPaintTimer?.cancel();
     _baseUrlController.dispose();
     _chatController.dispose();
-    _downloadController.dispose();
     _chatScrollController.dispose();
     super.dispose();
   }
@@ -145,14 +146,23 @@ class _AiChatScreenState extends State<AiChatScreen> {
       if (!mounted) return;
       setState(() {
         _models = models;
-        if (_models.isNotEmpty && !_models.contains(_selectedModel)) {
-          _selectedModel = _models.first;
+        if (_models.contains(kDefaultAiModel)) {
+          _activeModel = kDefaultAiModel;
+          _status = 'Connected. Using recommended model: $kDefaultAiModel';
+        } else if (_models.isNotEmpty) {
+          _activeModel = _models.first;
+          _status = 'Connected. Using available model: $_activeModel';
+        } else {
+          _activeModel = kDefaultAiModel;
+          _status =
+              'Connected. No local models found, fallback set to $kDefaultAiModel';
         }
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _models = <String>[];
+        _activeModel = kDefaultAiModel;
       });
     } finally {
       if (mounted) {
@@ -235,58 +245,11 @@ class _AiChatScreenState extends State<AiChatScreen> {
     });
   }
 
-  Future<void> _pullModel() async {
-    final modelName = _downloadController.text.trim();
-    if (modelName.isEmpty || _pulling) return;
-
-    setState(() {
-      _pulling = true;
-      _status = 'Downloading model $modelName ...';
-    });
-
-    try {
-      await for (final event in _aiService.pullModelStream(modelName)) {
-        final status = (event['status'] ?? '').toString();
-        final total = (event['total'] as num?)?.toDouble() ?? 0;
-        final completed = (event['completed'] as num?)?.toDouble() ?? 0;
-        final progress = total > 0
-            ? (completed / total * 100).clamp(0, 100)
-            : 0;
-
-        if (!mounted) return;
-        setState(() {
-          if (progress > 0) {
-            _status = '$status (${progress.toStringAsFixed(1)}%)';
-          } else {
-            _status = status.isEmpty ? 'Downloading $modelName ...' : status;
-          }
-        });
-      }
-      await _refreshModels();
-      if (!mounted) return;
-      setState(() {
-        _status = 'Model $modelName downloaded.';
-        _downloadController.clear();
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _status = 'Model download failed: $e';
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _pulling = false;
-        });
-      }
-    }
-  }
-
   Future<void> _sendChat() async {
     final text = _chatController.text.trim();
     if (text.isEmpty || _sending) return;
 
-    final model = _selectedModel.isNotEmpty ? _selectedModel : 'llama3';
+    final model = _activeModel;
     _chatController.clear();
 
     setState(() {
@@ -364,7 +327,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
           IconButton(
             onPressed: _checking ? null : _refreshModels,
             icon: const Icon(Icons.refresh),
-            tooltip: 'Refresh models',
+            tooltip: 'Refresh model status',
           ),
         ],
       ),
@@ -437,48 +400,31 @@ class _AiChatScreenState extends State<AiChatScreen> {
         Text(_status, style: Theme.of(context).textTheme.bodySmall),
         const Divider(height: 24),
         const Text(
-          'Installed models',
+          'Model routing',
           style: TextStyle(fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 8),
-        if (_models.isEmpty)
-          const Text('No models detected. Download one below.'),
-        if (_models.isNotEmpty)
-          DropdownButtonFormField<String>(
-            initialValue: _models.contains(_selectedModel)
-                ? _selectedModel
-                : _models.first,
-            decoration: const InputDecoration(border: OutlineInputBorder()),
-            items: _models
-                .map(
-                  (model) => DropdownMenuItem<String>(
-                    value: model,
-                    child: Text(model),
-                  ),
-                )
-                .toList(),
-            onChanged: (value) {
-              if (value == null) return;
-              setState(() {
-                _selectedModel = value;
-              });
-            },
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            border: Border.all(color: Theme.of(context).dividerColor),
+            borderRadius: BorderRadius.circular(10),
           ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: _downloadController,
-          decoration: const InputDecoration(
-            labelText: 'Download model',
-            hintText: 'llama3.2:3b',
-            border: OutlineInputBorder(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Recommended model: $kDefaultAiModel'),
+              const SizedBox(height: 6),
+              Text('Active model: $_activeModel'),
+              const SizedBox(height: 6),
+              Text(
+                _models.isEmpty
+                    ? 'No local model list returned. The app will still try the recommended model.'
+                    : 'Detected ${_models.length} installed model(s).',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            ],
           ),
-          onSubmitted: (_) => _pullModel(),
-        ),
-        const SizedBox(height: 8),
-        ElevatedButton.icon(
-          onPressed: _pulling ? null : _pullModel,
-          icon: const Icon(Icons.cloud_download),
-          label: Text(_pulling ? 'Downloading...' : 'Download from Ollama'),
         ),
       ],
     );
