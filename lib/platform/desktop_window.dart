@@ -8,7 +8,7 @@ Future<void> setupDesktopWindow() async {
     size: Size(1100, 700),
     minimumSize: Size(800, 600),
     center: true,
-    title: 'VaultTheSpire',
+    title: 'TorrentSpire AI',
     titleBarStyle: TitleBarStyle.normal,
   );
 

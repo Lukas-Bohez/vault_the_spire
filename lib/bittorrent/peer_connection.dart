@@ -42,6 +42,32 @@ class PeerConnection {
   bool _handshakeDone = false;
   final _receiveBuffer = <int>[];
   bool _disposed = false;
+  static DateTime _lastPeerLogTime = DateTime.fromMillisecondsSinceEpoch(0);
+  static int _peerEventsSinceLastLog = 0;
+  static DateTime _lastPieceLogTime = DateTime.fromMillisecondsSinceEpoch(0);
+  static int _pieceEventsSinceLastLog = 0;
+
+  static void _logPeerEventThrottled(String label) {
+    _peerEventsSinceLastLog++;
+    final now = DateTime.now();
+    if (now.difference(_lastPeerLogTime).inSeconds >= 10) {
+      debugPrint(
+        '[PeerWire] $label | peer events last 10s: $_peerEventsSinceLastLog',
+      );
+      _peerEventsSinceLastLog = 0;
+      _lastPeerLogTime = now;
+    }
+  }
+
+  static void _logPieceEventThrottled() {
+    _pieceEventsSinceLastLog++;
+    final now = DateTime.now();
+    if (now.difference(_lastPieceLogTime).inSeconds >= 5) {
+      debugPrint('[Piece] piece events last 5s: $_pieceEventsSinceLastLog');
+      _pieceEventsSinceLastLog = 0;
+      _lastPieceLogTime = now;
+    }
+  }
 
   PeerConnection({
     required this.ip,
@@ -91,7 +117,7 @@ class PeerConnection {
 
   Future<void> connect() async {
     try {
-      debugPrint('[Peer] Connecting to $ip:$port');
+      _logPeerEventThrottled('peer connect attempt');
       _socket = await Socket.connect(
         ip,
         port,
@@ -106,7 +132,7 @@ class PeerConnection {
         onDone: () => dispose(),
       );
     } catch (e) {
-      debugPrint('[Error] PeerConnection: failed to connect $ip:$port — $e');
+      _logPeerEventThrottled('peer connect failed');
       dispose();
     }
   }
@@ -136,7 +162,7 @@ class PeerConnection {
       }
       _receiveBuffer.removeRange(0, 68);
       _handshakeDone = true;
-      debugPrint('[Peer] Handshake OK with $ip:$port');
+      _logPeerEventThrottled('peer handshake');
       // Send interested
       _socket!.add(_buildMessage(2)); // 2 = interested
       _processBuffer();
@@ -168,7 +194,7 @@ class PeerConnection {
         break;
       case 1: // unchoke
         _choked = false;
-        debugPrint('[Peer] Unchoked by $ip:$port — requesting pieces');
+        _logPeerEventThrottled('peer unchoke');
         _requestNextBlocks();
         break;
       case 4: // have
@@ -256,11 +282,11 @@ class PeerConnection {
   Future<void> _savePiece(int pieceIdx, Uint8List data) async {
     final ok = await pieceManager.savePiece(pieceIdx, data);
     if (ok) {
-      debugPrint('[Piece] Piece $pieceIdx verified and saved');
+      _logPieceEventThrottled();
       onPieceDownloaded(pieceIdx, data.length);
       _requestNextBlocks(); // Request next piece
     } else {
-      debugPrint('[Error] Piece $pieceIdx failed verification — discarding');
+      _logPieceEventThrottled();
       _requestPieceBlocks(pieceIdx); // Re-request
     }
   }

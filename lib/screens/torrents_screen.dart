@@ -27,12 +27,17 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
 
   void _loadTorrents() {
     _futureTorrents = TorrentService.instance.allTorrents();
+    if (!mounted) return;
     setState(() {});
   }
 
   Future<void> _refresh() async {
     _loadTorrents();
-    await _futureTorrents;
+    try {
+      await _futureTorrents;
+    } catch (_) {
+      // FutureBuilder handles displaying the error.
+    }
   }
 
   Future<void> _toggleTorrent(TorrentModel torrent) async {
@@ -167,7 +172,7 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
                 return const Center(child: CircularProgressIndicator());
               }
               if (snapshot.hasError) {
-                return Center(child: Text('Error: {snapshot.error}'));
+                return Center(child: Text('Error: ${snapshot.error}'));
               }
               final torrents = snapshot.data ?? [];
               if (torrents.isEmpty) {

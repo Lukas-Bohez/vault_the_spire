@@ -75,10 +75,6 @@ Future<void> main() async {
       await _initSqlCipherOnAndroid();
       await _requestAndroidPermissions();
 
-      if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
-        await initBackgroundService();
-      }
-
       if (!kIsWeb && (Platform.isWindows || Platform.isLinux)) {
         sqfliteFfiInit();
         databaseFactory = databaseFactoryFfi;
@@ -87,39 +83,57 @@ Future<void> main() async {
       await ThemeService.instance.load();
       await SettingsService.instance.load();
 
-      if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      if (!kIsWeb &&
+          (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
         await setupDesktopWindow();
-        await StartupService.ensureDesktopShortcut();
-
-        if (SettingsService.instance.launchOnStartup) {
-          await StartupService.enable();
-        } else {
-          await StartupService.disable();
-        }
-
-        if (SettingsService.instance.useSystemTray) {
-          await TrayService(
-            shouldMinimiseToTray: () =>
-                SettingsService.instance.minimizeToTrayOnClose,
-            onTrayShow: () async {
-              await windowManager.show();
-            },
-            onTrayQuit: () async {
-              await windowManager.destroy();
-              exit(0);
-            },
-          ).init();
-        }
-
-        await setupHotkeys();
-        DesktopNotificationPoller.instance.start();
       }
 
-      await IdentityService.instance.initialize();
-
-      await TorrentService.instance.resumeActiveTorrents();
-
+      // Render first frame before long-running startup work.
       runApp(const MainApp());
+
+      unawaited(
+        Future(() async {
+          try {
+            if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
+              await initBackgroundService();
+            }
+
+            if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+              await StartupService.ensureDesktopShortcut();
+
+              if (SettingsService.instance.launchOnStartup) {
+                await StartupService.enable();
+              } else {
+                await StartupService.disable();
+              }
+
+              if (SettingsService.instance.useSystemTray) {
+                await TrayService(
+                  shouldMinimiseToTray: () =>
+                      SettingsService.instance.minimizeToTrayOnClose,
+                  onTrayShow: () async {
+                    await windowManager.show();
+                  },
+                  onTrayQuit: () async {
+                    await windowManager.destroy();
+                    exit(0);
+                  },
+                ).init();
+              }
+
+              await setupHotkeys();
+              DesktopNotificationPoller.instance.start();
+            }
+
+            await IdentityService.instance.initialize();
+
+            await TorrentService.instance.resumeActiveTorrents();
+          } catch (error, stack) {
+            debugPrint('DEFERRED STARTUP ERROR: $error');
+            debugPrint(stack.toString());
+          }
+        }),
+      );
     },
     (error, stack) {
       debugPrint('UNCAUGHT ZONED ERROR: $error');

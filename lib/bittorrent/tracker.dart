@@ -10,6 +10,21 @@ class TrackerPeer {
 }
 
 class TrackerClient {
+  static DateTime _lastTrackerLogTime = DateTime.fromMillisecondsSinceEpoch(0);
+  static int _trackerEventsSinceLastLog = 0;
+
+  static void _logTrackerThrottled(String label) {
+    _trackerEventsSinceLastLog++;
+    final now = DateTime.now();
+    if (now.difference(_lastTrackerLogTime).inSeconds >= 10) {
+      debugPrint(
+        '[Tracker] $label | events last 10s: $_trackerEventsSinceLastLog',
+      );
+      _trackerEventsSinceLastLog = 0;
+      _lastTrackerLogTime = now;
+    }
+  }
+
   // URL-encode 20 raw bytes for use in tracker query string
   // This is NOT Uri.encodeComponent of a hex string
   static String _urlEncodeBytes(Uint8List bytes) {
@@ -65,11 +80,7 @@ class TrackerClient {
         '&left=$left'
         '&compact=1'
         '&event=$event';
-    debugPrint('[Tracker] Announcing to: $url');
-    debugPrint(
-      '[Tracker] info_hash bytes: '
-      '${infoHash.map((b) => b.toRadixString(16).padLeft(2, '0')).join('')}',
-    );
+    _logTrackerThrottled('announce attempt');
     try {
       final response = await http
           .get(Uri.parse(url))
@@ -81,19 +92,17 @@ class TrackerClient {
       // Check for failure reason
       final failure = getKey(decoded, 'failure reason');
       if (failure != null) {
-        print(
-          'Tracker failure: ${utf8.decode(failure as Uint8List, allowMalformed: true)}',
-        );
+        _logTrackerThrottled('announce failure');
         return [];
       }
       // Get peers — compact format
       final peers = getKey(decoded, 'peers');
       if (peers == null) return [];
       final peerList = _parseCompactPeers(peers);
-      debugPrint('[Tracker] Found ${peerList.length} peers from $trackerUrl');
+      _logTrackerThrottled('announce peers received');
       return peerList;
     } catch (e) {
-      print('Tracker announce error: $e');
+      _logTrackerThrottled('announce error');
       return [];
     }
   }

@@ -44,8 +44,13 @@ class TorrentEngineStatus {
     this.leechers = 0,
     this.statusMessage = '',
     this.connectionMessage = '',
+
+
+
+
   });
 }
+
 
 class TorrentEngineService {
   TorrentEngineService._() {
@@ -67,6 +72,11 @@ class TorrentEngineService {
   final Map<String, int> _peerlessCounters = {};
   final Map<String, List<Uri>> _torrentTrackers = {};
   final Map<String, List<String>> _connectionLogs = {};
+  final Map<String, DateTime> _lastProgressLogTimes = {};
+  DateTime _lastPeerLogTime = DateTime.fromMillisecondsSinceEpoch(0);
+  int _peerEventsSinceLastLog = 0;
+  DateTime _lastDhtLogTime = DateTime.fromMillisecondsSinceEpoch(0);
+  int _dhtNodesSinceLastLog = 0;
   bool _defaultPortsBlocked = false;
 
   int get currentDhtNodeCount {
@@ -120,6 +130,58 @@ class TorrentEngineService {
         .add('[${DateTime.now().toIso8601String()}] $message');
   }
 
+  void _logPeerEventThrottled(String label, dt.TorrentTask task) {
+    _peerEventsSinceLastLog++;
+    final now = DateTime.now();
+    if (now.difference(_lastPeerLogTime).inSeconds >= 10) {
+      final peers = task.connectedPeersNumber;
+      debugPrint(
+        '[TorrentEngine] $label | peers: $peers | '
+        'events last 10s: $_peerEventsSinceLastLog',
+      );
+      _peerEventsSinceLastLog = 0;
+      _lastPeerLogTime = now;
+    }
+  }
+
+  void _logDhtThrottled(dt.TorrentTask task) {
+    _dhtNodesSinceLastLog++;
+    final now = DateTime.now();
+    if (now.difference(_lastDhtLogTime).inSeconds >= 10) {
+      int routingSize = 0;
+      try {
+        routingSize = ((task as dynamic).dhtNodeCount as int?) ?? 0;
+      } catch (_) {
+        routingSize = 0;
+      }
+      debugPrint(
+        '[DHT] nodes seen last 10s: $_dhtNodesSinceLastLog | '
+        'routing table size: $routingSize',
+      );
+      _dhtNodesSinceLastLog = 0;
+      _lastDhtLogTime = now;
+    }
+  }
+
+  void _logProgressThrottled(String torrentId, dt.TorrentTask task) {
+    final now = DateTime.now();
+    final last = _lastProgressLogTimes[torrentId] ??
+        DateTime.fromMillisecondsSinceEpoch(0);
+    if (now.difference(last).inSeconds >= 5) {
+      final dynamic t = task;
+      final downloaded = (t.downloaded as int?) ?? 0;
+      final total = (t.metaInfo?.length as int?) ?? 0;
+      final speed = ((t.currentDownloadSpeed as num?) ?? 0).toDouble() / 1024;
+      final peers = (t.connectedPeersNumber as int?) ?? 0;
+      final pct = total > 0 ? (downloaded / total * 100).toStringAsFixed(1) : '0.0';
+      debugPrint(
+        '[Download] $torrentId | $pct% | '
+        'speed: ${speed.toStringAsFixed(0)} KB/s | peers: $peers',
+      );
+      _lastProgressLogTimes[torrentId] = now;
+    }
+  }
+
   List<String> getLogs(String torrentId) {
     return List.unmodifiable(_connectionLogs[torrentId] ?? []);
   }
@@ -147,12 +209,60 @@ class TorrentEngineService {
       try {
         final uri = Uri.parse('udp://$endpoint');
         task.addDHTNode(uri);
-        debugPrint('Added DHT bootstrap node $endpoint');
-      } catch (e, st) {
-        debugPrint('Failed to add DHT bootstrap node $endpoint: $e');
-        debugPrint(st.toString());
+      } catch (_) {
+        // Ignore malformed bootstrap nodes and continue.
       }
     }
+  }
+
+  void _announceTrackers(
+    String torrentId,
+    dt.TorrentTask task,
+  ) {
+    // Run tracker announcements in background without blocking UI
+    unawaited(
+      Future(() async {
+        try {
+          final trackers = _torrentTrackers[torrentId] ?? [];
+          if (trackers.isEmpty) {
+            debugPrint('[Trackers] No trackers found for $torrentId');
+            return;
+          }
+
+          // Extract info hash from task
+          Uint8List? infoHash;
+          try {
+            final metaInfo = (task as dynamic).metaInfo;
+            if (metaInfo != null) {
+              final hash = metaInfo.infoHash;
+              if (hash is Uint8List) {
+                infoHash = hash;
+              } else if (hash is String) {
+                infoHash = _hexToBytes(hash);
+              }
+            }
+          } catch (e) {
+            debugPrint('[Trackers] Failed to get infoHash: $e');
+          }
+
+          if (infoHash == null) {
+            debugPrint('[Trackers] Could not extract infoHash for $torrentId');
+            return;
+          }
+
+          // Announce to all trackers
+          for (final trackerUri in trackers) {
+            try {
+              await _announceUrlWithRetry(task, trackerUri, infoHash);
+            } catch (e) {
+              _log(torrentId, 'Tracker announce failed for $trackerUri: $e');
+            }
+          }
+        } catch (e) {
+          debugPrint('[Trackers] _announceTrackers error: $e');
+        }
+      }),
+    );
   }
 
   Future<void> _announceUrlWithRetry(
@@ -165,14 +275,11 @@ class TorrentEngineService {
     for (var attempt = 1; attempt <= retries; attempt++) {
       try {
         await (task as dynamic).startAnnounceUrl(url, infoHash);
-        debugPrint('Announce URL success ($attempt): $url');
         return;
-      } catch (e, st) {
+      } catch (e) {
         final msg = 'Announce URL attempt $attempt failed: $url $e';
-        debugPrint(msg);
         final taskId = taskIdFromTask(task);
         if (taskId.isNotEmpty) _log(taskId, msg);
-        debugPrint(st.toString());
         if (attempt < retries) {
           await Future.delayed(delay);
         }
@@ -280,7 +387,6 @@ class TorrentEngineService {
           await _announceUrlWithRetry(task, url, infoHash);
           trackerSuccesses++;
         } catch (e) {
-          debugPrint('Re-announce tracker failed for $url: $e');
           _log(torrentId, 'Tracker $url failed: $e');
         }
       }
@@ -579,47 +685,52 @@ class TorrentEngineService {
     ];
     _startHealthCheckTimer(torrent.id, task);
 
-    await task.start();
+    // Start task in background without blocking UI
+    unawaited(task.start());
 
+    debugPrint('[TASK] started — calling resume if available');
+    try {
+      (task as dynamic).resume();
+    } catch (_) {}
+    try {
+      (task as dynamic).unpause();
+    } catch (_) {}
+    try {
+      (task as dynamic).download();
+    } catch (_) {}
+
+    Timer.periodic(const Duration(seconds: 5), (_) {
+      _logProgressThrottled(torrent.id, task);
+    });
+
+    // Set up DHT event listeners
     final dht = task.dht;
     if (dht != null) {
       debugPrint('[S] task.dht is initialized');
       dht.createListener()?..on<NewPeerEvent>((event) {
-        debugPrint(
-          '[S] NewPeerEvent from DHT: ${event.address}, infoHash=${event.infoHash}',
-        );
+        _logDhtThrottled(task);
         try {
           task.addPeer(event.address, dt.PeerSource.dht, type: dt.PeerType.TCP);
-        } catch (e) {
-          debugPrint('[S] task.addPeer(dht) failed: $e');
+        } catch (_) {
           try {
             task.addPeer(event.address, dt.PeerSource.dht);
-          } catch (e2) {
-            debugPrint('[S] task.addPeer(dht) fallback failed: $e2');
+          } catch (_) {
+            _logPeerEventThrottled('dht peer add failed', task);
           }
         }
       });
       dht.krpc?.createListener()?..on<AnnouncePeerResponseEvent>((event) {
-        debugPrint(
-          '[S] AnnouncePeerResponseEvent from DHT.KRPC: ${event.address}:${event.port}',
-        );
+        _logDhtThrottled(task);
 
         // Try adding direct announce peer from event.address:event.port
         final address = event.address;
         final port = event.port;
-        if (address != null && port != null) {
-          try {
-            final caddr = CompactAddress(address, port);
-            task.addPeer(caddr, dt.PeerSource.dht);
-            debugPrint(
-              '[PEER] Added direct DHT response peer $address:$port',
-            );
-          } catch (e, st) {
-            debugPrint('[PEER] direct addPeer failed: $e');
-            debugPrint(st.toString());
-          }
-        } else {
-          debugPrint('[PEER] address=$address port=$port - skipping');
+        try {
+          final caddr = CompactAddress(address, port);
+          task.addPeer(caddr, dt.PeerSource.dht);
+          _logPeerEventThrottled('peer update', task);
+        } catch (_) {
+          _logPeerEventThrottled('dht direct peer add failed', task);
         }
 
         final data = event.data;
@@ -648,10 +759,10 @@ class TorrentEngineService {
                 }
                 if (caddr != null) {
                   task.addPeer(caddr, dt.PeerSource.dht);
-                  debugPrint('[PEER] Added $caddr');
+                  _logPeerEventThrottled('peer update', task);
                 }
-              } catch (e) {
-                debugPrint('[PEER] addPeer failed: $e');
+              } catch (_) {
+                _logPeerEventThrottled('dht peer add failed', task);
               }
             }
           }
@@ -661,66 +772,8 @@ class TorrentEngineService {
       debugPrint('[S] task.dht is null');
     }
 
-    debugPrint('[TASK] started — calling resume if available');
-    try {
-      (task as dynamic).resume();
-    } catch (_) {}
-    try {
-      (task as dynamic).unpause();
-    } catch (_) {}
-    try {
-      (task as dynamic).download();
-    } catch (_) {}
-
-    final dynamic dynamicTask = task;
-    Timer.periodic(const Duration(seconds: 10), (_) {
-      try {
-        debugPrint(
-          '[S] dl=${dynamicTask.downloaded ?? 0} '
-          'peers=${dynamicTask.connectedPeersNumber ?? 0} '
-          'speed=${dynamicTask.currentDownloadSpeed ?? 0}',
-        );
-      } catch (e) {
-        debugPrint('[S] err: $e');
-      }
-    });
-
-    // Announce to all trackers from magnet, parsed model, and fallback list
-    final infoHash = dtModel.infoHashBuffer;
-    final seenUrls = <String>{};
-    for (final url in [...magnet.trackers, ...dtModel.announces]) {
-      if (seenUrls.add(url.toString())) {
-        try {
-          await _announceUrlWithRetry(
-            task,
-            Uri.parse(url.toString()),
-            infoHash,
-          );
-        } catch (e) {
-          debugPrint('Tracker announce error: $url $e');
-        }
-      }
-    }
-    // Fallback public trackers
-    const fallbackTrackers = [
-      'udp://tracker.openbittorrent.com:80/announce',
-      'udp://tracker.opentrackr.org:1337/announce',
-      'udp://tracker.coppersurfer.tk:6969/announce',
-      'udp://tracker.leechers-paradise.org:6969/announce',
-      'udp://tracker.internetwarriors.net:1337/announce',
-      'udp://exodus.desync.com:6969/announce',
-      'http://tracker.openbittorrent.com:80/announce',
-      'http://tracker.opentrackr.org:1337/announce',
-    ];
-    for (final url in fallbackTrackers) {
-      if (seenUrls.add(url)) {
-        try {
-          await _announceUrlWithRetry(task, Uri.parse(url), infoHash);
-        } catch (e) {
-          debugPrint('Fallback tracker error: $url $e');
-        }
-      }
-    }
+    // Announce to trackers in background without blocking UI
+    _announceTrackers(torrent.id, task);
 
     // Hand off peers from metadata fetch so download starts immediately.
     for (final peer in downloader.activePeers) {

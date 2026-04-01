@@ -36,7 +36,7 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen> {
 
   StreamSubscription<List<SearchResult>>? _searchSubscription;
   Timer? _torrentPoll;
-  Timer? _settingsSyncTimer;
+  // Timer? _settingsSyncTimer; // TODO: re-enable periodic sync
 
   SearchResult? _selected;
   String _category = 'All';
@@ -79,11 +79,19 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen> {
       const Duration(seconds: 2),
       (_) => _refreshTorrents(),
     );
-    // Periodically sync AI settings in case they changed in settings screen
-    _settingsSyncTimer = Timer.periodic(
-      const Duration(seconds: 5),
-      (_) => _syncAiSettings(),
-    );
+    // TODO: Re-enable periodic sync after debugging blank screen
+    // _settingsSyncTimer = Timer.periodic(
+    //   const Duration(seconds: 5),
+    //   (_) {
+    //     if (mounted) {
+    //       try {
+    //         _syncAiSettings().ignore();
+    //       } catch (e) {
+    //         debugPrint('Settings sync error: $e');
+    //       }
+    //     }
+    //   },
+    // );
     // Verify AI connection immediately
     _checkAiReadiness();
   }
@@ -96,7 +104,7 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen> {
     _chatScroll.dispose();
     _searchSubscription?.cancel();
     _torrentPoll?.cancel();
-    _settingsSyncTimer?.cancel();
+    // _settingsSyncTimer?.cancel(); // TODO: re-enable
     _contextService.removeListener(_noop);
     _contextService.dispose();
     super.dispose();
