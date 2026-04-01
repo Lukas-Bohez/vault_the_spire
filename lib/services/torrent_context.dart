@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:vault_the_spire/models/torrent.dart';
 import 'package:vault_the_spire/services/search_service.dart';
+import 'package:vault_the_spire/services/torrent_engine_service.dart';
 
 class TorrentContextService extends ChangeNotifier {
   String currentQuery = '';
@@ -8,6 +9,8 @@ class TorrentContextService extends ChangeNotifier {
   SearchResult? selectedResult;
   List<TorrentModel> activeDownloads = const <TorrentModel>[];
   List<TorrentModel> library = const <TorrentModel>[];
+  final Map<String, TorrentEngineStatus> _runtimeStatusById =
+      <String, TorrentEngineStatus>{};
 
   void updateQuery(String value) {
     currentQuery = value;
@@ -39,15 +42,37 @@ class TorrentContextService extends ChangeNotifier {
     notifyListeners();
   }
 
+  void updateRuntimeStatus(TorrentEngineStatus status) {
+    if (status.torrentId.isEmpty) return;
+    _runtimeStatusById[status.torrentId] = status;
+    notifyListeners();
+  }
+
   String getContext() {
     final selected = selectedResult;
     final selectedText = selected == null
         ? 'No torrent selected.'
-        : '${selected.name} | size: ${selected.size ?? 0} bytes | seeders: unknown | leechers: unknown | source: ${selected.responderId} | category: $category';
+      : '${selected.name} | size: ${selected.size ?? 0} bytes | '
+          'seeders: ${selected.seeders?.toString() ?? 'unknown'} | '
+          'leechers: ${selected.leechers?.toString() ?? 'unknown'} | '
+          'source: ${selected.source.isEmpty ? selected.responderId : selected.source} | '
+          'category: $category';
 
     final active = activeDownloads.isEmpty
         ? 'No active downloads.'
-        : activeDownloads.map((t) => '${t.name} (${_pct(t)}%)').join(', ');
+      : activeDownloads.map((t) {
+        final runtime = _runtimeStatusById[t.id];
+        final progress = runtime == null
+          ? '${_pct(t)}%'
+          : runtime.state.toLowerCase().contains('seed')
+          ? '${(runtime.seedingProgress * 100).toStringAsFixed(1)}% seeded-back'
+          : '${(runtime.progress * 100).toStringAsFixed(1)}%';
+        final peers = runtime?.peers ?? 0;
+        final seeders = runtime?.seeders ?? t.seeders;
+        final leechers = runtime?.leechers ?? t.leechers;
+        final state = runtime?.state ?? t.status ?? 'unknown';
+        return '${t.name} [$state] $progress | peers: $peers | seeders: $seeders | leechers: $leechers';
+        }).join(', ');
 
     final completed = library.isEmpty
         ? 'Library is empty.'

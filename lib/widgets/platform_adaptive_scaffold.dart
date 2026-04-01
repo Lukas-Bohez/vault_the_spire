@@ -174,10 +174,14 @@ class _Sidebar extends StatelessWidget {
                   width: 32,
                   height: 32,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF1A1A2E),
+                    color: Theme.of(context).colorScheme.primaryContainer,
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(Icons.lock, color: Colors.white, size: 18),
+                  child: Icon(
+                    Icons.lock,
+                    color: Theme.of(context).colorScheme.onPrimaryContainer,
+                    size: 18,
+                  ),
                 ),
                 const SizedBox(width: 10),
                 const Text(
@@ -188,7 +192,7 @@ class _Sidebar extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 4),
-          const Padding(
+          Padding(
             padding: EdgeInsets.symmetric(horizontal: 16),
             child: Align(
               alignment: Alignment.centerLeft,
@@ -196,7 +200,7 @@ class _Sidebar extends StatelessWidget {
                 'TorrentSpire AI',
                 style: TextStyle(
                   fontSize: 11,
-                  color: Colors.grey,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                   fontWeight: FontWeight.w500,
                 ),
               ),
@@ -250,8 +254,8 @@ class _Sidebar extends StatelessWidget {
                 Container(
                   width: 8,
                   height: 8,
-                  decoration: const BoxDecoration(
-                    color: Colors.green,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.tertiary,
                     shape: BoxShape.circle,
                   ),
                 ),

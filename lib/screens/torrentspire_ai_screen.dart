@@ -11,6 +11,7 @@ import 'package:vault_the_spire/services/intent_parser.dart';
 import 'package:vault_the_spire/services/search_service.dart';
 import 'package:vault_the_spire/services/settings_service.dart';
 import 'package:vault_the_spire/services/torrent_context.dart';
+import 'package:vault_the_spire/services/torrent_engine_service.dart';
 import 'package:vault_the_spire/services/torrent_service.dart';
 import 'package:vault_the_spire/screens/create_torrent_screen.dart';
 
@@ -38,6 +39,7 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
   List<TorrentModel> _torrents = <TorrentModel>[];
 
   StreamSubscription<List<SearchResult>>? _searchSubscription;
+  StreamSubscription<TorrentEngineStatus>? _engineStatusSubscription;
   Timer? _torrentPoll;
   // Timer? _settingsSyncTimer; // TODO: re-enable periodic sync
 
@@ -82,6 +84,8 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
         );
       }
     });
+    _engineStatusSubscription = TorrentEngineService.instance.statusStream
+      .listen(_contextService.updateRuntimeStatus);
     _refreshTorrents();
     _startTorrentPolling();
     // TODO: Re-enable periodic sync after debugging blank screen
@@ -109,6 +113,7 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
     _chatController.dispose();
     _chatScroll.dispose();
     _searchSubscription?.cancel();
+    _engineStatusSubscription?.cancel();
     _torrentPoll?.cancel();
     _streamPaintTimer?.cancel();
     // _settingsSyncTimer?.cancel(); // TODO: re-enable
@@ -302,7 +307,13 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
     });
 
     final prompt =
-        'Give a concise 2-3 sentence description for this torrent candidate: title=${result.name}, size=${result.size ?? 0} bytes, category=$_category, source=${result.responderId}. Include likely file structure and notable quality hints.';
+      'Give a concise 2-3 sentence description for this torrent candidate: '
+      'title=${result.name}, size=${result.size ?? 0} bytes, category=$_category, '
+      'seeders=${result.seeders?.toString() ?? 'unknown'}, '
+      'leechers=${result.leechers?.toString() ?? 'unknown'}, '
+      'ageYears=${result.ageYears?.toString() ?? 'unknown'}, '
+      'source=${result.source.isEmpty ? result.responderId : result.source}. '
+      'Include likely file structure and notable quality hints.';
 
     if (!mounted) return;
     
@@ -365,20 +376,57 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
   String _computeTrustSignal(SearchResult result) {
     final size = result.size;
     final seeders = result.seeders;
+    final leechers = result.leechers;
     final age = result.ageYears;
 
-    final plausibleMovie = size == null || size >= 500 * 1024 * 1024;
+    if (seeders == null && leechers == null && age == null) {
+      return 'Neutral';
+    }
 
-    if ((seeders != null && seeders < 10) ||
-        (age != null && age > 5) ||
-        (_category == 'Movies' && !plausibleMovie)) {
-      return 'Red';
+    var score = 0;
+
+    if (seeders != null) {
+      if (seeders >= 200) {
+        score += 3;
+      } else if (seeders >= 80) {
+        score += 2;
+      } else if (seeders >= 20) {
+        score += 1;
+      } else if (seeders <= 2) {
+        score -= 3;
+      } else if (seeders <= 8) {
+        score -= 2;
+      }
     }
-    if ((seeders != null && seeders > 50) &&
-        (age != null && age < 2) &&
-        (_category != 'Movies' || plausibleMovie)) {
-      return 'Green';
+
+    if (seeders != null && leechers != null) {
+      if (seeders > leechers * 2) {
+        score += 2;
+      } else if (seeders < leechers) {
+        score -= 1;
+      }
     }
+
+    if (age != null) {
+      if (age <= 1) {
+        score += 1;
+      } else if (age >= 8) {
+        score -= 2;
+      } else if (age >= 5) {
+        score -= 1;
+      }
+    }
+
+    if (_category == 'Movies' && size != null) {
+      if (size < 350 * 1024 * 1024) {
+        score -= 2;
+      } else if (size > 1500 * 1024 * 1024) {
+        score += 1;
+      }
+    }
+
+    if (score >= 3) return 'Green';
+    if (score <= -2) return 'Red';
     return 'Yellow';
   }
 

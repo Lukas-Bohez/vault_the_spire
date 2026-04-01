@@ -14,10 +14,15 @@ class AiTriggerEvent {
 
 class AiTriggers {
   AiTriggerEvent onResultSelected(SearchResult result) {
+    final seeders = result.seeders?.toString() ?? 'unknown';
+    final leechers = result.leechers?.toString() ?? 'unknown';
+    final ageYears = result.ageYears?.toString() ?? 'unknown';
     return AiTriggerEvent(
       key: 'result:${result.torrentId}',
       prompt:
-          'The user is looking at ${result.name}. Give a brief overview: what it likely is, estimated quality, and any red flags based on seeders/leechers ratio and age.',
+          'The user is looking at ${result.name}. '
+          'Observed stats: seeders=$seeders, leechers=$leechers, ageYears=$ageYears. '
+          'Give a brief overview: what it likely is, estimated quality, and any red flags.',
     );
   }
 

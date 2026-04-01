@@ -60,6 +60,7 @@ class _BrowserScreenState extends State<BrowserScreen>
   String? _webViewError;
 
   Timer? _memoryPollTimer;
+  Timer? _loadingGuardTimer;
 
   @override
   void initState() {
@@ -107,6 +108,7 @@ class _BrowserScreenState extends State<BrowserScreen>
             });
           },
           onPageStarted: (url) {
+            _startLoadingGuard();
             setState(() {
               _isLoading = true;
               _showHomeScreen = false;
@@ -114,9 +116,11 @@ class _BrowserScreenState extends State<BrowserScreen>
             });
           },
           onPageFinished: (url) async {
+            _stopLoadingGuard();
             _addressController.text = url;
             setState(() {
               _isLoading = false;
+              _progress = 1.0;
               _showHomeScreen = false;
             });
             _recordVisit(url);
@@ -130,10 +134,12 @@ class _BrowserScreenState extends State<BrowserScreen>
             return NavigationDecision.navigate;
           },
           onWebResourceError: (error) {
+            _stopLoadingGuard();
             debugPrint(
               'WebResourceError: ${error.description} (Code: ${error.errorCode}) URL: ${error.url}',
             );
             setState(() {
+              _isLoading = false;
               _lastLoadError =
                   '${error.description} (Error: ${error.errorCode})';
             });
@@ -184,6 +190,9 @@ class _BrowserScreenState extends State<BrowserScreen>
           if (state == webview_windows.LoadingState.loading) {
             _lastLoadError = null;
             _showHomeScreen = false;
+            _startLoadingGuard();
+          } else {
+            _stopLoadingGuard();
           }
         });
       });
@@ -197,6 +206,7 @@ class _BrowserScreenState extends State<BrowserScreen>
       });
 
       controller.onLoadError.listen((error) {
+        _stopLoadingGuard();
         _captureCrashDump('WebView2 LoadError ${error.name}', null);
         setState(() {
           _lastLoadError = '${error.name}: ${error.toString()}';
@@ -421,8 +431,10 @@ class _BrowserScreenState extends State<BrowserScreen>
         _windowsIsLoading = true;
       } else {
         _isLoading = true;
+        _progress = 0.0;
       }
     });
+    _startLoadingGuard();
 
     if (_isTorrentOrMagnetUrl(url)) {
       await _handleTorrentOrMagnetUrl(url);
@@ -435,6 +447,22 @@ class _BrowserScreenState extends State<BrowserScreen>
     }
     await _webViewController?.loadRequest(Uri.parse(url));
     await _refreshNavigationState();
+  }
+
+  void _startLoadingGuard() {
+    _loadingGuardTimer?.cancel();
+    _loadingGuardTimer = Timer(const Duration(seconds: 20), () {
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _windowsIsLoading = false;
+      });
+    });
+  }
+
+  void _stopLoadingGuard() {
+    _loadingGuardTimer?.cancel();
+    _loadingGuardTimer = null;
   }
 
   Future<void> _refreshNavigationState() async {
@@ -475,6 +503,7 @@ class _BrowserScreenState extends State<BrowserScreen>
   void _stopMemoryMonitor() {
     _memoryPollTimer?.cancel();
     _memoryPollTimer = null;
+    _stopLoadingGuard();
   }
 
   @override
@@ -575,7 +604,15 @@ class _BrowserScreenState extends State<BrowserScreen>
           ),
           IconButton(
             icon: const Icon(Icons.home_outlined, size: 20),
-            onPressed: () => setState(() => _showHomeScreen = true),
+            onPressed: () {
+              _stopLoadingGuard();
+              setState(() {
+                _showHomeScreen = true;
+                _isLoading = false;
+                _windowsIsLoading = false;
+                _lastLoadError = null;
+              });
+            },
             tooltip: 'Home',
           ),
           Expanded(
@@ -825,11 +862,12 @@ class _BrowserScreenState extends State<BrowserScreen>
     super.build(context); // required by AutomaticKeepAliveClientMixin
     final theme = Theme.of(context);
     final isLoading = Platform.isWindows ? _windowsIsLoading : _isLoading;
+    final showLoadingBar = !_showHomeScreen && _lastLoadError == null && isLoading;
 
     final column = Column(
       children: [
         _buildTopBar(theme),
-        if (isLoading)
+        if (showLoadingBar)
           LinearProgressIndicator(
             value: Platform.isWindows ? null : _progress,
             minHeight: 2,
