@@ -1,7 +1,7 @@
 name: vault_the_spire
 description: "TorrentSpire AI - torrent manager with AI copilot"
 publish_to: 'none'
-version: 1.0.0+0
+version: 1.0.0+1
 
 environment:
   sdk: ^3.11.0
@@ -14,7 +14,7 @@ dependencies:
   cryptography: ^2.7.0
   crypto: ^3.0.3
   flutter_secure_storage: ^9.0.0
-  go_router: ^13.0.0
+  go_router: ^17.1.0
   uuid: ^4.3.0
   sqflite: ^2.3.0
   audioplayers: ^6.6.0
@@ -28,10 +28,10 @@ dependencies:
   shared_preferences: ^2.0.20
   tray_manager: ^0.5.2
   collection: ^1.18.0
-  window_manager: ^0.3.0
+  window_manager: ^0.5.1
   desktop_drop: ^0.4.0
   file_picker: ^10.3.10
-  get_it: ^8.1.0
+  get_it: ^9.2.1
   win32: ^5.15.0
   webview_flutter: ^4.13.1
   url_launcher: ^6.1.10
@@ -42,12 +42,28 @@ dependencies:
   flutter_background_service: ^5.1.0
   flutter_local_notifications: ^18.0.0
   dio: ^5.4.3
-  flutter_markdown: ^0.7.3
+  flutter_markdown_plus: ^1.0.4
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.3
+  flutter_native_splash: ^2.4.6
+
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/icon/app_icon.png"
+  adaptive_icon_background: "#1a1a2e"
+  adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"
+
+flutter_native_splash:
+  color: "#1a1a2e"
+  image: assets/icon/app_icon.png
+  android_12:
+    color: "#1a1a2e"
+    icon_background_color: "#1a1a2e"
 
 flutter:
   uses-material-design: true

@@ -16,7 +16,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.vault_the_spire"
+    namespace = "com.torrentspire.ai"
     compileSdk = 36  // enforce latest SDK required by plugins (path_provider_android/sqflite_android)
     ndkVersion = flutter.ndkVersion
 
@@ -31,10 +31,7 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.vault_the_spire"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
+        applicationId = "com.torrentspire.ai"
         minSdk = flutter.minSdkVersion
         targetSdk = 36 // keep in sync with compileSdk for current plugin requirements
         versionCode = flutter.versionCode
@@ -43,16 +40,25 @@ android {
 
     signingConfigs {
         create("release") {
-            keyAlias = "upload"
-            keyPassword = "123456"
-            storeFile = file("upload-keystore.jks")
-            storePassword = "123456"
+            keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+                ?: keystoreProperties.getProperty("keyAlias")
+            keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+                ?: keystoreProperties.getProperty("keyPassword")
+            storeFile = file("keystore.jks")
+            storePassword = System.getenv("ANDROID_STORE_PASSWORD")
+                ?: keystoreProperties.getProperty("storePassword")
         }
     }
 
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("release")
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
         }
         debug {
             signingConfig = signingConfigs.getByName("debug")
@@ -62,6 +68,7 @@ android {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.3")
+    implementation("com.google.android.play:core:1.10.3")
 }
 
 flutter {

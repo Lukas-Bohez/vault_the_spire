@@ -3,7 +3,7 @@ class AiChatEntry {
   final String role;
   final String content;
   final DateTime createdAt;
-  final bool isAuto;
+  final bool isAutoTriggered;
   final bool isStreaming;
 
   const AiChatEntry({
@@ -11,20 +11,19 @@ class AiChatEntry {
     required this.role,
     required this.content,
     required this.createdAt,
-    this.isAuto = false,
+    this.isAutoTriggered = false,
     this.isStreaming = false,
   });
 
-  AiChatEntry copyWith({
-    String? content,
-    bool? isStreaming,
-  }) {
+  bool get isAuto => isAutoTriggered;
+
+  AiChatEntry copyWith({String? content, bool? isStreaming}) {
     return AiChatEntry(
       id: id,
       role: role,
       content: content ?? this.content,
       createdAt: createdAt,
-      isAuto: isAuto,
+      isAutoTriggered: isAutoTriggered,
       isStreaming: isStreaming ?? this.isStreaming,
     );
   }

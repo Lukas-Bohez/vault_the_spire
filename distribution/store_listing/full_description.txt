@@ -1,0 +1,36 @@
+TorrentSpire AI is a modern torrent manager with a built-in local AI copilot. It helps you search, evaluate, and manage downloads faster while keeping full control in your hands.
+
+What TorrentSpire AI does:
+- Search and add torrents quickly with a dual-pane workflow.
+- Paste magnet links directly and start resolving metadata immediately.
+- Track download queue progress in real time.
+- Keep a local library of completed downloads.
+
+Built-in AI Copilot:
+- Ask natural language commands like:
+  - "search for ubuntu iso"
+  - "download the top result"
+  - "what's downloading"
+- Receive streaming AI responses in real time.
+- Use torrent-aware context so answers match your current search, selection, queue, and library.
+- Works with local Ollama models for private, on-device-first AI workflows.
+
+AI Info Cards and Trust Signals:
+- Selecting a torrent auto-generates an AI Info Card.
+- Cards include a short summary, quality hints, and a Trust Signal:
+  - Green: strong indicators
+  - Yellow: mixed indicators
+  - Red: risky indicators
+- Quickly ask follow-up analysis with "Tell me more".
+
+Download management:
+- Queue and library views are always visible in the main workspace.
+- Download state is updated continuously with periodic status refresh.
+- Active torrents are restored on app restart.
+
+Designed for power users:
+- Dark, focused interface.
+- Resizable dual-pane layout on desktop.
+- Fast navigation for search, detail review, and AI chat.
+
+TorrentSpire AI combines practical torrent tooling with context-aware AI guidance so you can decide faster and download smarter.

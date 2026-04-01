@@ -147,10 +147,9 @@ class _ChatScreenState extends State<ChatScreen> {
                               bottomRight: Radius.circular(isMe ? 2 : 12),
                             ),
                             border: Border.all(
-                              color: Theme.of(context)
-                                  .colorScheme
-                                  .onSurface
-                                  .withOpacity(0.15),
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurface.withOpacity(0.15),
                               width: 1,
                             ),
                           ),
@@ -183,8 +182,10 @@ class _ChatScreenState extends State<ChatScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
               child: Shortcuts(
                 shortcuts: <LogicalKeySet, Intent>{
-                  LogicalKeySet(LogicalKeyboardKey.shift, LogicalKeyboardKey.enter):
-                      const _ChatInsertNewlineIntent(),
+                  LogicalKeySet(
+                    LogicalKeyboardKey.shift,
+                    LogicalKeyboardKey.enter,
+                  ): const _ChatInsertNewlineIntent(),
                   LogicalKeySet(LogicalKeyboardKey.enter):
                       const _ChatSendMessageIntent(),
                 },
@@ -192,30 +193,30 @@ class _ChatScreenState extends State<ChatScreen> {
                   actions: <Type, Action<Intent>>{
                     _ChatSendMessageIntent:
                         CallbackAction<_ChatSendMessageIntent>(
-                      onInvoke: (intent) async {
-                        await _send();
-                        return null;
-                      },
-                    ),
+                          onInvoke: (intent) async {
+                            await _send();
+                            return null;
+                          },
+                        ),
                     _ChatInsertNewlineIntent:
                         CallbackAction<_ChatInsertNewlineIntent>(
-                      onInvoke: (intent) {
-                        final selection = _controller.selection;
-                        final text = _controller.text;
-                        final newText = text.replaceRange(
-                          selection.start,
-                          selection.end,
-                          '\n',
-                        );
-                        _controller.value = TextEditingValue(
-                          text: newText,
-                          selection: TextSelection.collapsed(
-                            offset: selection.start + 1,
-                          ),
-                        );
-                        return null;
-                      },
-                    ),
+                          onInvoke: (intent) {
+                            final selection = _controller.selection;
+                            final text = _controller.text;
+                            final newText = text.replaceRange(
+                              selection.start,
+                              selection.end,
+                              '\n',
+                            );
+                            _controller.value = TextEditingValue(
+                              text: newText,
+                              selection: TextSelection.collapsed(
+                                offset: selection.start + 1,
+                              ),
+                            );
+                            return null;
+                          },
+                        ),
                   },
                   child: Row(
                     children: [
@@ -235,7 +236,10 @@ class _ChatScreenState extends State<ChatScreen> {
                           ),
                         ),
                       ),
-                      IconButton(icon: const Icon(Icons.send), onPressed: _send),
+                      IconButton(
+                        icon: const Icon(Icons.send),
+                        onPressed: _send,
+                      ),
                     ],
                   ),
                 ),

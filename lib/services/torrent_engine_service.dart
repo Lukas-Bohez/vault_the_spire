@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:math';
 
 import 'package:b_encode_decode/b_encode_decode.dart';
 import 'package:bittorrent_dht/bittorrent_dht.dart';
@@ -137,29 +136,10 @@ class TorrentEngineService {
   }
 
   Future<void> _mapPorts(dt.TorrentTask task) async {
-    const int basePort = 6881;
-    const int maxPort = 6889;
-    final random = Random();
-
-    for (var attempt = 0; attempt < (maxPort - basePort + 1); attempt++) {
-      final port = basePort + random.nextInt(maxPort - basePort + 1);
-      try {
-        (task as dynamic).setPort(port);
-        (task as dynamic).enableUPnP(true);
-        (task as dynamic).enableNATPMP(true);
-        debugPrint('Port/NAT configuration applied ($port/UPnP/NAT-PMP)');
-        _defaultPortsBlocked = false;
-        return;
-      } catch (e, st) {
-        debugPrint('setPort($port) failed: $e');
-        debugPrint(st.toString());
-      }
-    }
-
+    // This package version does not expose setPort/UPnP/NAT-PMP mutators.
+    // Allow the task to bind ports internally instead of spamming NoSuchMethod.
     _defaultPortsBlocked = true;
-    debugPrint(
-      'Could not bind to ports $basePort-$maxPort; using ephemeral port binding.',
-    );
+    debugPrint('Using internal torrent task port binding (ephemeral).');
   }
 
   void _addDhtBootstrapNodes(dt.TorrentTask task) {

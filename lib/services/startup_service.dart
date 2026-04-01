@@ -51,7 +51,8 @@ class StartupService {
       // Only create if it does not already exist.
       if (await File(linkPath).exists()) return;
       final exePath = Platform.resolvedExecutable;
-      final script = '''
+      final script =
+          '''
 \$w = New-Object -ComObject WScript.Shell
 \$s = \$w.CreateShortcut("$linkPath")
 \$s.TargetPath = "$exePath"
@@ -75,7 +76,8 @@ class StartupService {
       // Only create if the Desktop directory actually exists.
       if (!await Directory(desktopPath).exists()) return;
       final exePath = Platform.resolvedExecutable;
-      final content = '''[Desktop Entry]
+      final content =
+          '''[Desktop Entry]
 Type=Application
 Name=VaultTheSpire
 Comment=Private Torrent and Messaging

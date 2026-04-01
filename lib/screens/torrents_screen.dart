@@ -1,4 +1,4 @@
-﻿import 'dart:io';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -43,13 +43,16 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
         await TorrentService.instance.updateTorrentStatus(torrent.id, 'paused');
       } else {
         await TorrentEngineService.instance.startTorrent(torrent.id);
-        await TorrentService.instance.updateTorrentStatus(torrent.id, 'downloading');
+        await TorrentService.instance.updateTorrentStatus(
+          torrent.id,
+          'downloading',
+        );
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Unable to toggle torrent: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Unable to toggle torrent: $e')));
     }
     await _refresh();
   }
@@ -59,14 +62,14 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
       TorrentEngineService.instance.stopTorrent(torrent.id);
       await TorrentService.instance.removeTorrent(torrent.id);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Torrent removed.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Torrent removed.')));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Unable to delete torrent: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Unable to delete torrent: $e')));
     }
     await _refresh();
   }
@@ -104,9 +107,9 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
     final uri = Uri.file(directoryPath);
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to open folder.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Failed to open folder.')));
     }
   }
 
@@ -172,7 +175,11 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
                   physics: const AlwaysScrollableScrollPhysics(),
                   children: const [
                     SizedBox(height: 100),
-                    Center(child: Text('No torrents yet. Drag and drop .torrent files.')),
+                    Center(
+                      child: Text(
+                        'No torrents yet. Drag and drop .torrent files.',
+                      ),
+                    ),
                   ],
                 );
               }
@@ -187,16 +194,30 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
                     ),
                     builder: (context, statusSnapshot) {
                       final status = statusSnapshot.data;
-                      final progress = status?.progress ?? torrent.progress.clamp(0.0, 1.0);
-                      final isActive = (torrent.status ?? '').toLowerCase().contains('download') ||
+                      final progress =
+                          status?.progress ?? torrent.progress.clamp(0.0, 1.0);
+                      final isActive =
+                          (torrent.status ?? '').toLowerCase().contains(
+                            'download',
+                          ) ||
                           (torrent.status ?? '').toLowerCase().contains('seed');
-                      final isComplete = progress >= 1.0 ||
+                      final isComplete =
+                          progress >= 1.0 ||
                           (torrent.status ?? '').toLowerCase() == 'complete';
                       return Card(
-                        margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                        margin: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 6,
+                        ),
                         child: ListTile(
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                          title: Text(torrent.name, overflow: TextOverflow.ellipsis),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                          title: Text(
+                            torrent.name,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                           subtitle: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -215,11 +236,19 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
                             if (magnet != null && magnet.isNotEmpty) {
                               Clipboard.setData(ClipboardData(text: magnet));
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('Magnet link copied to clipboard')),
+                                const SnackBar(
+                                  content: Text(
+                                    'Magnet link copied to clipboard',
+                                  ),
+                                ),
                               );
                             } else {
                               ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(content: Text('No magnet link available for this torrent')),
+                                const SnackBar(
+                                  content: Text(
+                                    'No magnet link available for this torrent',
+                                  ),
+                                ),
                               );
                             }
                           },
@@ -234,7 +263,9 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
                                 )
                               else
                                 IconButton(
-                                  icon: Icon(isActive ? Icons.pause : Icons.play_arrow),
+                                  icon: Icon(
+                                    isActive ? Icons.pause : Icons.play_arrow,
+                                  ),
                                   tooltip: isActive ? 'Pause' : 'Play',
                                   onPressed: () => _toggleTorrent(torrent),
                                 ),
@@ -244,13 +275,23 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
                                 onPressed: () {
                                   final magnet = torrent.magnetLink;
                                   if (magnet != null && magnet.isNotEmpty) {
-                                    Clipboard.setData(ClipboardData(text: magnet));
+                                    Clipboard.setData(
+                                      ClipboardData(text: magnet),
+                                    );
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('Magnet link copied to clipboard')),
+                                      const SnackBar(
+                                        content: Text(
+                                          'Magnet link copied to clipboard',
+                                        ),
+                                      ),
                                     );
                                   } else {
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('No magnet link available for this torrent')),
+                                      const SnackBar(
+                                        content: Text(
+                                          'No magnet link available for this torrent',
+                                        ),
+                                      ),
                                     );
                                   }
                                 },

@@ -17,6 +17,8 @@ class SettingsService {
   static const _kBrowserFavorites = 'browser_favorites';
   static const _kBrowserLastUrl = 'browser_last_url';
   static const _kBrowserHistory = 'browser_history';
+  static const _kAiOllamaUrl = 'ai_ollama_url';
+  static const _kAiDefaultModel = 'ai_default_model';
 
   static final SettingsService instance = SettingsService._();
   SettingsService._();
@@ -41,6 +43,8 @@ class SettingsService {
   double windowH = 0.0;
   String browserLastUrl = '';
   List<String> browserHistory = <String>[];
+  String aiOllamaUrl = 'http://localhost:11434';
+  String aiDefaultModel = 'llama3';
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -61,6 +65,8 @@ class SettingsService {
         prefs.getStringList(_kBrowserFavorites) ?? browserFavorites;
     browserLastUrl = prefs.getString(_kBrowserLastUrl) ?? '';
     browserHistory = prefs.getStringList(_kBrowserHistory) ?? <String>[];
+    aiOllamaUrl = prefs.getString(_kAiOllamaUrl) ?? 'http://localhost:11434';
+    aiDefaultModel = prefs.getString(_kAiDefaultModel) ?? 'llama3';
   }
 
   Future<void> setUseSystemTray(bool value) async {
@@ -147,5 +153,17 @@ class SettingsService {
     // Keep at most 200 entries persisted.
     final trimmed = history.length > 200 ? history.sublist(0, 200) : history;
     await prefs.setStringList(_kBrowserHistory, trimmed);
+  }
+
+  Future<void> setAiOllamaUrl(String url) async {
+    aiOllamaUrl = url.trim().isEmpty ? 'http://localhost:11434' : url.trim();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kAiOllamaUrl, aiOllamaUrl);
+  }
+
+  Future<void> setAiDefaultModel(String model) async {
+    aiDefaultModel = model.trim().isEmpty ? 'llama3' : model.trim();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kAiDefaultModel, aiDefaultModel);
   }
 }

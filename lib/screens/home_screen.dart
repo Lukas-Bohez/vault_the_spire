@@ -39,8 +39,8 @@ class HomeScreen extends StatelessWidget {
                 final crossAxisCount = constraints.maxWidth > 1200
                     ? 4
                     : constraints.maxWidth > 800
-                        ? 3
-                        : 2;
+                    ? 3
+                    : 2;
                 final childAspectRatio = constraints.maxWidth > 1200
                     ? 2.2
                     : 1.8;
@@ -54,9 +54,9 @@ class HomeScreen extends StatelessWidget {
                   children: [
                     _QuickActionCard(
                       icon: Icons.chat_bubble_outline,
-                      title: 'New Message',
-                      subtitle: 'Start a secure conversation',
-                      onTap: () => context.go('/chat_hub'),
+                      title: 'Local AI Chat',
+                      subtitle: 'Chat with your local Ollama model',
+                      onTap: () => context.go('/ai_chat'),
                     ),
                     _QuickActionCard(
                       icon: Icons.download_outlined,

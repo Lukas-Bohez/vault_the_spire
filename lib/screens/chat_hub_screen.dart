@@ -43,17 +43,23 @@ class _ChatHubScreenState extends State<ChatHubScreen> {
 
   Future<void> _openEntry(ChatHubEntry entry) async {
     if (entry.isDM) {
-      await Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => DMScreen(user: _currentUser, peer: entry.title),
-      ));
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => DMScreen(user: _currentUser, peer: entry.title),
+        ),
+      );
     } else {
       final server = ServerService.instance.servers.firstWhere(
         (s) => s.id == entry.serverId,
-        orElse: () => ServerModel(id: entry.serverId, name: 'Unknown', channels: []),
+        orElse: () =>
+            ServerModel(id: entry.serverId, name: 'Unknown', channels: []),
       );
-      await Navigator.of(context).push(MaterialPageRoute(
-        builder: (_) => ChatScreen(server: server, channelId: entry.channelId),
-      ));
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) =>
+              ChatScreen(server: server, channelId: entry.channelId),
+        ),
+      );
     }
     _loadEntries();
   }
@@ -135,16 +141,29 @@ class _ChatHubScreenState extends State<ChatHubScreen> {
                           const SizedBox(height: 12),
                           Text(
                             'Error loading chats:',
-                            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.red),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.red,
+                            ),
                           ),
                           const SizedBox(height: 8),
-                          Text('${snapshot.error}', style: const TextStyle(color: Colors.red)),
+                          Text(
+                            '${snapshot.error}',
+                            style: const TextStyle(color: Colors.red),
+                          ),
                           if (snapshot.stackTrace != null)
                             Padding(
                               padding: const EdgeInsets.only(top: 8),
                               child: Text(
-                                snapshot.stackTrace.toString().split('\n').take(6).join('\n'),
-                                style: const TextStyle(fontSize: 12, color: Colors.red),
+                                snapshot.stackTrace
+                                    .toString()
+                                    .split('\n')
+                                    .take(6)
+                                    .join('\n'),
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.red,
+                                ),
                               ),
                             ),
                         ],
@@ -157,7 +176,8 @@ class _ChatHubScreenState extends State<ChatHubScreen> {
               final filtered = _query.isEmpty
                   ? entries
                   : entries.where((entry) {
-                      final combined = '${entry.title} ${entry.subtitle}'.toLowerCase();
+                      final combined = '${entry.title} ${entry.subtitle}'
+                          .toLowerCase();
                       return combined.contains(_query);
                     }).toList();
               if (filtered.isEmpty) {
@@ -170,12 +190,21 @@ class _ChatHubScreenState extends State<ChatHubScreen> {
                   final entry = filtered[index];
                   return ListTile(
                     leading: CircleAvatar(
-                      child: Text(entry.type == ChatHubEntryType.dm ? 'DM' : 'S'),
+                      child: Text(
+                        entry.type == ChatHubEntryType.dm ? 'DM' : 'S',
+                      ),
                     ),
                     title: Text(entry.title),
-                    subtitle: Text(entry.subtitle.isNotEmpty ? entry.subtitle : 'No messages yet'),
+                    subtitle: Text(
+                      entry.subtitle.isNotEmpty
+                          ? entry.subtitle
+                          : 'No messages yet',
+                    ),
                     trailing: entry.unread > 0
-                        ? CircleAvatar(radius: 12, child: Text(entry.unread.toString()))
+                        ? CircleAvatar(
+                            radius: 12,
+                            child: Text(entry.unread.toString()),
+                          )
                         : null,
                     onTap: () => _openEntry(entry),
                   );

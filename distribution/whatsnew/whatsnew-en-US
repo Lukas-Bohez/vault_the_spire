@@ -1,0 +1,3 @@
+Initial release of TorrentSpire AI. Torrent management with a built-in AI copilot
+that knows what you're downloading, gives trust signals on torrents, and takes
+natural language commands. Powered by Ollama.

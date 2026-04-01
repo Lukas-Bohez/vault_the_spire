@@ -16,6 +16,20 @@ class TorrentIntent {
 }
 
 class IntentParser {
+  static const List<String> _keywordGatePhrases = <String>[
+    'search for',
+    'download',
+    'find me',
+    "what's downloading",
+    'what is downloading',
+    'how much space',
+  ];
+
+  bool passesKeywordGate(String message) {
+    final lower = message.toLowerCase();
+    return _keywordGatePhrases.any(lower.contains);
+  }
+
   TorrentIntent parse(String message) {
     final text = message.trim();
     final lower = text.toLowerCase();
@@ -31,7 +45,8 @@ class IntentParser {
       return const TorrentIntent(TorrentIntentType.downloadTop);
     }
 
-    if (lower.contains("what's downloading") || lower.contains('what is downloading')) {
+    if (lower.contains("what's downloading") ||
+        lower.contains('what is downloading')) {
       return const TorrentIntent(TorrentIntentType.whatsDownloading);
     }
 

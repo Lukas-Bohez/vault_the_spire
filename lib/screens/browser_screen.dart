@@ -1,4 +1,4 @@
-﻿import 'dart:async';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -89,7 +89,9 @@ class _BrowserScreenState extends State<BrowserScreen>
     _addressController.text = startUrl;
 
     // start swarm search subscription
-    _swarmResultSubscription = SearchService.instance.resultsStream.listen((results) {
+    _swarmResultSubscription = SearchService.instance.resultsStream.listen((
+      results,
+    ) {
       if (!mounted) return;
       setState(() {
         _swarmSearchResults = results;
@@ -640,22 +642,33 @@ class _BrowserScreenState extends State<BrowserScreen>
                       return ListTile(
                         leading: const Icon(Icons.power),
                         title: Text(item.name),
-                        subtitle: Text('Size: ${item.size ?? 0} • Responder: ${item.responderId}'),
+                        subtitle: Text(
+                          'Size: ${item.size ?? 0} • Responder: ${item.responderId}',
+                        ),
                         trailing: ElevatedButton.icon(
                           icon: const Icon(Icons.download),
                           label: const Text('Download'),
                           onPressed: item.magnetLink.isNotEmpty
                               ? () async {
                                   try {
-                                    await TorrentService.instance.addTorrentFromMagnet(item.magnetLink);
+                                    await TorrentService.instance
+                                        .addTorrentFromMagnet(item.magnetLink);
                                     if (!mounted) return;
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(content: Text('Magnet added to torrent queue')),
+                                      const SnackBar(
+                                        content: Text(
+                                          'Magnet added to torrent queue',
+                                        ),
+                                      ),
                                     );
                                   } catch (e) {
                                     if (!mounted) return;
                                     ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: Text('Failed to add magnet: $e')),
+                                      SnackBar(
+                                        content: Text(
+                                          'Failed to add magnet: $e',
+                                        ),
+                                      ),
                                     );
                                   }
                                 }
@@ -679,17 +692,20 @@ class _BrowserScreenState extends State<BrowserScreen>
       _swarmSearchResults = [];
     });
 
-    SearchService.instance.broadcastSearch(query).then((_) {
-      // in response callback subscription handles results
-    }).catchError((e) {
-      if (!mounted) return;
-      setState(() {
-        _swarmSearching = false;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Vault Swarm search failed: $e')),
-      );
-    });
+    SearchService.instance
+        .broadcastSearch(query)
+        .then((_) {
+          // in response callback subscription handles results
+        })
+        .catchError((e) {
+          if (!mounted) return;
+          setState(() {
+            _swarmSearching = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Vault Swarm search failed: $e')),
+          );
+        });
   }
 
   Widget _buildHomeScreen(ThemeData theme) {
@@ -913,10 +929,7 @@ class _BrowserScreenState extends State<BrowserScreen>
               DropdownButton<SearchSource>(
                 value: _searchSource,
                 items: const [
-                  DropdownMenuItem(
-                    value: SearchSource.web,
-                    child: Text('Web'),
-                  ),
+                  DropdownMenuItem(value: SearchSource.web, child: Text('Web')),
                   DropdownMenuItem(
                     value: SearchSource.vaultSwarm,
                     child: Text('Vault Swarm'),
@@ -938,10 +951,10 @@ class _BrowserScreenState extends State<BrowserScreen>
         Expanded(
           child: _searchSource == SearchSource.web
               ? (_showHomeScreen
-                  ? _buildHomeScreen(theme)
-                  : _lastLoadError != null
-                      ? _buildLoadError()
-                      : _buildWebViewBody())
+                    ? _buildHomeScreen(theme)
+                    : _lastLoadError != null
+                    ? _buildLoadError()
+                    : _buildWebViewBody())
               : _buildSwarmSearchBody(),
         ),
       ],

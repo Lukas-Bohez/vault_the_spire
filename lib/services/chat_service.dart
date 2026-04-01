@@ -284,15 +284,17 @@ class ChatService {
         offset: 0,
       );
       final latest = messages.isNotEmpty ? messages.last : null;
-      hub.add(ChatHubEntry(
-        id: conv.id,
-        type: ChatHubEntryType.dm,
-        title: peerName,
-        subtitle: latest?.content ?? 'No messages yet',
-        conversationId: conv.id,
-        unread: unread,
-        lastUpdated: latest?.timestamp ?? conv.createdAt,
-      ));
+      hub.add(
+        ChatHubEntry(
+          id: conv.id,
+          type: ChatHubEntryType.dm,
+          title: peerName,
+          subtitle: latest?.content ?? 'No messages yet',
+          conversationId: conv.id,
+          unread: unread,
+          lastUpdated: latest?.timestamp ?? conv.createdAt,
+        ),
+      );
     }
 
     final servers = ServerService.instance.servers;
@@ -303,16 +305,19 @@ class ChatService {
           channel.id,
         );
         final latest = messages.isNotEmpty ? messages.last : null;
-        hub.add(ChatHubEntry(
-          id: '${server.id}:${channel.id}',
-          type: ChatHubEntryType.serverChannel,
-          title: '${server.name} / ${channel.name}',
-          subtitle: latest?.text ?? 'No messages yet',
-          serverId: server.id,
-          channelId: channel.id,
-          unread: 0,
-          lastUpdated: latest?.timestamp ?? DateTime.fromMillisecondsSinceEpoch(0),
-        ));
+        hub.add(
+          ChatHubEntry(
+            id: '${server.id}:${channel.id}',
+            type: ChatHubEntryType.serverChannel,
+            title: '${server.name} / ${channel.name}',
+            subtitle: latest?.text ?? 'No messages yet',
+            serverId: server.id,
+            channelId: channel.id,
+            unread: 0,
+            lastUpdated:
+                latest?.timestamp ?? DateTime.fromMillisecondsSinceEpoch(0),
+          ),
+        );
       }
     }
 
@@ -413,7 +418,9 @@ class ChatService {
         if (messageMap != null && conversationId != null) {
           messageMap['content'] = _ensureString(messageMap['content']);
           messageMap['sender_id'] = _ensureString(messageMap['sender_id']);
-          messageMap['conversation_id'] = _ensureString(messageMap['conversation_id']);
+          messageMap['conversation_id'] = _ensureString(
+            messageMap['conversation_id'],
+          );
           final mv = DmMessage.fromMap(messageMap);
           await DmMessagesDao.instance.insertMessage(mv);
         }

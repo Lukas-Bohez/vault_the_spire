@@ -1,0 +1,1 @@
+AI-powered torrent manager. Smart search, Trust Signals, and a built-in AI copilot.

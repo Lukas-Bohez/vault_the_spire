@@ -27,7 +27,9 @@ class TorrentContextService extends ChangeNotifier {
   void updateTorrents(List<TorrentModel> all) {
     activeDownloads = all.where((t) {
       final status = (t.status ?? '').toLowerCase();
-      return status.contains('download') || status.contains('seed') || status.contains('queued');
+      return status.contains('download') ||
+          status.contains('seed') ||
+          status.contains('queued');
     }).toList();
 
     library = all.where((t) {
@@ -40,20 +42,20 @@ class TorrentContextService extends ChangeNotifier {
   String getContext() {
     final selected = selectedResult;
     final selectedText = selected == null
-        ? 'None'
+        ? 'No torrent selected.'
         : '${selected.name} | size: ${selected.size ?? 0} bytes | seeders: unknown | leechers: unknown | source: ${selected.responderId} | category: $category';
 
     final active = activeDownloads.isEmpty
-        ? 'None'
-        : activeDownloads
-            .map((t) => '${t.name} (${_pct(t)}%)')
-            .join(', ');
+        ? 'No active downloads.'
+        : activeDownloads.map((t) => '${t.name} (${_pct(t)}%)').join(', ');
 
     final completed = library.isEmpty
-        ? 'None'
+        ? 'Library is empty.'
         : library.map((t) => t.name).join(', ');
 
-    return 'Current torrent search query: ${currentQuery.isEmpty ? 'None' : currentQuery}\n'
+    final queryText = currentQuery.isEmpty ? 'No active search.' : currentQuery;
+
+    return 'Current torrent search query: $queryText\n'
         'Selected torrent: $selectedText\n'
         'Active downloads: $active\n'
         'Library contents: $completed';

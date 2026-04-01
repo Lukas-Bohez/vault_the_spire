@@ -1,4 +1,4 @@
-﻿import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:vault_the_spire/models/message.dart';
 import 'package:vault_the_spire/services/message_service.dart';
@@ -82,9 +82,11 @@ class _MessagesScreenState extends State<MessagesScreen> {
   List<MessageModel> _conversationMessages() {
     if (_selectedRecipient == null) return [];
     return _messages
-        .where((m) =>
-            (m.sender == 'me' && m.recipient == _selectedRecipient) ||
-            (m.sender == _selectedRecipient && m.recipient == 'me'))
+        .where(
+          (m) =>
+              (m.sender == 'me' && m.recipient == _selectedRecipient) ||
+              (m.sender == _selectedRecipient && m.recipient == 'me'),
+        )
         .toList()
       ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
   }
@@ -92,7 +94,8 @@ class _MessagesScreenState extends State<MessagesScreen> {
   String _formatTimestamp(int millis) {
     final dt = DateTime.fromMillisecondsSinceEpoch(millis).toLocal();
     final now = DateTime.now();
-    final isToday = dt.year == now.year && dt.month == now.month && dt.day == now.day;
+    final isToday =
+        dt.year == now.year && dt.month == now.month && dt.day == now.day;
     final hour = dt.hour.toString().padLeft(2, '0');
     final minute = dt.minute.toString().padLeft(2, '0');
     if (isToday) return '$hour:$minute';
@@ -115,9 +118,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
               width: 260,
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: isDark
-                    ? Colors.grey[900]
-                    : Colors.grey[200],
+                color: isDark ? Colors.grey[900] : Colors.grey[200],
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Column(
@@ -131,16 +132,18 @@ class _MessagesScreenState extends State<MessagesScreen> {
                   ),
                   Expanded(
                     child: conversations.isEmpty
-                        ? const Center(
-                            child: Text('No conversations yet'),
-                          )
+                        ? const Center(child: Text('No conversations yet'))
                         : ListView.builder(
                             itemCount: conversations.length,
                             itemBuilder: (context, index) {
                               final peer = conversations[index];
                               final unreadCount = _messages
-                                  .where((m) =>
-                                      m.sender == peer && !m.isSent && m.recipient == 'me')
+                                  .where(
+                                    (m) =>
+                                        m.sender == peer &&
+                                        !m.isSent &&
+                                        m.recipient == 'me',
+                                  )
                                   .length;
                               return ListTile(
                                 title: Text(peer),
@@ -151,13 +154,16 @@ class _MessagesScreenState extends State<MessagesScreen> {
                                         child: Text(
                                           unreadCount.toString(),
                                           style: const TextStyle(
-                                              fontSize: 11,
-                                              color: Colors.white),
+                                            fontSize: 11,
+                                            color: Colors.white,
+                                          ),
                                         ),
                                       )
                                     : null,
                                 selected: _selectedRecipient == peer,
-                                selectedTileColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+                                selectedTileColor: Theme.of(
+                                  context,
+                                ).colorScheme.primary.withValues(alpha: 0.2),
                                 onTap: () => _selectConversation(peer),
                               );
                             },
@@ -209,12 +215,19 @@ class _MessagesScreenState extends State<MessagesScreen> {
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             children: const [
-                              Icon(Icons.chat_bubble_outline, size: 72, color: Colors.grey),
+                              Icon(
+                                Icons.chat_bubble_outline,
+                                size: 72,
+                                color: Colors.grey,
+                              ),
                               SizedBox(height: 12),
                               Text(
                                 'Select a peer or enter a username to start messaging',
                                 textAlign: TextAlign.center,
-                                style: TextStyle(color: Colors.grey, fontSize: 16),
+                                style: TextStyle(
+                                  color: Colors.grey,
+                                  fontSize: 16,
+                                ),
                               ),
                             ],
                           ),
@@ -237,7 +250,10 @@ class _MessagesScreenState extends State<MessagesScreen> {
                                 ),
                                 Text(
                                   'Last activity: ${selectedMessages.isEmpty ? '—' : _formatTimestamp(selectedMessages.last.createdAt)}',
-                                  style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey,
+                                  ),
                                 ),
                               ],
                             ),
@@ -255,21 +271,30 @@ class _MessagesScreenState extends State<MessagesScreen> {
                                   final message = selectedMessages[index];
                                   final isMine = message.sender == 'me';
                                   return Align(
-                                    alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
+                                    alignment: isMine
+                                        ? Alignment.centerRight
+                                        : Alignment.centerLeft,
                                     child: Container(
-                                      margin: const EdgeInsets.symmetric(vertical: 4),
+                                      margin: const EdgeInsets.symmetric(
+                                        vertical: 4,
+                                      ),
                                       padding: const EdgeInsets.all(10),
                                       decoration: BoxDecoration(
-                                        color: isMine ? Colors.blueAccent : Colors.grey[300],
+                                        color: isMine
+                                            ? Colors.blueAccent
+                                            : Colors.grey[300],
                                         borderRadius: BorderRadius.circular(12),
                                       ),
                                       child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
                                           Text(
                                             message.body,
                                             style: TextStyle(
-                                              color: isMine ? Colors.white : Colors.black87,
+                                              color: isMine
+                                                  ? Colors.white
+                                                  : Colors.black87,
                                             ),
                                           ),
                                           const SizedBox(height: 4),
@@ -277,7 +302,9 @@ class _MessagesScreenState extends State<MessagesScreen> {
                                             _formatTimestamp(message.createdAt),
                                             style: TextStyle(
                                               fontSize: 10,
-                                              color: isMine ? Colors.white70 : Colors.black54,
+                                              color: isMine
+                                                  ? Colors.white70
+                                                  : Colors.black54,
                                             ),
                                           ),
                                         ],

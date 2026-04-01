@@ -9,6 +9,7 @@ import 'package:window_manager/window_manager.dart';
 import 'package:vault_the_spire/constants.dart';
 import 'package:vault_the_spire/services/settings_service.dart';
 import 'package:vault_the_spire/services/torrent_engine_service.dart';
+
 class TrayService with TrayListener, WindowListener {
   static bool enabled = false;
   static bool shouldMinimiseToTrayOnClose = false;

@@ -11,25 +11,42 @@ class AppShell extends StatelessWidget {
     final location = GoRouterState.of(context).uri.path;
 
     final navItems = [
-      _NavItem(icon: Icons.auto_awesome,
-               activeIcon: Icons.auto_awesome,
-               label: 'TorrentSpire AI', route: '/copilot'),
-      _NavItem(icon: Icons.chat_bubble_outline, 
-               activeIcon: Icons.chat_bubble,
-               label: 'Chats', route: '/chat_hub'),
-      _NavItem(icon: Icons.download_outlined,
-               activeIcon: Icons.download,
-               label: 'Torrents', route: '/torrents'),
-      _NavItem(icon: Icons.campaign_outlined,
-               activeIcon: Icons.campaign,
-               label: 'Channels', route: '/browser'),
-      _NavItem(icon: Icons.settings_outlined,
-               activeIcon: Icons.settings,
-               label: 'Settings', route: '/about'),
+      _NavItem(
+        icon: Icons.auto_awesome,
+        activeIcon: Icons.auto_awesome,
+        label: 'TorrentSpire AI',
+        route: '/copilot',
+      ),
+      _NavItem(
+        icon: Icons.chat_bubble_outline,
+        activeIcon: Icons.chat_bubble,
+        label: 'Local AI',
+        route: '/ai_chat',
+      ),
+      _NavItem(
+        icon: Icons.download_outlined,
+        activeIcon: Icons.download,
+        label: 'Torrents',
+        route: '/torrents',
+      ),
+      _NavItem(
+        icon: Icons.campaign_outlined,
+        activeIcon: Icons.campaign,
+        label: 'Channels',
+        route: '/browser',
+      ),
+      _NavItem(
+        icon: Icons.settings_outlined,
+        activeIcon: Icons.settings,
+        label: 'Settings',
+        route: '/about',
+      ),
     ];
 
     if (isDesktop) {
-      final sidebarWidth = MediaQuery.of(context).size.width > 1400 ? 240.0 : 200.0;
+      final sidebarWidth = MediaQuery.of(context).size.width > 1400
+          ? 240.0
+          : 200.0;
       return Scaffold(
         body: Row(
           children: [
@@ -49,11 +66,15 @@ class AppShell extends StatelessWidget {
       bottomNavigationBar: NavigationBar(
         selectedIndex: _indexForPath(location, navItems),
         onDestinationSelected: (i) => context.go(navItems[i].route),
-        destinations: navItems.map((item) => NavigationDestination(
-          icon: Icon(item.icon),
-          selectedIcon: Icon(item.activeIcon),
-          label: item.label,
-        )).toList(),
+        destinations: navItems
+            .map(
+              (item) => NavigationDestination(
+                icon: Icon(item.icon),
+                selectedIcon: Icon(item.activeIcon),
+                label: item.label,
+              ),
+            )
+            .toList(),
       ),
     );
   }
@@ -70,8 +91,10 @@ class _NavItem {
   final String label;
   final String route;
   const _NavItem({
-    required this.icon, required this.activeIcon,
-    required this.label, required this.route,
+    required this.icon,
+    required this.activeIcon,
+    required this.label,
+    required this.route,
   });
 }
 
@@ -92,18 +115,19 @@ class _Sidebar extends StatelessWidget {
             child: Row(
               children: [
                 Container(
-                  width: 32, height: 32,
+                  width: 32,
+                  height: 32,
                   decoration: BoxDecoration(
                     color: const Color(0xFF1A1A2E),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Icon(Icons.lock, 
-                    color: Colors.white, size: 18),
+                  child: const Icon(Icons.lock, color: Colors.white, size: 18),
                 ),
                 const SizedBox(width: 10),
-                const Text('VaultTheSpire',
-                  style: TextStyle(
-                    fontWeight: FontWeight.w600, fontSize: 15)),
+                const Text(
+                  'VaultTheSpire',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+                ),
               ],
             ),
           ),
@@ -112,12 +136,13 @@ class _Sidebar extends StatelessWidget {
             padding: EdgeInsets.symmetric(horizontal: 16),
             child: Align(
               alignment: Alignment.centerLeft,
-              child: Text('TorrentSpire AI',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.grey,
-                    fontWeight: FontWeight.w500,
-                  ),
+              child: Text(
+                'TorrentSpire AI',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.grey,
+                  fontWeight: FontWeight.w500,
+                ),
               ),
             ),
           ),
@@ -125,28 +150,29 @@ class _Sidebar extends StatelessWidget {
           ...items.map((item) {
             final isActive = currentPath == item.route;
             return Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 8, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
               child: ListTile(
                 leading: Icon(
                   isActive ? item.activeIcon : item.icon,
                   color: isActive
-                    ? Theme.of(context).colorScheme.primary
-                    : Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-                title: Text(item.label,
-                  style: TextStyle(
-                    fontWeight: isActive 
-                      ? FontWeight.w600 : FontWeight.w400,
-                    color: isActive
                       ? Theme.of(context).colorScheme.primary
-                      : Theme.of(context).colorScheme.onSurface,
-                  )),
+                      : Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+                title: Text(
+                  item.label,
+                  style: TextStyle(
+                    fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+                    color: isActive
+                        ? Theme.of(context).colorScheme.primary
+                        : Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8)),
+                  borderRadius: BorderRadius.circular(8),
+                ),
                 tileColor: isActive
-                  ? Theme.of(context).colorScheme.primaryContainer
-                  : null,
+                    ? Theme.of(context).colorScheme.primaryContainer
+                    : null,
                 onTap: () => context.go(item.route),
               ),
             );
@@ -158,15 +184,15 @@ class _Sidebar extends StatelessWidget {
             child: Row(
               children: [
                 Container(
-                  width: 8, height: 8,
+                  width: 8,
+                  height: 8,
                   decoration: const BoxDecoration(
                     color: Colors.green,
                     shape: BoxShape.circle,
                   ),
                 ),
                 const SizedBox(width: 8),
-                const Text('Identity active',
-                  style: TextStyle(fontSize: 12)),
+                const Text('Identity active', style: TextStyle(fontSize: 12)),
               ],
             ),
           ),

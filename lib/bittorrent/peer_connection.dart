@@ -7,9 +7,18 @@ import 'piece_manager.dart';
 import 'package:flutter/foundation.dart';
 
 enum PeerMessageType {
-  choke, unchoke, interested, notInterested,
-  have, bitfield, request, piece, cancel, port,
-  handshake, keepAlive,
+  choke,
+  unchoke,
+  interested,
+  notInterested,
+  have,
+  bitfield,
+  request,
+  piece,
+  cancel,
+  port,
+  handshake,
+  keepAlive,
 }
 
 class PeerConnection {
@@ -35,11 +44,16 @@ class PeerConnection {
   bool _disposed = false;
 
   PeerConnection({
-    required this.ip, required this.port,
-    required this.infoHash, required this.peerId,
-    required this.totalPieces, required this.pieceLength,
-    required this.totalSize, required this.pieceManager,
-    required this.onPieceDownloaded, required this.onDisconnected,
+    required this.ip,
+    required this.port,
+    required this.infoHash,
+    required this.peerId,
+    required this.totalPieces,
+    required this.pieceLength,
+    required this.totalSize,
+    required this.pieceManager,
+    required this.onPieceDownloaded,
+    required this.onDisconnected,
   }) : _peerHasPiece = List.filled(totalPieces, false);
 
   // Build the 68-byte handshake
@@ -78,8 +92,11 @@ class PeerConnection {
   Future<void> connect() async {
     try {
       debugPrint('[Peer] Connecting to $ip:$port');
-      _socket = await Socket.connect(ip, port,
-        timeout: const Duration(seconds: 10));
+      _socket = await Socket.connect(
+        ip,
+        port,
+        timeout: const Duration(seconds: 10),
+      );
       // Send handshake immediately
       _socket!.add(_buildHandshake());
       // Listen for data
@@ -105,12 +122,17 @@ class PeerConnection {
       if (_receiveBuffer.length < 68) return;
       // Validate handshake
       final pstrLen = _receiveBuffer[0];
-      if (pstrLen != 19) { dispose(); return; }
-      final receivedHash = Uint8List.fromList(
-        _receiveBuffer.sublist(28, 48));
+      if (pstrLen != 19) {
+        dispose();
+        return;
+      }
+      final receivedHash = Uint8List.fromList(_receiveBuffer.sublist(28, 48));
       // Verify info_hash matches
       for (int i = 0; i < 20; i++) {
-        if (receivedHash[i] != infoHash[i]) { dispose(); return; }
+        if (receivedHash[i] != infoHash[i]) {
+          dispose();
+          return;
+        }
       }
       _receiveBuffer.removeRange(0, 68);
       _handshakeDone = true;
@@ -123,16 +145,17 @@ class PeerConnection {
     // Parse length-prefixed messages
     while (_receiveBuffer.length >= 4) {
       final view = ByteData.view(
-        Uint8List.fromList(_receiveBuffer.sublist(0, 4)).buffer);
+        Uint8List.fromList(_receiveBuffer.sublist(0, 4)).buffer,
+      );
       final msgLen = view.getUint32(0, Endian.big);
-      if (msgLen == 0) { // keep-alive
+      if (msgLen == 0) {
+        // keep-alive
         _receiveBuffer.removeRange(0, 4);
         continue;
       }
       if (_receiveBuffer.length < 4 + msgLen) break;
       final msgId = _receiveBuffer[4];
-      final payload = Uint8List.fromList(
-        _receiveBuffer.sublist(5, 4 + msgLen));
+      final payload = Uint8List.fromList(_receiveBuffer.sublist(5, 4 + msgLen));
       _receiveBuffer.removeRange(0, 4 + msgLen);
       _handleMessage(msgId, payload);
     }
@@ -193,8 +216,8 @@ class PeerConnection {
   void _requestPieceBlocks(int pieceIdx) {
     final isLast = pieceIdx == totalPieces - 1;
     final thisPieceLength = isLast
-      ? totalSize - (pieceIdx * pieceLength)
-      : pieceLength;
+        ? totalSize - (pieceIdx * pieceLength)
+        : pieceLength;
     _pendingBlocks[pieceIdx] = {};
     int offset = 0;
     while (offset < thisPieceLength) {
@@ -209,8 +232,8 @@ class PeerConnection {
     // Check if all blocks for this piece are received
     final isLast = pieceIdx == totalPieces - 1;
     final thisPieceLength = isLast
-      ? totalSize - (pieceIdx * pieceLength)
-      : pieceLength;
+        ? totalSize - (pieceIdx * pieceLength)
+        : pieceLength;
     int totalReceived = 0;
     for (final b in _pendingBlocks[pieceIdx]!.values) {
       totalReceived += b.length;
@@ -220,7 +243,10 @@ class PeerConnection {
       final pieceData = Uint8List(thisPieceLength);
       for (final entry in _pendingBlocks[pieceIdx]!.entries) {
         pieceData.setRange(
-          entry.key, entry.key + entry.value.length, entry.value);
+          entry.key,
+          entry.key + entry.value.length,
+          entry.value,
+        );
       }
       _pendingBlocks.remove(pieceIdx);
       _savePiece(pieceIdx, pieceData);

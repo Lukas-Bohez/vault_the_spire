@@ -1,4 +1,3 @@
-
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
@@ -10,15 +9,14 @@ import 'peer_connection.dart';
 import 'piece_manager.dart';
 import 'package:flutter/foundation.dart';
 
-
 class TorrentStatus {
   final String name;
-  final double progress;        // 0.0 to 1.0
-  final double downloadSpeed;   // bytes/sec
+  final double progress; // 0.0 to 1.0
+  final double downloadSpeed; // bytes/sec
   final int connectedPeers;
   final int totalPieces;
   final int completedPieces;
-  final String statusText;      // 'connecting', 'downloading', 'complete', 'error'
+  final String statusText; // 'connecting', 'downloading', 'complete', 'error'
   const TorrentStatus({
     required this.name,
     required this.progress,
@@ -30,9 +28,8 @@ class TorrentStatus {
   });
 }
 
-
 class TorrentSession {
-  final String infoHash;        // 40-char hex
+  final String infoHash; // 40-char hex
   final String name;
   final List<String> trackers;
   final int totalSize;
@@ -70,7 +67,9 @@ class TorrentSession {
     _infoHashBytes = Uint8List(20);
     for (int i = 0; i < 20; i++) {
       _infoHashBytes[i] = int.parse(
-        infoHash.substring(i * 2, i * 2 + 2), radix: 16);
+        infoHash.substring(i * 2, i * 2 + 2),
+        radix: 16,
+      );
     }
 
     // Generate peer ID: -VT0001-<12 random bytes>
@@ -135,8 +134,7 @@ class TorrentSession {
   void _onPieceDownloaded(int pieceIndex, int bytes) {
     _completedPieces++;
     _bytesDownloaded += bytes;
-    _emitStatus(
-      _completedPieces >= totalPieces ? 'complete' : 'downloading');
+    _emitStatus(_completedPieces >= totalPieces ? 'complete' : 'downloading');
   }
 
   void _onPeerDisconnected(String ip) {
@@ -152,7 +150,8 @@ class TorrentSession {
       _bytesLastCheck = _bytesDownloaded;
       _lastSpeedCheck = now;
     }
-      _statusController.add(TorrentStatus(
+    _statusController.add(
+      TorrentStatus(
         name: name,
         progress: totalPieces > 0 ? _completedPieces / totalPieces : 0,
         downloadSpeed: speed,
@@ -160,6 +159,7 @@ class TorrentSession {
         totalPieces: totalPieces,
         completedPieces: _completedPieces,
         statusText: text,
-      ));
-    }
+      ),
+    );
   }
+}

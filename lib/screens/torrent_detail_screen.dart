@@ -109,8 +109,12 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('Connection: ${status.connectionMessage}'),
-                    Text('DHT nodes: ${status.dhtNodes}, peers: ${status.peers}'),
-                    Text('Download: ${(status.downloadSpeed / 1024).toStringAsFixed(2)} kB/s'),
+                    Text(
+                      'DHT nodes: ${status.dhtNodes}, peers: ${status.peers}',
+                    ),
+                    Text(
+                      'Download: ${(status.downloadSpeed / 1024).toStringAsFixed(2)} kB/s',
+                    ),
                     const SizedBox(height: 8),
                     Row(
                       children: [

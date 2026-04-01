@@ -395,9 +395,7 @@ class TorrentService {
     final infoHash = _ensureString(metadata.infoHashV1);
     final torrentName = _ensureString(metadata.name);
 
-    final existing = await TorrentsDao.instance.getTorrentById(
-      infoHash,
-    );
+    final existing = await TorrentsDao.instance.getTorrentById(infoHash);
     if (existing != null) {
       await TorrentEngineService.instance.forceRefresh(existing.id);
       throw TorrentAlreadyExistsException(existing.id);
@@ -437,9 +435,13 @@ class TorrentService {
     await TorrentEngineService.instance.startTorrent(metadata.infoHashV1);
   }
 
-  Future<void> addTorrentFromMagnet(String uri) => addTorrentFromMagnetLink(uri);
+  Future<void> addTorrentFromMagnet(String uri) =>
+      addTorrentFromMagnetLink(uri);
 
-  Future<void> handleIncomingSearch(String query, {required String requesterId}) async {
+  Future<void> handleIncomingSearch(
+    String query, {
+    required String requesterId,
+  }) async {
     final lowerQuery = query.toLowerCase().trim();
     if (lowerQuery.isEmpty) return;
 
@@ -462,8 +464,12 @@ class TorrentService {
             'torrentId': match.id,
             'name': match.name,
             'size': match.totalSize,
+            'seeders': match.seeders,
+            'leechers': match.leechers,
+            'ageYears': null,
             'magnetLink': match.magnetLink ?? '',
             'responderId': 'local',
+            'source': 'local',
           },
         },
       });

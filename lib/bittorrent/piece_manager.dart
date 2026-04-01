@@ -1,4 +1,3 @@
-
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
@@ -26,9 +25,7 @@ class PieceManager {
   }
 
   File _pieceFile(int index) {
-    return File(
-      path.join(baseDir.path, 'piece_$index.part'),
-    );
+    return File(path.join(baseDir.path, 'piece_$index.part'));
   }
 
   Future<void> writePiece(int index, Uint8List data) async {

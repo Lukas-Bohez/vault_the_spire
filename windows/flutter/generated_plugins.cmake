@@ -7,7 +7,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   desktop_drop
   flutter_secure_storage_windows
   permission_handler_windows
-  screen_retriever
+  screen_retriever_windows
   sqlcipher_flutter_libs
   tray_manager
   url_launcher_windows
