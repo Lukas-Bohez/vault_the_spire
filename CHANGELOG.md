@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.0.1] - 2026-04-01
+### Changed
+- Reduced AI chat render churn by throttling streaming assistant UI updates.
+- Improved lifecycle behavior by pausing/resuming polling timers when app state changes.
+- Migrated key messaging UI surfaces to theme-driven `ColorScheme` values.
+- Fixed duplicate-torrent detail navigation to use a consistent route path.
+- Rewrote `.gitignore` as UTF-8 to unblock Flutter web release build pipeline.
+
+### Verified
+- `flutter analyze` passes with no issues.
+- `flutter test` passes.
+- `flutter build windows --release` passes.
+- `flutter build appbundle --release` passes.
+
 ## [3.0.0] - 2026-03-23
 ### Added
 - Skeuomorphic sound effects (click, send, notification, mention) via `audioplayers`.

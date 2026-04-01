@@ -71,7 +71,7 @@ class _DMScreenState extends State<DMScreen> {
 
   Future<void> _send() async {
     final text = _controller.text.trim();
-    final topic = ChatService.dmSwarmTopic(widget.user, widget.peer);
+    final topic = ChatService.dmTopic(widget.user, widget.peer);
     ChatService.instance.broadcastTypingStatus(topic, widget.user, false);
 
     if (text.isEmpty) return;
@@ -320,7 +320,7 @@ class _DMScreenState extends State<DMScreen> {
                               : 'Type a direct message',
                         ),
                         onChanged: (value) {
-                          final topic = ChatService.dmSwarmTopic(
+                          final topic = ChatService.dmTopic(
                             widget.user,
                             widget.peer,
                           );

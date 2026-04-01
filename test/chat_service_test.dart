@@ -21,7 +21,7 @@ void main() {
   });
 
   test('typing broadcast updates remote typing state', () async {
-    final topic = ChatService.dmSwarmTopic('alice', 'bob');
+    final topic = ChatService.dmTopic('alice', 'bob');
     final service = ChatService.instance;
 
     expect(service.isUserTyping('alice'), isFalse);

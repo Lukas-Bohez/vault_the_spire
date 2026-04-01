@@ -320,9 +320,14 @@ class ChatService {
     return 'dm-${ids[0]}-${ids[1]}';
   }
 
-  static String dmSwarmTopic(String userA, String userB) {
+  static String dmTopic(String userA, String userB) {
     final ids = [userA.trim(), userB.trim()]..sort();
     return 'dm:${ids.join('_')}';
+  }
+
+  @Deprecated('Use dmTopic instead.')
+  static String dmSwarmTopic(String userA, String userB) {
+    return dmTopic(userA, userB);
   }
 
   bool messageMentions(String userId, String text) {
@@ -356,5 +361,5 @@ class ChatService {
     }
   }
 
-  Future<void> _listenForSwarmMessages() async {}
+  Future<void> _listenForPendingMessages() async {}
 }

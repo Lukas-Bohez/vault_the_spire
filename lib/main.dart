@@ -6,8 +6,8 @@ import 'dart:io';
 import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:sqlcipher_flutter_libs/sqlcipher_flutter_libs.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:vault_the_spire/db/sqlcipher_bootstrap.dart';
 import 'package:vault_the_spire/platform/desktop_window.dart';
 import 'package:vault_the_spire/platform/hotkeys.dart';
 import 'package:vault_the_spire/platform/notifications_desktop.dart';
@@ -22,12 +22,6 @@ import 'package:vault_the_spire/services/tray_service.dart';
 import 'package:vault_the_spire/services/torrent_service.dart';
 import 'package:vault_the_spire/services/background_service.dart';
 import 'package:window_manager/window_manager.dart';
-
-Future<void> _initSqlCipherOnAndroid() async {
-  if (Platform.isAndroid) {
-    await applyWorkaroundToOpenSqlCipherOnOldAndroidVersions();
-  }
-}
 
 Future<void> _requestAndroidPermissions() async {
   if (!kIsWeb && Platform.isAndroid) {
@@ -72,7 +66,7 @@ Future<void> main() async {
     () async {
       WidgetsFlutterBinding.ensureInitialized();
       await setupServiceLocator();
-      await _initSqlCipherOnAndroid();
+      await initSqlCipherOnAndroid();
       await _requestAndroidPermissions();
 
       if (!kIsWeb && (Platform.isWindows || Platform.isLinux)) {

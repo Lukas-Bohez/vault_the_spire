@@ -31,7 +31,7 @@ class BrowserScreen extends StatefulWidget {
 // switches away to another tab — the WebView is not torn down and rebuilt,
 // so the user returns to exactly the page they left.
 class _BrowserScreenState extends State<BrowserScreen>
-    with AutomaticKeepAliveClientMixin {
+  with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
   @override
   bool get wantKeepAlive => true;
 
@@ -64,6 +64,7 @@ class _BrowserScreenState extends State<BrowserScreen>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
 
     _homeUrl = SettingsService.instance.browserHomeUrl;
     _favorites = List<String>.from(SettingsService.instance.browserFavorites);
@@ -440,8 +441,9 @@ class _BrowserScreenState extends State<BrowserScreen>
     }
   }
 
-  Future<void> _startMemoryMonitor() async {
+  void _startMemoryMonitor() {
     if (!Platform.isWindows) return;
+    if (_memoryPollTimer != null) return;
     _memoryPollTimer = Timer.periodic(const Duration(seconds: 8), (_) async {
       try {
         if (ProcessInfo.currentRss > 1200 * 1024 * 1024) {
@@ -451,6 +453,26 @@ class _BrowserScreenState extends State<BrowserScreen>
         }
       } catch (_) {}
     });
+  }
+
+  void _stopMemoryMonitor() {
+    _memoryPollTimer?.cancel();
+    _memoryPollTimer = null;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _startMemoryMonitor();
+      return;
+    }
+
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached ||
+        state == AppLifecycleState.hidden) {
+      _stopMemoryMonitor();
+    }
   }
 
   Future<void> _captureCrashDump(
@@ -476,7 +498,8 @@ class _BrowserScreenState extends State<BrowserScreen>
 
   @override
   void dispose() {
-    _memoryPollTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    _stopMemoryMonitor();
     _windowsWebViewController?.dispose();
     _addressController.dispose();
     super.dispose();

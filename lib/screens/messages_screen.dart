@@ -104,7 +104,8 @@ class _MessagesScreenState extends State<MessagesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
     final conversations = _conversationRecipients;
     final selectedMessages = _conversationMessages();
 
@@ -118,7 +119,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
               width: 260,
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: isDark ? Colors.grey[900] : Colors.grey[200],
+                color: colors.surface.withValues(alpha: 0.92),
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Column(
@@ -150,20 +151,20 @@ class _MessagesScreenState extends State<MessagesScreen> {
                                 trailing: unreadCount > 0
                                     ? CircleAvatar(
                                         radius: 10,
-                                        backgroundColor: Colors.red,
+                                        backgroundColor: colors.error,
                                         child: Text(
                                           unreadCount.toString(),
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                             fontSize: 11,
-                                            color: Colors.white,
+                                            color: colors.onError,
                                           ),
                                         ),
                                       )
                                     : null,
                                 selected: _selectedRecipient == peer,
-                                selectedTileColor: Theme.of(
-                                  context,
-                                ).colorScheme.primary.withValues(alpha: 0.2),
+                                selectedTileColor: colors.primary.withValues(
+                                  alpha: 0.16,
+                                ),
                                 onTap: () => _selectConversation(peer),
                               );
                             },
@@ -203,7 +204,7 @@ class _MessagesScreenState extends State<MessagesScreen> {
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
-                  color: isDark ? Colors.grey[850] : Colors.white,
+                  color: colors.surface,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Column(
@@ -214,18 +215,18 @@ class _MessagesScreenState extends State<MessagesScreen> {
                         child: Center(
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
-                            children: const [
+                            children: [
                               Icon(
                                 Icons.chat_bubble_outline,
                                 size: 72,
-                                color: Colors.grey,
+                                color: colors.onSurfaceVariant,
                               ),
                               SizedBox(height: 12),
                               Text(
                                 'Select a peer or enter a username to start messaging',
                                 textAlign: TextAlign.center,
                                 style: TextStyle(
-                                  color: Colors.grey,
+                                  color: colors.onSurfaceVariant,
                                   fontSize: 16,
                                 ),
                               ),
@@ -250,9 +251,9 @@ class _MessagesScreenState extends State<MessagesScreen> {
                                 ),
                                 Text(
                                   'Last activity: ${selectedMessages.isEmpty ? '—' : _formatTimestamp(selectedMessages.last.createdAt)}',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 12,
-                                    color: Colors.grey,
+                                    color: colors.onSurfaceVariant,
                                   ),
                                 ),
                               ],
@@ -281,8 +282,10 @@ class _MessagesScreenState extends State<MessagesScreen> {
                                       padding: const EdgeInsets.all(10),
                                       decoration: BoxDecoration(
                                         color: isMine
-                                            ? Colors.blueAccent
-                                            : Colors.grey[300],
+                                            ? colors.primaryContainer
+                                            : colors.surface.withValues(
+                                                alpha: 0.88,
+                                              ),
                                         borderRadius: BorderRadius.circular(12),
                                       ),
                                       child: Column(
@@ -293,8 +296,8 @@ class _MessagesScreenState extends State<MessagesScreen> {
                                             message.body,
                                             style: TextStyle(
                                               color: isMine
-                                                  ? Colors.white
-                                                  : Colors.black87,
+                                                  ? colors.onPrimaryContainer
+                                                  : colors.onSurface,
                                             ),
                                           ),
                                           const SizedBox(height: 4),
@@ -303,8 +306,9 @@ class _MessagesScreenState extends State<MessagesScreen> {
                                             style: TextStyle(
                                               fontSize: 10,
                                               color: isMine
-                                                  ? Colors.white70
-                                                  : Colors.black54,
+                                                  ? colors.onPrimaryContainer
+                                                        .withValues(alpha: 0.72)
+                                                  : colors.onSurfaceVariant,
                                             ),
                                           ),
                                         ],

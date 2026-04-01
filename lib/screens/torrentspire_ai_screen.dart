@@ -20,7 +20,8 @@ class TorrentSpireAiScreen extends StatefulWidget {
   State<TorrentSpireAiScreen> createState() => _TorrentSpireAiScreenState();
 }
 
-class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen> {
+class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
+  with WidgetsBindingObserver {
   final TextEditingController _searchController = TextEditingController();
   final TextEditingController _magnetController = TextEditingController();
   final TextEditingController _chatController = TextEditingController();
@@ -63,6 +64,7 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _activeModel = SettingsService.instance.aiDefaultModel;
     _cachedAiModel = _activeModel;
     final url = SettingsService.instance.aiOllamaUrl;
@@ -80,10 +82,7 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen> {
       }
     });
     _refreshTorrents();
-    _torrentPoll = Timer.periodic(
-      const Duration(seconds: 2),
-      (_) => _refreshTorrents(),
-    );
+    _startTorrentPolling();
     // TODO: Re-enable periodic sync after debugging blank screen
     // _settingsSyncTimer = Timer.periodic(
     //   const Duration(seconds: 5),
@@ -103,6 +102,7 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _searchController.dispose();
     _magnetController.dispose();
     _chatController.dispose();
@@ -114,6 +114,34 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen> {
     _contextService.removeListener(_noop);
     _contextService.dispose();
     super.dispose();
+  }
+
+  void _startTorrentPolling() {
+    _torrentPoll ??= Timer.periodic(
+      const Duration(seconds: 2),
+      (_) => _refreshTorrents(),
+    );
+  }
+
+  void _stopTorrentPolling() {
+    _torrentPoll?.cancel();
+    _torrentPoll = null;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _startTorrentPolling();
+      unawaited(_refreshTorrents());
+      return;
+    }
+
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached ||
+        state == AppLifecycleState.hidden) {
+      _stopTorrentPolling();
+    }
   }
 
   void _applyStreamingAssistantText(String fullText) {

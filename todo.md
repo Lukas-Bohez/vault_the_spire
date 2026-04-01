@@ -27,7 +27,7 @@
 - [ ] Privacy Policy URL added to store listing
 
 ## 4. App Bundle / APK
-- [ ] Build release AAB: `flutter build appbundle --release`
+- [x] Build release AAB: `flutter build appbundle --release`
 - [ ] Sign the AAB with a release keystore (keep keystore backed up securely!)
 - [ ] Enable Google Play App Signing in Console
 - [ ] Set applicationId in build.gradle (e.g. com.quizthespire.vaultthespire)
@@ -72,9 +72,9 @@
 - [ ] Add dark theme and high contrast test coverage
 - [ ] Add unit tests for server/chat service and widget integration
 
-## 10. Release 3.0.0 readiness
-- [x] Bump package version to 3.0.0 in pubspec.yaml
-- [ ] Update CHANGELOG.md with v3.0.0 features and migration notes
+## 10. Release 3.0.1 readiness
+- [x] Bump package version to 3.0.1 in pubspec.yaml
+- [x] Update CHANGELOG.md with v3.0.1 features and migration notes
 - [ ] End-to-end test for server/chat persistence + SQLCipher database migration
 - [ ] Update docs for desktop + Android permissions + SQLCipher key management
 - [ ] Verify all platform builds (Android, iOS, Linux, macOS, Windows, Web) pass
