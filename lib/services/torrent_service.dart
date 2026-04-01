@@ -7,11 +7,11 @@ import 'package:flutter/foundation.dart';
 import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 import 'package:vault_the_spire/bittorrent/bencode.dart';
-import 'package:vault_the_spire/vault_swarm/vault_swarm.dart';
 import 'package:vault_the_spire/bittorrent/magnet_link.dart';
 import 'package:vault_the_spire/bittorrent/torrent_file.dart';
 import 'package:vault_the_spire/db/torrents_dao.dart';
 import 'package:vault_the_spire/models/torrent.dart';
+import 'package:vault_the_spire/services/settings_service.dart';
 import 'package:vault_the_spire/services/torrent_engine_service.dart';
 
 class TorrentAlreadyExistsException implements Exception {
@@ -430,9 +430,12 @@ class TorrentService {
 
     await TorrentsDao.instance.insertTorrent(torrent);
 
-    // Auto-start torrent file sessions for better UX.
-    await updateTorrentStatus(metadata.infoHashV1, 'downloading');
-    await TorrentEngineService.instance.startTorrent(metadata.infoHashV1);
+    if (SettingsService.instance.autoStartOnAdd) {
+      await updateTorrentStatus(metadata.infoHashV1, 'downloading');
+      await TorrentEngineService.instance.startTorrent(metadata.infoHashV1);
+    } else {
+      await updateTorrentStatus(metadata.infoHashV1, 'queued');
+    }
   }
 
   Future<void> addTorrentFromMagnet(String uri) =>
@@ -442,38 +445,8 @@ class TorrentService {
     String query, {
     required String requesterId,
   }) async {
-    final lowerQuery = query.toLowerCase().trim();
-    if (lowerQuery.isEmpty) return;
-
-    final all = await allTorrents();
-    final matches = all.where((torrent) {
-      final status = torrent.status?.toLowerCase() ?? '';
-      final isComplete = status.contains('complete') || status.contains('seed');
-      final nameMatch = torrent.name.toLowerCase().contains(lowerQuery);
-      return isComplete && nameMatch;
-    }).toList();
-
-    for (final match in matches) {
-      await VaultSwarm.instance.broadcastMessage('swarm_search', {
-        'type': 'search_response',
-        'payload': {
-          'requesterId': requesterId,
-          'responderId': 'local',
-          'query': query,
-          'result': {
-            'torrentId': match.id,
-            'name': match.name,
-            'size': match.totalSize,
-            'seeders': match.seeders,
-            'leechers': match.leechers,
-            'ageYears': null,
-            'magnetLink': match.magnetLink ?? '',
-            'responderId': 'local',
-            'source': 'local',
-          },
-        },
-      });
-    }
+    // VaultSwarm transport removed.
+    return;
   }
 
   Future<void> addTorrentFromMagnetLink(dynamic uri) async {
@@ -510,8 +483,12 @@ class TorrentService {
     );
 
     await TorrentsDao.instance.insertTorrent(torrent);
-    await updateTorrent(torrent.copyWith(status: 'downloading'));
-    await TorrentEngineService.instance.startTorrent(infoHash);
+    if (SettingsService.instance.autoStartOnAdd) {
+      await updateTorrent(torrent.copyWith(status: 'downloading'));
+      await TorrentEngineService.instance.startTorrent(infoHash);
+    } else {
+      await updateTorrent(torrent.copyWith(status: 'queued'));
+    }
   }
 
   static String createMagnetLink(

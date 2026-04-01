@@ -125,7 +125,7 @@ class _Sidebar extends StatelessWidget {
                 ),
                 const SizedBox(width: 10),
                 const Text(
-                  'VaultTheSpire',
+                  'TorrentSpire AI',
                   style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
                 ),
               ],

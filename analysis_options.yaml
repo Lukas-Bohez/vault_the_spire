@@ -4,6 +4,8 @@
 analyzer:
   exclude:
     - "**/*.g.dart"
+    - "third_party/**"
+    - "build/**"
   errors:
     unnecessary_type_check: ignore
     unnecessary_cast: ignore

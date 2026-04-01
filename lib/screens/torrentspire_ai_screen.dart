@@ -11,6 +11,7 @@ import 'package:vault_the_spire/services/search_service.dart';
 import 'package:vault_the_spire/services/settings_service.dart';
 import 'package:vault_the_spire/services/torrent_context.dart';
 import 'package:vault_the_spire/services/torrent_service.dart';
+import 'package:vault_the_spire/screens/create_torrent_screen.dart';
 
 class TorrentSpireAiScreen extends StatefulWidget {
   const TorrentSpireAiScreen({super.key});
@@ -697,6 +698,20 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen> {
                       _contextService.updateCategory(value);
                       _triggerAutoEvent(_triggers.onCategoryChanged(value));
                     },
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton.icon(
+                    onPressed: () async {
+                      await Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const CreateTorrentScreen(),
+                        ),
+                      );
+                      if (!mounted) return;
+                      await _refreshTorrents();
+                    },
+                    icon: const Icon(Icons.note_add_outlined),
+                    label: const Text('Create Torrent'),
                   ),
                 ],
               ),

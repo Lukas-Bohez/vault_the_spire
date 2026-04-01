@@ -189,7 +189,7 @@ class _MainAppState extends State<MainApp> {
           brightness: Brightness.dark,
         ),
       ),
-      themeMode: ThemeMode.dark,
+      themeMode: themeService.themeMode,
       routerConfig: appRouter,
     );
   }

@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'bencode.dart';
 import 'package:flutter/foundation.dart';

@@ -11,6 +11,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'package:vault_the_spire/models/torrent.dart';
 import 'package:vault_the_spire/services/notification_service.dart';
+import 'package:vault_the_spire/services/settings_service.dart';
 import 'package:vault_the_spire/services/torrent_service.dart';
 
 class TorrentEngineStatus {
@@ -65,10 +66,22 @@ class TorrentEngineService {
     'dht.aelitis.com:6881',
   ];
 
+  static const List<String> _fallbackTrackers = [
+    'udp://tracker.openbittorrent.com:80/announce',
+    'udp://tracker.opentrackr.org:1337/announce',
+    'udp://tracker.coppersurfer.tk:6969/announce',
+    'udp://tracker.leechers-paradise.org:6969/announce',
+    'udp://tracker.internetwarriors.net:1337/announce',
+    'udp://exodus.desync.com:6969/announce',
+    'http://tracker.openbittorrent.com:80/announce',
+    'http://tracker.opentrackr.org:1337/announce',
+  ];
+
   final Map<String, dt.TorrentTask> _tasks = {};
   final Map<String, Timer> _pollTimers = {};
   final Map<String, Timer> _scrapeTimers = {};
   final Map<String, Timer> _healthCheckTimers = {};
+  final Map<String, Timer> _progressTimers = {};
   final Map<String, int> _peerlessCounters = {};
   final Map<String, List<Uri>> _torrentTrackers = {};
   final Map<String, List<String>> _connectionLogs = {};
@@ -189,7 +202,9 @@ class TorrentEngineService {
     // dtorrent_task_v2 enables DHT/tracker/PEX through internal defaults.
     // CLI-level calls are not available in this API surface.
     await _mapPorts(task);
-    _addDhtBootstrapNodes(task);
+    if (SettingsService.instance.useDht) {
+      _addDhtBootstrapNodes(task);
+    }
   }
 
   Future<void> _mapPorts(dt.TorrentTask task) async {
@@ -217,7 +232,14 @@ class TorrentEngineService {
     unawaited(
       Future(() async {
         try {
-          final trackers = _torrentTrackers[torrentId] ?? [];
+          final configuredTrackers = _torrentTrackers[torrentId] ?? [];
+          final seen = <String>{};
+          final trackers = <Uri>[
+            ...configuredTrackers.where((u) => seen.add(u.toString())),
+            ..._fallbackTrackers
+                .map(Uri.parse)
+                .where((u) => seen.add(u.toString())),
+          ];
           if (trackers.isEmpty) {
             debugPrint('[Trackers] No trackers found for $torrentId');
             return;
@@ -420,6 +442,11 @@ class TorrentEngineService {
       try {
         final peers = task.connectedPeersNumber;
         if (peers == 0) {
+          try {
+            task.requestPeersFromDHT();
+          } catch (_) {
+            // Older API surfaces may not expose this; ignore.
+          }
           _peerlessCounters[torrentId] =
               (_peerlessCounters[torrentId] ?? 0) + 1;
           _log(
@@ -594,11 +621,35 @@ class TorrentEngineService {
 
     downloader.startDownload();
 
-    final dtModel = await completer.future.timeout(
+    var dtModel = await completer.future.timeout(
       const Duration(minutes: 3),
       onTimeout: () =>
           throw TimeoutException('Metadata timed out for ${torrent.id}'),
     );
+
+    // Metadata reconstruction can normalize fields and alter encoded info bytes.
+    // Keep swarm identity anchored to the magnet info-hash.
+    if (!listEquals(dtModel.infoHashBuffer, magnet.infoHash) &&
+        magnet.infoHash.length == 20) {
+      dtModel = dt.TorrentModel(
+        name: dtModel.name,
+        files: dtModel.files,
+        infoHashBuffer: Uint8List.fromList(magnet.infoHash),
+        pieceLength: dtModel.pieceLength,
+        pieces: dtModel.pieces,
+        announces: dtModel.announces,
+        nodes: dtModel.nodes,
+        length: dtModel.length,
+        version: dtModel.version,
+        metaVersion: dtModel.metaVersion,
+        fileTree: dtModel.fileTree,
+        pieceLayers: dtModel.pieceLayers,
+        rootHash: dtModel.rootHash,
+        infoDictBytes: dtModel.infoDictBytes,
+        rawData: dtModel.rawData,
+      );
+      _log(torrent.id, 'Adjusted torrent model info-hash to magnet xt hash.');
+    }
 
     final saveDir = destinationPath?.trim().isNotEmpty == true
         ? destinationPath!
@@ -640,7 +691,12 @@ class TorrentEngineService {
     _startHealthCheckTimer(torrent.id, task);
 
     // Start task in background without blocking UI
-    unawaited(task.start());
+    try {
+      await task.start();
+    } catch (_) {
+      _cleanup(torrent.id);
+      rethrow;
+    }
 
     try {
       (task as dynamic).resume();
@@ -652,7 +708,8 @@ class TorrentEngineService {
       (task as dynamic).download();
     } catch (_) {}
 
-    Timer.periodic(const Duration(seconds: 5), (_) {
+    _progressTimers[torrent.id]?.cancel();
+    _progressTimers[torrent.id] = Timer.periodic(const Duration(seconds: 5), (_) {
       _logProgressThrottled(torrent.id, task);
     });
 
@@ -1056,6 +1113,8 @@ class TorrentEngineService {
   void _cleanup(String torrentId) {
     _pollTimers.remove(torrentId)?.cancel();
     _scrapeTimers.remove(torrentId)?.cancel();
+    _healthCheckTimers.remove(torrentId)?.cancel();
+    _progressTimers.remove(torrentId)?.cancel();
     _tasks.remove(torrentId);
   }
 
@@ -1126,8 +1185,16 @@ class TorrentEngineService {
   }
 
   Future<String> _defaultDownloadDir() async {
+    final configured = SettingsService.instance.downloadDestination.trim();
+    if (configured.isNotEmpty) {
+      final configuredDir = Directory(configured);
+      if (!await configuredDir.exists()) {
+        await configuredDir.create(recursive: true);
+      }
+      return configuredDir.path;
+    }
     final docs = await getApplicationDocumentsDirectory();
-    final dir = Directory('${docs.path}${Platform.pathSeparator}VaultTheSpire');
+    final dir = Directory('${docs.path}${Platform.pathSeparator}TorrentSpireAI');
     if (!await dir.exists()) await dir.create(recursive: true);
     return dir.path;
   }

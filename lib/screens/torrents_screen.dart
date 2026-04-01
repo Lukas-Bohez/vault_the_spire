@@ -154,6 +154,19 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
         title: const Text('Torrents'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.folder_open),
+            tooltip: 'Go to download folder',
+            onPressed: () async {
+              final pseudo = TorrentModel(
+                id: '',
+                name: '',
+                type: 'magnet_link',
+                filePath: SettingsService.instance.downloadDestination,
+              );
+              await _openTorrentFolder(pseudo);
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh),
             tooltip: 'Refresh',
             onPressed: _refresh,

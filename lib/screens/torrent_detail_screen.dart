@@ -37,21 +37,6 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
                 );
               },
             ),
-          if (widget.torrent.vaultLink != null)
-            IconButton(
-              tooltip: 'Copy vault link',
-              icon: const Icon(Icons.copy),
-              onPressed: () async {
-                final messenger = ScaffoldMessenger.of(context);
-                await Clipboard.setData(
-                  ClipboardData(text: widget.torrent.vaultLink!),
-                );
-                if (!mounted) return;
-                messenger.showSnackBar(
-                  const SnackBar(content: Text('Vault link copied')),
-                );
-              },
-            ),
         ],
       ),
       body: Padding(
@@ -170,14 +155,6 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
             const SizedBox(height: 16),
             Text('Pieces: $haveCount / ${widget.torrent.totalPieces ?? 0}'),
             const SizedBox(height: 16),
-            if (widget.torrent.type == 'vault' &&
-                widget.torrent.vaultLink != null) ...[
-              const Text('Vault link:'),
-              SelectableText(
-                widget.torrent.vaultLink!,
-                style: const TextStyle(color: Colors.blueAccent),
-              ),
-            ],
           ],
         ),
       ),

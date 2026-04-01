@@ -19,6 +19,23 @@ class SettingsService {
   static const _kBrowserHistory = 'browser_history';
   static const _kAiOllamaUrl = 'ai_ollama_url';
   static const _kAiDefaultModel = 'ai_default_model';
+  static const _kAutoStartOnAdd = 'auto_start_on_add';
+  static const _kDeleteTorrentFileOnRemove = 'delete_torrent_file_on_remove';
+  static const _kDeleteDataOnRemove = 'delete_data_on_remove';
+  static const _kUseDht = 'use_dht';
+  static const _kUsePex = 'use_pex';
+  static const _kUseLpd = 'use_lpd';
+  static const _kListenPort = 'listen_port';
+  static const _kMaxConnectionsGlobal = 'max_connections_global';
+  static const _kMaxConnectionsPerTorrent = 'max_connections_per_torrent';
+  static const _kMaxActiveDownloads = 'max_active_downloads';
+  static const _kDownloadRateLimitKib = 'download_rate_limit_kib';
+  static const _kUploadRateLimitKib = 'upload_rate_limit_kib';
+  static const _kEnableAiCopilot = 'enable_ai_copilot';
+  static const _kEnableSmartSuggestions = 'enable_smart_suggestions';
+  static const _kCompactTorrentRows = 'compact_torrent_rows';
+  static const _kConfirmOnExit = 'confirm_on_exit';
+  static const _kLastDiagnosticsExport = 'last_diagnostics_export';
 
   static final SettingsService instance = SettingsService._();
   SettingsService._();
@@ -45,6 +62,23 @@ class SettingsService {
   List<String> browserHistory = <String>[];
   String aiOllamaUrl = 'http://localhost:11434';
   String aiDefaultModel = 'llama3';
+  bool autoStartOnAdd = true;
+  bool deleteTorrentFileOnRemove = false;
+  bool deleteDataOnRemove = false;
+  bool useDht = true;
+  bool usePex = true;
+  bool useLpd = false;
+  int listenPort = 6881;
+  int maxConnectionsGlobal = 300;
+  int maxConnectionsPerTorrent = 80;
+  int maxActiveDownloads = 3;
+  int downloadRateLimitKib = 0;
+  int uploadRateLimitKib = 0;
+  bool enableAiCopilot = true;
+  bool enableSmartSuggestions = true;
+  bool compactTorrentRows = false;
+  bool confirmOnExit = true;
+  String lastDiagnosticsExport = '';
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
@@ -67,6 +101,24 @@ class SettingsService {
     browserHistory = prefs.getStringList(_kBrowserHistory) ?? <String>[];
     aiOllamaUrl = prefs.getString(_kAiOllamaUrl) ?? 'http://localhost:11434';
     aiDefaultModel = prefs.getString(_kAiDefaultModel) ?? 'llama3';
+    autoStartOnAdd = prefs.getBool(_kAutoStartOnAdd) ?? true;
+    deleteTorrentFileOnRemove =
+      prefs.getBool(_kDeleteTorrentFileOnRemove) ?? false;
+    deleteDataOnRemove = prefs.getBool(_kDeleteDataOnRemove) ?? false;
+    useDht = prefs.getBool(_kUseDht) ?? true;
+    usePex = prefs.getBool(_kUsePex) ?? true;
+    useLpd = prefs.getBool(_kUseLpd) ?? false;
+    listenPort = prefs.getInt(_kListenPort) ?? 6881;
+    maxConnectionsGlobal = prefs.getInt(_kMaxConnectionsGlobal) ?? 300;
+    maxConnectionsPerTorrent = prefs.getInt(_kMaxConnectionsPerTorrent) ?? 80;
+    maxActiveDownloads = prefs.getInt(_kMaxActiveDownloads) ?? 3;
+    downloadRateLimitKib = prefs.getInt(_kDownloadRateLimitKib) ?? 0;
+    uploadRateLimitKib = prefs.getInt(_kUploadRateLimitKib) ?? 0;
+    enableAiCopilot = prefs.getBool(_kEnableAiCopilot) ?? true;
+    enableSmartSuggestions = prefs.getBool(_kEnableSmartSuggestions) ?? true;
+    compactTorrentRows = prefs.getBool(_kCompactTorrentRows) ?? false;
+    confirmOnExit = prefs.getBool(_kConfirmOnExit) ?? true;
+    lastDiagnosticsExport = prefs.getString(_kLastDiagnosticsExport) ?? '';
   }
 
   Future<void> setUseSystemTray(bool value) async {
@@ -165,5 +217,113 @@ class SettingsService {
     aiDefaultModel = model.trim().isEmpty ? 'llama3' : model.trim();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_kAiDefaultModel, aiDefaultModel);
+  }
+
+  Future<void> setAutoStartOnAdd(bool value) async {
+    autoStartOnAdd = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kAutoStartOnAdd, value);
+  }
+
+  Future<void> setDeleteTorrentFileOnRemove(bool value) async {
+    deleteTorrentFileOnRemove = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kDeleteTorrentFileOnRemove, value);
+  }
+
+  Future<void> setDeleteDataOnRemove(bool value) async {
+    deleteDataOnRemove = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kDeleteDataOnRemove, value);
+  }
+
+  Future<void> setUseDht(bool value) async {
+    useDht = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kUseDht, value);
+  }
+
+  Future<void> setUsePex(bool value) async {
+    usePex = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kUsePex, value);
+  }
+
+  Future<void> setUseLpd(bool value) async {
+    useLpd = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kUseLpd, value);
+  }
+
+  Future<void> setListenPort(int value) async {
+    listenPort = value.clamp(1024, 65535);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kListenPort, listenPort);
+  }
+
+  Future<void> setMaxConnectionsGlobal(int value) async {
+    maxConnectionsGlobal = value < 10 ? 10 : value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kMaxConnectionsGlobal, maxConnectionsGlobal);
+  }
+
+  Future<void> setMaxConnectionsPerTorrent(int value) async {
+    maxConnectionsPerTorrent = value < 5 ? 5 : value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kMaxConnectionsPerTorrent, maxConnectionsPerTorrent);
+  }
+
+  Future<void> setMaxActiveDownloads(int value) async {
+    maxActiveDownloads = value < 1 ? 1 : value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kMaxActiveDownloads, maxActiveDownloads);
+  }
+
+  Future<void> setDownloadRateLimitKib(int value) async {
+    downloadRateLimitKib = value < 0 ? 0 : value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kDownloadRateLimitKib, downloadRateLimitKib);
+  }
+
+  Future<void> setUploadRateLimitKib(int value) async {
+    uploadRateLimitKib = value < 0 ? 0 : value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kUploadRateLimitKib, uploadRateLimitKib);
+  }
+
+  Future<void> setEnableAiCopilot(bool value) async {
+    enableAiCopilot = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kEnableAiCopilot, value);
+  }
+
+  Future<void> setEnableSmartSuggestions(bool value) async {
+    enableSmartSuggestions = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kEnableSmartSuggestions, value);
+  }
+
+  Future<void> setCompactTorrentRows(bool value) async {
+    compactTorrentRows = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kCompactTorrentRows, value);
+  }
+
+  Future<void> setConfirmOnExit(bool value) async {
+    confirmOnExit = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kConfirmOnExit, value);
+  }
+
+  Future<void> setLastDiagnosticsExport(String value) async {
+    lastDiagnosticsExport = value;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kLastDiagnosticsExport, value);
+  }
+
+  Future<void> clearBrowserHistory() async {
+    browserHistory = <String>[];
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_kBrowserHistory);
   }
 }

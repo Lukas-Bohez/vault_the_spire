@@ -163,8 +163,12 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
       }
     }
     events.emit(StateFileUpdated());
+    final totalLength = metainfo.length ?? metainfo.totalSize;
+    final pct = totalLength > 0
+      ? ((d / totalLength) * 10000).toInt() / 100
+      : 0.0;
     var msg =
-        'downloaded：${d / (1024 * 1024)} mb , Progress ${((d / metainfo.length) * 10000).toInt() / 100} %';
+      'downloaded：${d / (1024 * 1024)} mb , Progress $pct %';
     _log.finer(msg);
     return true;
   }

@@ -13,17 +13,13 @@ import 'package:vault_the_spire/services/server_service.dart';
 import 'package:vault_the_spire/models/chat_user.dart';
 import 'package:vault_the_spire/models/conversation.dart';
 import 'package:vault_the_spire/models/dm_message.dart';
-import 'package:vault_the_spire/vault_swarm/vault_swarm.dart';
 
 class ChatService {
-  ChatService._() {
-    _listenForSwarmMessages();
-  }
+  ChatService._();
 
   static final ChatService instance = ChatService._();
 
   final _uuid = const Uuid();
-  StreamSubscription<Map<String, dynamic>>? _swarmSubscription;
 
   final Map<String, DateTime> _typingStatus = {};
   final Map<String, UserStatus> _presence = {};
@@ -56,14 +52,7 @@ class ChatService {
     await UsersDao.instance.insertUser(updated);
     _presence[username] = status;
 
-    VaultSwarm.instance.broadcastMessage('presence', {
-      'type': 'presence',
-      'payload': {
-        'userId': username,
-        'status': status.name,
-        'lastSeen': updated.lastSeen.millisecondsSinceEpoch,
-      },
-    });
+    _presence[username] = status;
   }
 
   bool isUserOnline(String username) {
@@ -158,17 +147,7 @@ class ChatService {
 
     await DmMessagesDao.instance.insertMessage(message);
 
-    // Broadcast to both participants via the swarm topic.
-    final ids = [sender.id, recipient.id]..sort();
-    final topic = 'dm:${ids.join('_')}';
-    await VaultSwarm.instance.joinSwarm(topic);
-    await VaultSwarm.instance.broadcastMessage(topic, {
-      'type': 'dm_chat',
-      'payload': {
-        'conversationId': conversation.id,
-        'message': message.toMap(),
-      },
-    });
+    // Swarm relay removed; local persistence is the source of truth.
   }
 
   void broadcastTypingStatus(
@@ -183,14 +162,7 @@ class ChatService {
       _typingStatus.remove(userId);
     }
 
-    VaultSwarm.instance.broadcastMessage(channelOrDmTopic, {
-      'type': 'typing',
-      'payload': {
-        'userId': userId,
-        'isTyping': isTyping,
-        'timestamp': now.millisecondsSinceEpoch,
-      },
-    });
+    // Typing remains local-only in this build.
   }
 
   bool isUserTyping(String userId) {
@@ -384,47 +356,5 @@ class ChatService {
     }
   }
 
-  Future<void> _listenForSwarmMessages() async {
-    _swarmSubscription ??= VaultSwarm.instance.messageStream.listen((
-      event,
-    ) async {
-      final type = event['type'] as String?;
-      final payload = event['payload'] as Map<String, dynamic>?;
-
-      if (type == 'presence' && payload != null) {
-        final userId = payload['userId'] as String?;
-        final status = payload['status'] as String?;
-        if (userId != null && status != null) {
-          _presence[userId] = userStatusFromString(status);
-        }
-      }
-
-      if (type == 'typing' && payload != null) {
-        final userId = payload['userId'] as String?;
-        final isTyping = payload['isTyping'] as bool?;
-        final ts = payload['timestamp'] as int?;
-        if (userId != null && isTyping != null && ts != null) {
-          if (isTyping) {
-            _typingStatus[userId] = DateTime.fromMillisecondsSinceEpoch(ts);
-          } else {
-            _typingStatus.remove(userId);
-          }
-        }
-      }
-
-      if (type == 'dm_chat' && payload != null) {
-        final messageMap = payload['message'] as Map<String, dynamic>?;
-        final conversationId = payload['conversationId'] as String?;
-        if (messageMap != null && conversationId != null) {
-          messageMap['content'] = _ensureString(messageMap['content']);
-          messageMap['sender_id'] = _ensureString(messageMap['sender_id']);
-          messageMap['conversation_id'] = _ensureString(
-            messageMap['conversation_id'],
-          );
-          final mv = DmMessage.fromMap(messageMap);
-          await DmMessagesDao.instance.insertMessage(mv);
-        }
-      }
-    });
-  }
+  Future<void> _listenForSwarmMessages() async {}
 }

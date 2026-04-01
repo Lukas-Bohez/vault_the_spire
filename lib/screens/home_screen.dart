@@ -11,7 +11,7 @@ class HomeScreen extends StatelessWidget {
     final fingerprint = identity?.publicKeyBase64 ?? 'N/A';
     return Scaffold(
       appBar: AppBar(
-        title: const Text('VaultTheSpire'),
+        title: const Text('TorrentSpire AI'),
         centerTitle: true,
         elevation: 0,
       ),
@@ -25,7 +25,7 @@ class HomeScreen extends StatelessWidget {
           children: [
             const SizedBox(height: 8),
             const Text(
-              'VaultTheSpire',
+              'TorrentSpire AI',
               style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 2),
