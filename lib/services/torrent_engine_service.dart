@@ -27,6 +27,7 @@ class TorrentEngineStatus {
   final int leechers;
   final double downloadSpeed;
   final double uploadSpeed;
+  final double seedingProgress;
   final String statusMessage;
   final String connectionMessage;
 
@@ -41,6 +42,7 @@ class TorrentEngineStatus {
     this.trackers = 0,
     required this.downloadSpeed,
     required this.uploadSpeed,
+    this.seedingProgress = 0.0,
     this.seeders = 0,
     this.leechers = 0,
     this.statusMessage = '',
@@ -1055,6 +1057,12 @@ class TorrentEngineService {
 
   void _emitStats(String torrentId, dt.TorrentTask task) {
     final downloaded = task.downloaded ?? 0;
+    int uploaded = 0;
+    try {
+      uploaded = (task as dynamic).uploaded as int? ?? 0;
+    } catch (_) {
+      uploaded = 0;
+    }
     final dlSpeed = task.currentDownloadSpeed * 1000; // bytes/ms → bytes/s
     final ulSpeed = task.uploadSpeed * 1000;
     final peers = task.connectedPeersNumber;
@@ -1082,8 +1090,10 @@ class TorrentEngineService {
             progress >= 0.999
         ? 'seeding'
         : 'downloading';
+    final seededRatio = totalLength > 0 ? (uploaded / totalLength) : 0.0;
+    final seededPct = (seededRatio * 100).clamp(0.0, double.infinity);
     final msg = state == 'seeding'
-      ? 'Seeding • $peers peer${peers == 1 ? '' : 's'} connected'
+      ? 'Seeding • ${(seededPct).toStringAsFixed(1)}% shared back (${_formatByteCount(uploaded)}/${_formatByteCount(totalLength)}) • $peers peer${peers == 1 ? '' : 's'} connected'
       : peers == 0
       ? 'Searching for peers...'
       : downloaded == 0
@@ -1120,7 +1130,7 @@ class TorrentEngineService {
       TorrentEngineStatus(
         torrentId: torrentId,
         downloaded: downloaded,
-        uploaded: 0,
+        uploaded: uploaded,
         progress: progress,
         state: state,
         peers: peers,
@@ -1130,12 +1140,25 @@ class TorrentEngineService {
         leechers: leechers,
         downloadSpeed: dlSpeed,
         uploadSpeed: ulSpeed,
+        seedingProgress: seededRatio.clamp(0.0, 1.0),
         statusMessage: msg,
         connectionMessage: connectionMsg,
       ),
     );
 
-    TorrentService.instance.updateProgress(torrentId, downloaded, 0);
+    TorrentService.instance.updateProgress(torrentId, downloaded, uploaded);
+  }
+
+  String _formatByteCount(int bytes) {
+    if (bytes <= 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    var value = bytes.toDouble();
+    var unit = 0;
+    while (value >= 1024 && unit < units.length - 1) {
+      value /= 1024;
+      unit++;
+    }
+    return '${value.toStringAsFixed(unit == 0 ? 0 : 1)} ${units[unit]}';
   }
 
   void _startScrapeTimer(String torrentId, dt.TorrentTask task) {

@@ -1,9 +1,9 @@
-import 'dart:async';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:vault_the_spire/constants.dart';
+import 'package:vault_the_spire/platform/desktop_window.dart';
 import 'package:vault_the_spire/services/ai_copilot_service.dart';
 import 'package:vault_the_spire/services/settings_service.dart';
 import 'package:vault_the_spire/services/theme_service.dart';
@@ -27,8 +27,10 @@ class _AboutScreenState extends State<AboutScreen> {
   late final TextEditingController _uploadRateController;
   late AiCopilotService _aiService;
 
-  int _availableModelCount = 0;
+  List<String> _availableModels = <String>[];
+  String? _selectedModel;
   bool _loadingModels = false;
+  bool _downloadingRecommended = false;
   String _modelStatus = '';
   bool _savingNetwork = false;
   ThemeMode _themeMode = ThemeMode.system;
@@ -59,8 +61,7 @@ class _AboutScreenState extends State<AboutScreen> {
     _uploadRateController = TextEditingController(
       text: '${_settings.uploadRateLimitKib}',
     );
-    // Enforce single recommended model policy.
-    unawaited(_settings.setAiDefaultModel(kDefaultAiModel));
+    _selectedModel = _settings.aiDefaultModel;
     _themeMode = ThemeService.instance.themeMode;
     _aiService = AiCopilotService(
       baseUrl: _settings.aiOllamaUrl,
@@ -91,19 +92,23 @@ class _AboutScreenState extends State<AboutScreen> {
       final models = await _aiService.fetchModels();
       if (!mounted) return;
       setState(() {
-        _availableModelCount = models.length;
+        _availableModels = models;
         _loadingModels = false;
         if (models.isEmpty) {
-          _modelStatus =
-              'No models detected from host. App will use fallback: $kDefaultAiModel';
+          _modelStatus = 'No models detected from host.';
         } else {
           _modelStatus = 'Successfully fetched ${models.length} model(s)';
+          if (_selectedModel == null || !_availableModels.contains(_selectedModel)) {
+            _selectedModel = _availableModels.contains(kDefaultAiModel)
+                ? kDefaultAiModel
+                : _availableModels.first;
+          }
         }
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _availableModelCount = 0;
+        _availableModels = <String>[];
         _loadingModels = false;
         _modelStatus = 'Failed to fetch models: $e';
       });
@@ -120,11 +125,51 @@ class _AboutScreenState extends State<AboutScreen> {
 
   Future<void> _saveAiSettings() async {
     await _settings.setAiOllamaUrl(_ollamaUrlController.text);
-    await _settings.setAiDefaultModel(kDefaultAiModel);
+    await _settings.setAiDefaultModel(_selectedModel ?? kDefaultAiModel);
     if (!mounted) return;
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('AI settings saved')));
+  }
+
+  Future<void> _downloadRecommendedModel() async {
+    if (_downloadingRecommended) return;
+    setState(() {
+      _downloadingRecommended = true;
+      _modelStatus = 'Downloading recommended model $kDefaultAiModel...';
+    });
+
+    try {
+      await for (final event in _aiService.pullModelStream(kDefaultAiModel)) {
+        final status = (event['status'] ?? '').toString();
+        final total = (event['total'] as num?)?.toDouble() ?? 0;
+        final completed = (event['completed'] as num?)?.toDouble() ?? 0;
+        final progress = total > 0 ? (completed / total * 100) : 0.0;
+        if (!mounted) return;
+        setState(() {
+          _modelStatus = progress > 0
+              ? '$status (${progress.toStringAsFixed(1)}%)'
+              : status;
+        });
+      }
+      await _fetchAvailableModels();
+      _selectedModel = kDefaultAiModel;
+      await _settings.setAiDefaultModel(kDefaultAiModel);
+      if (!mounted) return;
+      setState(() {
+        _modelStatus = 'Recommended model is ready and selected.';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _modelStatus = 'Recommended model download failed: $e';
+      });
+    } finally {
+      if (!mounted) return;
+      setState(() {
+        _downloadingRecommended = false;
+      });
+    }
   }
 
   Future<void> _pickDownloadDirectory() async {
@@ -436,9 +481,35 @@ class _AboutScreenState extends State<AboutScreen> {
                               borderRadius: BorderRadius.circular(10),
                             ),
                             child: Text(
-                              'Default model is locked to $kDefaultAiModel for consistent quality.\n'
-                              'Detected local models: $_availableModelCount',
+                              'Recommended model: $kDefaultAiModel\n'
+                              'Detected local models: ${_availableModels.length}',
                             ),
+                          ),
+                          const SizedBox(height: 8),
+                          DropdownButtonFormField<String>(
+                            value: _availableModels.contains(_selectedModel)
+                                ? _selectedModel
+                                : null,
+                            decoration: const InputDecoration(
+                              labelText: 'Model to use',
+                              border: OutlineInputBorder(),
+                            ),
+                            items: _availableModels
+                                .map(
+                                  (m) => DropdownMenuItem<String>(
+                                    value: m,
+                                    child: Text(m),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: _availableModels.isEmpty
+                                ? null
+                                : (value) {
+                                    if (value == null) return;
+                                    setState(() {
+                                      _selectedModel = value;
+                                    });
+                                  },
                           ),
                           const SizedBox(height: 4),
                           Text(
@@ -457,6 +528,21 @@ class _AboutScreenState extends State<AboutScreen> {
                       tooltip: 'Refresh available models',
                     ),
                   ],
+                ),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: FilledButton.icon(
+                    onPressed: _downloadingRecommended
+                        ? null
+                        : _downloadRecommendedModel,
+                    icon: const Icon(Icons.download_for_offline_outlined),
+                    label: Text(
+                      _downloadingRecommended
+                          ? 'Downloading recommended model...'
+                          : 'Download Recommended Model',
+                    ),
+                  ),
                 ),
                 Align(
                   alignment: Alignment.centerRight,
@@ -533,6 +619,17 @@ class _AboutScreenState extends State<AboutScreen> {
                     setState(() {});
                   },
                 ),
+                if (Platform.isWindows || Platform.isLinux || Platform.isMacOS)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: OutlinedButton.icon(
+                      onPressed: () async {
+                        await toggleDesktopFullScreen();
+                      },
+                      icon: const Icon(Icons.fullscreen),
+                      label: const Text('Toggle Fullscreen'),
+                    ),
+                  ),
                 if (Platform.isWindows || Platform.isLinux || Platform.isMacOS)
                   SwitchListTile(
                     title: const Text('Use system tray'),

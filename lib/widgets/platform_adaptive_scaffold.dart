@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:vault_the_spire/platform/desktop_window.dart';
+import 'package:vault_the_spire/services/settings_service.dart';
 
 class AppShell extends StatelessWidget {
   final Widget child;
@@ -50,20 +52,68 @@ class AppShell extends StatelessWidget {
     ];
 
     if (isDesktop) {
-      final sidebarWidth = MediaQuery.of(context).size.width > 1400
-          ? 240.0
-          : 200.0;
-      return Scaffold(
-        body: Row(
-          children: [
-            SizedBox(
-              width: sidebarWidth,
-              child: _Sidebar(items: navItems, currentPath: location),
+      return ValueListenableBuilder<bool>(
+        valueListenable: SettingsService.persistentSidebarListenable,
+        builder: (context, persistentSidebar, _) {
+          if (persistentSidebar) {
+            final sidebarWidth = MediaQuery.of(context).size.width > 1400
+                ? 240.0
+                : 200.0;
+            return Scaffold(
+              body: Row(
+                children: [
+                  SizedBox(
+                    width: sidebarWidth,
+                    child: _Sidebar(items: navItems, currentPath: location),
+                  ),
+                  const VerticalDivider(width: 1),
+                  Expanded(child: child),
+                ],
+              ),
+            );
+          }
+
+          return Scaffold(
+            body: child,
+            floatingActionButtonLocation:
+                FloatingActionButtonLocation.startFloat,
+            floatingActionButton: FloatingActionButton.small(
+              tooltip: 'Open navigation',
+              onPressed: () {
+                showModalBottomSheet<void>(
+                  context: context,
+                  builder: (sheetContext) {
+                    return SafeArea(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          for (final item in navItems)
+                            ListTile(
+                              leading: Icon(item.icon),
+                              title: Text(item.label),
+                              onTap: () {
+                                Navigator.of(sheetContext).pop();
+                                context.go(item.route);
+                              },
+                            ),
+                          ListTile(
+                            leading: const Icon(Icons.fullscreen),
+                            title: const Text('Toggle Fullscreen'),
+                            onTap: () async {
+                              Navigator.of(sheetContext).pop();
+                              await toggleDesktopFullScreen();
+                            },
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                );
+              },
+              child: const Icon(Icons.menu),
             ),
-            const VerticalDivider(width: 1),
-            Expanded(child: child),
-          ],
-        ),
+          );
+        },
       );
     }
 
@@ -185,6 +235,14 @@ class _Sidebar extends StatelessWidget {
           }),
           const Spacer(),
           const Divider(height: 1),
+          ListTile(
+            dense: true,
+            leading: const Icon(Icons.fullscreen),
+            title: const Text('Toggle Fullscreen', style: TextStyle(fontSize: 12)),
+            onTap: () async {
+              await toggleDesktopFullScreen();
+            },
+          ),
           Padding(
             padding: const EdgeInsets.all(12),
             child: Row(

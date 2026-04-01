@@ -216,9 +216,14 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
                       (status) => status.torrentId == torrent.id,
                     ),
                     builder: (context, statusSnapshot) {
+                      final compactRows = SettingsService.instance.compactTorrentRows;
                       final status = statusSnapshot.data;
-                      final progress =
-                          status?.progress ?? torrent.progress.clamp(0.0, 1.0);
+                      final progress = status == null
+                          ? torrent.progress.clamp(0.0, 1.0)
+                          : (status.state.toLowerCase().contains('seed')
+                                ? status.seedingProgress
+                                : status.progress)
+                              .clamp(0.0, 1.0);
                       final isActive =
                           (torrent.status ?? '').toLowerCase().contains(
                             'download',
@@ -227,15 +232,21 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
                       final isComplete =
                           progress >= 1.0 ||
                           (torrent.status ?? '').toLowerCase() == 'complete';
+                      final state = (status?.state ?? torrent.status ?? '').toLowerCase();
+                      final speedText = status == null
+                          ? ''
+                          : state.contains('seed')
+                          ? '${(status.uploadSpeed / 1024).toStringAsFixed(1)} KB/s up'
+                          : '${(status.downloadSpeed / 1024).toStringAsFixed(1)} KB/s down';
                       return Card(
-                        margin: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
+                        margin: EdgeInsets.symmetric(
+                          horizontal: compactRows ? 8 : 12,
+                          vertical: compactRows ? 3 : 6,
                         ),
                         child: ListTile(
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 8,
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: compactRows ? 10 : 12,
+                            vertical: compactRows ? 4 : 8,
                           ),
                           title: Text(
                             torrent.name,
@@ -249,7 +260,7 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
                               const SizedBox(height: 4),
                               Text(
                                 status != null
-                                    ? '${status.statusMessage} • ${(progress * 100).toStringAsFixed(1)}% • ${status.peers} peers • ${(status.downloadSpeed / 1024).toStringAsFixed(1)} KB/s'
+                                ? '${status.statusMessage} • ${(progress * 100).toStringAsFixed(1)}% • ${status.peers} peers${speedText.isEmpty ? '' : ' • $speedText'}'
                                     : '${_statusLabel(torrent)} • ${(progress * 100).toStringAsFixed(1)}%',
                               ),
                             ],

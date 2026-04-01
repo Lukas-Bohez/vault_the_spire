@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:vault_the_spire/constants.dart';
 import 'package:vault_the_spire/services/ai_copilot_service.dart';
+import 'package:vault_the_spire/services/settings_service.dart';
 
 class AiChatScreen extends StatefulWidget {
   const AiChatScreen({super.key});
@@ -28,6 +29,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
   List<String> _models = <String>[];
   bool _checking = false;
   bool _sending = false;
+  bool _pulling = false;
   bool _ollamaInstalled = false;
   String _status = 'Not connected';
   String _activeModel = kDefaultAiModel;
@@ -89,6 +91,9 @@ class _AiChatScreenState extends State<AiChatScreen> {
   }
 
   Future<void> _initialize() async {
+    _baseUrlController.text = SettingsService.instance.aiOllamaUrl;
+    _aiService.setBaseUrl(_baseUrlController.text.trim());
+    _activeModel = SettingsService.instance.aiDefaultModel;
     await _checkLocalOllama();
     await _refreshModels();
   }
@@ -146,16 +151,17 @@ class _AiChatScreenState extends State<AiChatScreen> {
       if (!mounted) return;
       setState(() {
         _models = models;
-        if (_models.contains(kDefaultAiModel)) {
-          _activeModel = kDefaultAiModel;
-          _status = 'Connected. Using recommended model: $kDefaultAiModel';
-        } else if (_models.isNotEmpty) {
-          _activeModel = _models.first;
-          _status = 'Connected. Using available model: $_activeModel';
-        } else {
-          _activeModel = kDefaultAiModel;
+        if (_models.isEmpty) {
           _status =
               'Connected. No local models found, fallback set to $kDefaultAiModel';
+        } else if (_models.contains(_activeModel)) {
+          _status = 'Connected. Selected model: $_activeModel';
+        } else if (_models.contains(kDefaultAiModel)) {
+          _status =
+              'Connected. Selected model not installed; recommended model is available.';
+        } else {
+          _status =
+              'Connected. Selected model not installed; choose one from the list.';
         }
       });
     } catch (_) {
@@ -168,6 +174,63 @@ class _AiChatScreenState extends State<AiChatScreen> {
       if (mounted) {
         setState(() {
           _checking = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _selectModel(String model) async {
+    setState(() {
+      _activeModel = model;
+      _status = 'Selected model: $model';
+    });
+    await SettingsService.instance.setAiDefaultModel(model);
+  }
+
+  Future<void> _downloadRecommendedModel() async {
+    if (_pulling) return;
+
+    setState(() {
+      _pulling = true;
+      _status = 'Downloading recommended model $kDefaultAiModel ...';
+    });
+
+    try {
+      await for (final event in _aiService.pullModelStream(kDefaultAiModel)) {
+        final status = (event['status'] ?? '').toString();
+        final total = (event['total'] as num?)?.toDouble() ?? 0;
+        final completed = (event['completed'] as num?)?.toDouble() ?? 0;
+        final progress = total > 0
+            ? (completed / total * 100).clamp(0, 100)
+            : 0;
+
+        if (!mounted) return;
+        setState(() {
+          if (progress > 0) {
+            _status =
+                '$status (${progress.toStringAsFixed(1)}%) for $kDefaultAiModel';
+          } else {
+            _status = status.isEmpty
+                ? 'Downloading $kDefaultAiModel ...'
+                : status;
+          }
+        });
+      }
+      await _refreshModels();
+      await _selectModel(kDefaultAiModel);
+      if (!mounted) return;
+      setState(() {
+        _status = 'Recommended model $kDefaultAiModel is ready.';
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _status = 'Model download failed: $e';
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _pulling = false;
         });
       }
     }
@@ -249,7 +312,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
     final text = _chatController.text.trim();
     if (text.isEmpty || _sending) return;
 
-    final model = _activeModel;
+    final model = _activeModel.trim().isEmpty ? kDefaultAiModel : _activeModel;
     _chatController.clear();
 
     setState(() {
@@ -422,6 +485,40 @@ class _AiChatScreenState extends State<AiChatScreen> {
                     ? 'No local model list returned. The app will still try the recommended model.'
                     : 'Detected ${_models.length} installed model(s).',
                 style: Theme.of(context).textTheme.bodySmall,
+              ),
+              if (_models.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                DropdownButtonFormField<String>(
+                  initialValue: _models.contains(_activeModel)
+                      ? _activeModel
+                      : null,
+                  decoration: const InputDecoration(
+                    labelText: 'Select model to use',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: _models
+                      .map(
+                        (m) => DropdownMenuItem<String>(
+                          value: m,
+                          child: Text(m),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) {
+                    if (value == null) return;
+                    _selectModel(value);
+                  },
+                ),
+              ],
+              const SizedBox(height: 10),
+              FilledButton.icon(
+                onPressed: _pulling ? null : _downloadRecommendedModel,
+                icon: const Icon(Icons.download_for_offline_outlined),
+                label: Text(
+                  _pulling
+                      ? 'Downloading recommended model...'
+                      : 'Download Recommended Model',
+                ),
               ),
             ],
           ),

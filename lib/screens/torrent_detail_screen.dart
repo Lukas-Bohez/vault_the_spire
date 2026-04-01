@@ -16,7 +16,6 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final haveCount = widget.torrent.havePieces;
-    final progress = widget.torrent.progress;
 
     return Scaffold(
       appBar: AppBar(
@@ -49,9 +48,35 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
               style: const TextStyle(fontSize: 12, color: Colors.grey),
             ),
             const SizedBox(height: 8),
-            LinearProgressIndicator(value: progress),
-            const SizedBox(height: 8),
-            Text('Progress: ${(progress * 100).toStringAsFixed(1)}%'),
+            StreamBuilder<TorrentEngineStatus>(
+              stream: TorrentEngineService.instance.statusStream.where(
+                (status) => status.torrentId == widget.torrent.id,
+              ),
+              builder: (context, snapshot) {
+                final status = snapshot.data;
+                final progress = status == null
+                    ? widget.torrent.progress
+                    : (status.state.toLowerCase().contains('seed')
+                          ? status.seedingProgress
+                          : status.progress)
+                        .clamp(0.0, 1.0);
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    LinearProgressIndicator(value: progress),
+                    const SizedBox(height: 8),
+                    Text('Progress: ${(progress * 100).toStringAsFixed(1)}%'),
+                    if (status != null && status.state.toLowerCase().contains('seed'))
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          'Seeding back: ${(status.seedingProgress * 100).toStringAsFixed(1)}% of original size shared',
+                        ),
+                      ),
+                  ],
+                );
+              },
+            ),
             const SizedBox(height: 8),
             StreamBuilder<TorrentEngineStatus>(
               stream: TorrentEngineService.instance.statusStream.where(

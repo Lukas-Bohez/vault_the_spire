@@ -3,6 +3,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:vault_the_spire/constants.dart';
 
 class SettingsService {
+  static final ValueNotifier<bool> persistentSidebarListenable =
+      ValueNotifier<bool>(false);
+
   static String _defaultOllamaUrl() {
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
       return kAndroidLocalOllamaUrl;
@@ -97,6 +100,7 @@ class SettingsService {
     launchOnStartup = prefs.getBool(_kLaunchOnStartup) ?? false;
     soundEffectsEnabled = prefs.getBool(_kSoundEffectsEnabled) ?? true;
     usePersistentSidebar = prefs.getBool(_kUsePersistentSidebar) ?? false;
+    persistentSidebarListenable.value = usePersistentSidebar;
     downloadDestination = prefs.getString(_kDownloadDestination) ?? '';
     windowX = prefs.getDouble(_kWindowX) ?? 0.0;
     windowY = prefs.getDouble(_kWindowY) ?? 0.0;
@@ -156,6 +160,7 @@ class SettingsService {
 
   Future<void> setUsePersistentSidebar(bool value) async {
     usePersistentSidebar = value;
+    persistentSidebarListenable.value = value;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kUsePersistentSidebar, value);
   }

@@ -283,6 +283,17 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
   }
 
   Future<void> _generateInfoCard(SearchResult result) async {
+    if (!SettingsService.instance.enableAiCopilot) {
+      if (!mounted) return;
+      setState(() {
+        _infoCardLoading = false;
+        _trustSignal = 'Neutral';
+        _infoCardText =
+            'AI Copilot is disabled in Settings. Enable it to get analysis.';
+      });
+      return;
+    }
+
     final trust = _computeTrustSignal(result);
     setState(() {
       _infoCardLoading = true;
@@ -372,6 +383,10 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
   }
 
   Future<void> _triggerAutoEvent(AiTriggerEvent event) async {
+    if (!SettingsService.instance.enableAiCopilot ||
+        !SettingsService.instance.enableSmartSuggestions) {
+      return;
+    }
     if (_triggeredEventKeys.contains(event.key)) return;
     _triggeredEventKeys.add(event.key);
     if (_isSending) {
@@ -382,6 +397,16 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
   }
 
   Future<void> _onUserSend() async {
+    if (!SettingsService.instance.enableAiCopilot) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('AI Copilot is disabled in Settings.'),
+        ),
+      );
+      return;
+    }
+
     final text = _chatController.text.trim();
     if (text.isEmpty || _isSending) return;
     _chatController.clear();
@@ -461,6 +486,10 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
     required bool auto,
     required bool visibleUserMessage,
   }) async {
+    if (!SettingsService.instance.enableAiCopilot) {
+      return;
+    }
+
     setState(() {
       _isSending = true;
       if (visibleUserMessage) {
@@ -573,6 +602,13 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
   }
 
   Future<void> _checkAiReadiness() async {
+    if (!SettingsService.instance.enableAiCopilot) {
+      if (!mounted) return;
+      setState(() {
+        _aiReady = false;
+      });
+      return;
+    }
     final ok = await _aiService.checkVersion();
     if (!mounted) return;
     setState(() {
@@ -1044,6 +1080,7 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
 
   Widget _buildChatPane(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final aiEnabled = SettingsService.instance.enableAiCopilot;
     return Container(
       color: cs.surfaceContainerLowest,
       child: Column(
@@ -1055,7 +1092,9 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
             child: Text(
               _aiReady
                   ? 'AI Ready'
-                  : 'AI copilot offline — check your Ollama connection in Settings',
+                  : aiEnabled
+                  ? 'AI copilot offline — check your Ollama connection in Settings'
+                  : 'AI Copilot disabled in Settings',
               style: TextStyle(
                 fontWeight: FontWeight.w600,
                 color: _aiReady ? cs.onTertiaryContainer : cs.onErrorContainer,
@@ -1164,7 +1203,7 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
                   ),
                   const SizedBox(width: 8),
                   FilledButton(
-                    onPressed: _isSending ? null : _onUserSend,
+                    onPressed: _isSending || !aiEnabled ? null : _onUserSend,
                     child: const Icon(Icons.send),
                   ),
                 ],

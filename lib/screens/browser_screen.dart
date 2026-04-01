@@ -110,6 +110,7 @@ class _BrowserScreenState extends State<BrowserScreen>
             setState(() {
               _isLoading = true;
               _showHomeScreen = false;
+              _lastLoadError = null;
             });
           },
           onPageFinished: (url) async {
@@ -171,6 +172,7 @@ class _BrowserScreenState extends State<BrowserScreen>
         setState(() {
           _addressController.text = url;
           _showHomeScreen = false;
+          _lastLoadError = null;
         });
         _recordVisit(url);
       });
@@ -179,6 +181,10 @@ class _BrowserScreenState extends State<BrowserScreen>
         if (!mounted) return;
         setState(() {
           _windowsIsLoading = state == webview_windows.LoadingState.loading;
+          if (state == webview_windows.LoadingState.loading) {
+            _lastLoadError = null;
+            _showHomeScreen = false;
+          }
         });
       });
 
@@ -192,7 +198,10 @@ class _BrowserScreenState extends State<BrowserScreen>
 
       controller.onLoadError.listen((error) {
         _captureCrashDump('WebView2 LoadError ${error.name}', null);
-        setState(() => _lastLoadError = '${error.name}: ${error.toString()}');
+        setState(() {
+          _lastLoadError = '${error.name}: ${error.toString()}';
+          _windowsIsLoading = false;
+        });
       });
 
       controller.webMessage.listen((message) async {
@@ -405,12 +414,20 @@ class _BrowserScreenState extends State<BrowserScreen>
     if (url.isEmpty) return;
     _addressController.text = url;
 
+    setState(() {
+      _lastLoadError = null;
+      _showHomeScreen = false;
+      if (Platform.isWindows) {
+        _windowsIsLoading = true;
+      } else {
+        _isLoading = true;
+      }
+    });
+
     if (_isTorrentOrMagnetUrl(url)) {
       await _handleTorrentOrMagnetUrl(url);
       return;
     }
-
-    setState(() => _showHomeScreen = false);
 
     if (Platform.isWindows && _windowsWebViewController != null) {
       await _windowsWebViewController!.loadUrl(url);
