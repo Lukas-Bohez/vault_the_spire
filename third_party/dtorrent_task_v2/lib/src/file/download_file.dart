@@ -283,7 +283,7 @@ class DownloadFile {
     var file = await _getOrCreateFile();
     RandomAccessFile? access;
     if (type == FileRequestType.write) {
-      _writeAccess ??= await file?.open(mode: FileMode.writeOnlyAppend);
+      _writeAccess ??= await file?.open(mode: FileMode.write);
       access = _writeAccess;
     } else {
       _readAccess ??= await file?.open(mode: FileMode.read);

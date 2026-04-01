@@ -711,6 +711,7 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
   Widget _buildTorrentPane(BuildContext context) {
     final activeDownloads = _contextService.activeDownloads;
     final library = _contextService.library;
+    final hasSearchResults = _results.isNotEmpty;
 
     return Container(
       color: const Color(0xFF0F1115),
@@ -762,7 +763,7 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
                     },
                   ),
                   const SizedBox(width: 8),
-                  FilledButton.icon(
+                  FilledButton(
                     onPressed: () async {
                       await Navigator.of(context).push(
                         MaterialPageRoute(
@@ -772,12 +773,11 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
                       if (!mounted) return;
                       await _refreshTorrents();
                     },
-                    icon: const Icon(Icons.note_add_outlined),
-                    label: const Text('Create Torrent'),
+                    child: const Text('Create Torrent'),
                   ),
                 ],
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 8),
               if (_resolvingMagnet)
                 const Padding(
                   padding: EdgeInsets.only(bottom: 8),
@@ -793,123 +793,177 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
                     ],
                   ),
                 ),
-              TextField(
-                controller: _magnetController,
-                style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  hintText: 'Paste magnet link',
-                  hintStyle: const TextStyle(color: Colors.white54),
-                  suffixIcon: IconButton(
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _magnetController,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(
+                        hintText: 'Paste magnet link',
+                        hintStyle: TextStyle(color: Colors.white54),
+                      ),
+                      onSubmitted: (_) => _addMagnet(),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton.tonalIcon(
                     onPressed: _addMagnet,
                     icon: const Icon(Icons.add_link),
+                    label: const Text('Add'),
                   ),
-                ),
+                ],
               ),
               const SizedBox(height: 12),
               const Text(
-                'Search results',
+                'Torrents',
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),
               Expanded(
-                child: ListView.builder(
-                  itemCount: _results.length,
-                  itemBuilder: (context, index) {
-                    final item = _results[index];
-                    final selected = _selected?.torrentId == item.torrentId;
-                    final safeTitle = item.name.length > 60
-                        ? '${item.name.substring(0, 60)}...'
-                        : item.name;
-                    final sl =
-                        'S: ${item.seeders?.toString() ?? '—'} / L: ${item.leechers?.toString() ?? '—'}';
-                    final age = item.ageYears == null
-                        ? '—'
-                        : (item.ageYears == 0
-                              ? 'this year'
-                              : '${item.ageYears} years ago');
-                    final source = item.source.isEmpty ? '—' : item.source;
-                    return Card(
-                      color: selected
-                          ? const Color(0xFF1F2733)
-                          : const Color(0xFF141922),
-                      child: ListTile(
-                        title: Text(
-                          safeTitle,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF111723),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.white10),
+                  ),
+                  child: activeDownloads.isEmpty && library.isEmpty
+                      ? const Center(
+                          child: Text(
+                            'No active torrents yet. Add a magnet link or start one from search.',
+                            textAlign: TextAlign.center,
+                          ),
+                        )
+                      : ListView(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          children: [
+                            if (activeDownloads.isNotEmpty)
+                              const Padding(
+                                padding: EdgeInsets.fromLTRB(12, 4, 12, 6),
+                                child: Text(
+                                  'Download queue',
+                                  style: TextStyle(fontWeight: FontWeight.w700),
+                                ),
+                              ),
+                            for (final item in activeDownloads)
+                              Builder(
+                                builder: (context) {
+                                  final progress =
+                                      (item.totalSize == null ||
+                                              item.totalSize == 0)
+                                      ? 0.0
+                                      : (item.bytesDown / item.totalSize!).clamp(
+                                          0.0,
+                                          1.0,
+                                        );
+                                  return ListTile(
+                                    dense: true,
+                                    title: Text(
+                                      item.name,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    subtitle: Padding(
+                                      padding: const EdgeInsets.only(top: 6),
+                                      child: LinearProgressIndicator(
+                                        value: progress,
+                                      ),
+                                    ),
+                                    trailing: Text(
+                                      '${(progress * 100).toStringAsFixed(1)}%',
+                                      style: const TextStyle(
+                                        fontFeatures: [
+                                          FontFeature.tabularFigures(),
+                                        ],
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            if (library.isNotEmpty)
+                              const Padding(
+                                padding: EdgeInsets.fromLTRB(12, 12, 12, 6),
+                                child: Text(
+                                  'Completed',
+                                  style: TextStyle(fontWeight: FontWeight.w700),
+                                ),
+                              ),
+                            for (final item in library)
+                              ListTile(
+                                dense: true,
+                                leading: const Icon(
+                                  Icons.check_circle_outline,
+                                  size: 18,
+                                  color: Color(0xFF80CBC4),
+                                ),
+                                title: Text(
+                                  item.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                subtitle: Text(
+                                  item.filePath ?? 'Completed',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 11),
+                                ),
+                              ),
+                          ],
                         ),
-                        subtitle: Text(
-                          '$sl | Size ${item.size == null ? '—' : _formatSize(item.size!)} | Source $source | Age $age',
-                          style: const TextStyle(
-                            fontFamily: 'monospace',
-                            fontSize: 12,
+                ),
+              ),
+              if (hasSearchResults) ...[
+                const SizedBox(height: 10),
+                const Text(
+                  'Search results',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 6),
+                SizedBox(
+                  height: 180,
+                  child: ListView.builder(
+                    itemCount: _results.length,
+                    itemBuilder: (context, index) {
+                      final item = _results[index];
+                      final selected = _selected?.torrentId == item.torrentId;
+                      final safeTitle = item.name.length > 60
+                          ? '${item.name.substring(0, 60)}...'
+                          : item.name;
+                      final sl =
+                          'S: ${item.seeders?.toString() ?? '—'} / L: ${item.leechers?.toString() ?? '—'}';
+                      final age = item.ageYears == null
+                          ? '—'
+                          : (item.ageYears == 0
+                                ? 'this year'
+                                : '${item.ageYears} years ago');
+                      final source = item.source.isEmpty ? '—' : item.source;
+                      return Card(
+                        color: selected
+                            ? const Color(0xFF1F2733)
+                            : const Color(0xFF141922),
+                        child: ListTile(
+                          title: Text(
+                            safeTitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: Text(
+                            '$sl | Size ${item.size == null ? '—' : _formatSize(item.size!)} | Source $source | Age $age',
+                            style: const TextStyle(
+                              fontFamily: 'monospace',
+                              fontSize: 12,
+                            ),
+                          ),
+                          onTap: () => _selectResult(item),
+                          trailing: IconButton(
+                            onPressed: () => _startDownload(item),
+                            icon: const Icon(Icons.download),
                           ),
                         ),
-                        onTap: () => _selectResult(item),
-                        trailing: IconButton(
-                          onPressed: () => _startDownload(item),
-                          icon: const Icon(Icons.download),
-                        ),
-                      ),
-                    );
-                  },
+                      );
+                    },
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Download queue',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              SizedBox(
-                height: 120,
-                child: ListView.builder(
-                  itemCount: activeDownloads.length,
-                  itemBuilder: (context, index) {
-                    final item = activeDownloads[index];
-                    final progress =
-                        (item.totalSize == null || item.totalSize == 0)
-                        ? 0.0
-                        : (item.bytesDown / item.totalSize!).clamp(0.0, 1.0);
-                    return ListTile(
-                      dense: true,
-                      title: Text(
-                        item.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      subtitle: LinearProgressIndicator(value: progress),
-                      trailing: Text('${(progress * 100).toStringAsFixed(1)}%'),
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(height: 6),
-              const Text(
-                'Library',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              SizedBox(
-                height: 80,
-                child: ListView.builder(
-                  itemCount: library.length,
-                  itemBuilder: (context, index) {
-                    final item = library[index];
-                    return ListTile(
-                      dense: true,
-                      title: Text(
-                        item.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      subtitle: Text(
-                        item.filePath ?? 'Completed',
-                        style: const TextStyle(fontSize: 11),
-                      ),
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(height: 8),
-              _buildInfoCard(),
+              ],
             ],
           ),
         ),
@@ -1086,6 +1140,11 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
               },
             ),
           ),
+          if (_selected != null || _infoCardLoading)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(10, 0, 10, 6),
+              child: _buildInfoCard(),
+            ),
           SafeArea(
             top: false,
             child: Padding(

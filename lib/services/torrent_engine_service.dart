@@ -864,48 +864,24 @@ class TorrentEngineService {
   }
 
   void _ensureInfoNameIsString(Map<String, dynamic> info) {
-    final nameValue = info['name'];
-    if (nameValue is List) {
-      final nameParts = nameValue.where((e) => e != null).map((e) {
-        if (e is String) return e;
-        if (e is Uint8List) {
-          try {
-            return utf8.decode(e);
-          } catch (_) {
-            return e.toString();
-          }
-        }
-        return e.toString();
-      }).toList();
-      info['name'] = nameParts.join('/');
-    } else if (nameValue is Uint8List) {
-      try {
-        info['name'] = utf8.decode(nameValue);
-      } catch (_) {
-        info['name'] = nameValue.toString();
-      }
+    final decoded = _decodeBencodeString(name: info['name']);
+    if (decoded != null && decoded.isNotEmpty) {
+      info['name'] = decoded;
     }
   }
 
   void _ensureAnnounceFieldsAreString(Map<String, dynamic> info) {
-    if (info['announce'] is Uint8List) {
-      try {
-        info['announce'] = utf8.decode(info['announce'] as Uint8List);
-      } catch (_) {}
+    final announce = _decodeBencodeString(name: info['announce']);
+    if (announce != null && announce.isNotEmpty) {
+      info['announce'] = announce;
     }
 
     if (info['announce-list'] is List) {
       info['announce-list'] = (info['announce-list'] as List).map((tier) {
         if (tier is List) {
           return tier.map((url) {
-            if (url is Uint8List) {
-              try {
-                return utf8.decode(url);
-              } catch (_) {
-                return url.toString();
-              }
-            }
-            return url;
+            final decoded = _decodeBencodeString(name: url);
+            return decoded ?? url;
           }).toList();
         }
         return tier;
@@ -920,14 +896,8 @@ class TorrentEngineService {
           final pathList = entry['path'];
           if (pathList is List) {
             entry['path'] = pathList.map((component) {
-              if (component is Uint8List) {
-                try {
-                  return utf8.decode(component);
-                } catch (_) {
-                  return component.toString();
-                }
-              }
-              return component;
+              final decoded = _decodeBencodeString(name: component);
+              return decoded ?? component.toString();
             }).toList();
           }
         }
@@ -944,11 +914,7 @@ class TorrentEngineService {
     if (treeData is! Map) return {};
     final result = <String, dynamic>{};
     for (final entry in treeData.entries) {
-      final key = entry.key is String
-          ? entry.key as String
-          : entry.key is Uint8List
-          ? utf8.decode(entry.key as Uint8List)
-          : entry.key.toString();
+      final key = _decodeBencodeString(name: entry.key) ?? entry.key.toString();
       final value = entry.value;
       if (value is Map) {
         if (value.containsKey('')) {
@@ -977,9 +943,7 @@ class TorrentEngineService {
     if (value is Map) {
       return Map<String, dynamic>.fromEntries(
         value.entries.map((entry) {
-          final key = entry.key is String
-              ? entry.key as String
-              : entry.key.toString();
+          final key = _decodeBencodeString(name: entry.key) ?? entry.key.toString();
           return MapEntry(key, _normalizeBencodeMap(entry.value));
         }),
       );
@@ -995,6 +959,27 @@ class TorrentEngineService {
     }
 
     return value;
+  }
+
+  String? _decodeBencodeString({required dynamic name}) {
+    if (name is String) {
+      return name;
+    }
+    if (name is Uint8List) {
+      try {
+        return utf8.decode(name, allowMalformed: true);
+      } catch (_) {
+        return null;
+      }
+    }
+    if (name is List<int>) {
+      try {
+        return utf8.decode(name, allowMalformed: true);
+      } catch (_) {
+        return null;
+      }
+    }
+    return null;
   }
 
   void _wireEvents(String torrentId, dt.TorrentTask task) {
@@ -1033,6 +1018,11 @@ class TorrentEngineService {
 
     await for (final entity in dir.list(recursive: true, followLinks: false)) {
       if (entity is File) {
+        final lowerPath = entity.path.toLowerCase();
+        if (lowerPath.endsWith('.bt.state') ||
+            lowerPath.endsWith('.torrent')) {
+          continue;
+        }
         final stat = await entity.stat();
         if (stat.size > 0) {
           return true;
@@ -1063,8 +1053,20 @@ class TorrentEngineService {
     }
 
     final progress = task.progress;
+    final totalLength = task.metaInfo.length ?? task.metaInfo.totalSize;
+    var isAllComplete = false;
+    try {
+      final dynamic t = task;
+      isAllComplete = (t.fileManager.isAllComplete as bool?) ?? false;
+    } catch (_) {
+      isAllComplete = false;
+    }
 
-    final state = progress >= 0.999 ? 'seeding' : 'downloading';
+        final state = isAllComplete ||
+          (totalLength > 0 && downloaded >= totalLength) ||
+            progress >= 0.999
+        ? 'seeding'
+        : 'downloading';
     final msg = state == 'seeding'
       ? 'Seeding • $peers peer${peers == 1 ? '' : 's'} connected'
       : peers == 0
