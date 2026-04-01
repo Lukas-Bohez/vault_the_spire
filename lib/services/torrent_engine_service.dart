@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:b_encode_decode/b_encode_decode.dart';
 import 'package:bittorrent_dht/bittorrent_dht.dart';
+import 'package:dtorrent_common/dtorrent_common.dart';
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart' as dt;
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
@@ -135,19 +137,29 @@ class TorrentEngineService {
   }
 
   Future<void> _mapPorts(dt.TorrentTask task) async {
-    // dtorrent_task_v2 starts on a random available port and handles NAT
-    // traversal internally via PortForwardingManager, so explicit setPort
-    // API is not available.
-    if (_defaultPortsBlocked) {
-      debugPrint(
-        'Default ports may be blocked; relying on ephemeral port binding.',
-      );
-    } else {
-      debugPrint(
-        'Using ephemeral port binding (task chooses port automatically).',
-      );
+    const int basePort = 6881;
+    const int maxPort = 6889;
+    final random = Random();
+
+    for (var attempt = 0; attempt < (maxPort - basePort + 1); attempt++) {
+      final port = basePort + random.nextInt(maxPort - basePort + 1);
+      try {
+        (task as dynamic).setPort(port);
+        (task as dynamic).enableUPnP(true);
+        (task as dynamic).enableNATPMP(true);
+        debugPrint('Port/NAT configuration applied ($port/UPnP/NAT-PMP)');
+        _defaultPortsBlocked = false;
+        return;
+      } catch (e, st) {
+        debugPrint('setPort($port) failed: $e');
+        debugPrint(st.toString());
+      }
     }
-    // Nothing else to do; _TorrentTask will bind and forward in start().
+
+    _defaultPortsBlocked = true;
+    debugPrint(
+      'Could not bind to ports $basePort-$maxPort; using ephemeral port binding.',
+    );
   }
 
   void _addDhtBootstrapNodes(dt.TorrentTask task) {
@@ -240,6 +252,21 @@ class TorrentEngineService {
       result[i] = int.parse(hex.substring(i * 2, i * 2 + 2), radix: 16);
     }
     return result;
+  }
+
+  bool _looksLikeIPv4(String address) {
+    final parts = address.split('.');
+    if (parts.length != 4) return false;
+    for (final p in parts) {
+      final value = int.tryParse(p);
+      if (value == null || value < 0 || value > 255) return false;
+    }
+    return true;
+  }
+
+  List<int>? _ipv4ToBytes(String address) {
+    if (!_looksLikeIPv4(address)) return null;
+    return address.split('.').map((e) => int.parse(e)).toList();
   }
 
   Future<void> _refreshConnection(String torrentId, dt.TorrentTask task) async {
@@ -385,17 +412,7 @@ class TorrentEngineService {
         .toList();
     _startHealthCheckTimer(torrent.id, task);
 
-    // Set listening port and NAT traversal hints (UPnP/NAT-PMP)
-    try {
-      (task as dynamic).setPort(6881);
-      (task as dynamic).enableUPnP(true);
-      (task as dynamic).enableNATPMP(true);
-      debugPrint('Port/NAT configuration applied (6881/UPnP/NAT-PMP)');
-    } catch (e, st) {
-      debugPrint('Port/NAT config error: $e');
-      debugPrint(st.toString());
-    }
-
+    // Task configuration (port/NAT) already applied in _configureTask.
     await task.start();
 
     // Use all announce URLs and fallback public trackers
@@ -570,30 +587,84 @@ class TorrentEngineService {
     ];
     _startHealthCheckTimer(torrent.id, task);
 
-    // _TorrentTask uses ephemeral port binding and handles NAT traversal internally.
-    debugPrint(
-      'Skipping explicit setPort/UPnP/NAT-PMP API usage for dtorrent_task_v2.',
-    );
-
     await task.start();
 
     final dht = task.dht;
     if (dht != null) {
       debugPrint('[S] task.dht is initialized');
-      dht.createListener()
-        ?..on<NewPeerEvent>((event) {
-          debugPrint('[S] NewPeerEvent from DHT: ${event.address}, infoHash=${event.infoHash}');
+      dht.createListener()?..on<NewPeerEvent>((event) {
+        debugPrint(
+          '[S] NewPeerEvent from DHT: ${event.address}, infoHash=${event.infoHash}',
+        );
+        try {
+          task.addPeer(event.address, dt.PeerSource.dht, type: dt.PeerType.TCP);
+        } catch (e) {
+          debugPrint('[S] task.addPeer(dht) failed: $e');
           try {
-            task.addPeer(event.address, dt.PeerSource.dht, type: dt.PeerType.TCP);
+            task.addPeer(event.address, dt.PeerSource.dht);
+          } catch (e2) {
+            debugPrint('[S] task.addPeer(dht) fallback failed: $e2');
+          }
+        }
+      });
+      dht.krpc?.createListener()?..on<AnnouncePeerResponseEvent>((event) {
+        debugPrint(
+          '[S] AnnouncePeerResponseEvent from DHT.KRPC: ${event.address}:${event.port}',
+        );
+
+        // Try adding direct announce peer from event.address:event.port
+        final addressString = event.address?.toString();
+        final port = event.port;
+        if (addressString != null) {
+          try {
+            final parsedAddress = InternetAddress.tryParse(addressString);
+            if (parsedAddress != null) {
+              final caddr = CompactAddress(parsedAddress, port);
+              task.addPeer(caddr, dt.PeerSource.dht);
+              debugPrint(
+                '[PEER] Added direct DHT response peer $addressString:$port',
+              );
+            }
           } catch (e) {
-            debugPrint('[S] task.addPeer(dht) failed: $e');
-            try {
-              task.addPeer(event.address, dt.PeerSource.dht);
-            } catch (e2) {
-              debugPrint('[S] task.addPeer(dht) fallback failed: $e2');
+            debugPrint('[PEER] direct addPeer failed: $e');
+          }
+        }
+
+        final data = event.data;
+        if (data is Map) {
+          final values = data['values'];
+          final peersField = data['peers'] ?? values;
+          if (peersField is Iterable) {
+            for (final peer in peersField) {
+              try {
+                CompactAddress? caddr;
+                if (peer is CompactAddress) {
+                  caddr = peer;
+                } else if (peer is List<int>) {
+                  if (peer.length == 6) {
+                    caddr = CompactAddress.parseIPv4Address(peer);
+                  } else if (peer.length == 18) {
+                    caddr = CompactAddress.parseIPv6Address(peer);
+                  }
+                } else if (peer is String) {
+                  final bytes = peer.codeUnits;
+                  if (bytes.length == 6) {
+                    caddr = CompactAddress.parseIPv4Address(bytes);
+                  } else if (bytes.length == 18) {
+                    caddr = CompactAddress.parseIPv6Address(bytes);
+                  }
+                }
+                if (caddr != null) {
+                  task.addPeer(caddr, dt.PeerSource.dht);
+                  debugPrint('[PEER] Added $caddr');
+                }
+              } catch (e) {
+                debugPrint('[PEER] addPeer failed: $e');
+              }
             }
           }
-        });
+        }
+      });
     } else {
       debugPrint('[S] task.dht is null');
     }
@@ -612,9 +683,11 @@ class TorrentEngineService {
     final dynamic dynamicTask = task;
     Timer.periodic(const Duration(seconds: 10), (_) {
       try {
-        debugPrint('[S] dl=${dynamicTask.downloaded ?? 0} '
-            'peers=${dynamicTask.connectedPeersNumber ?? 0} '
-            'speed=${dynamicTask.currentDownloadSpeed ?? 0}');
+        debugPrint(
+          '[S] dl=${dynamicTask.downloaded ?? 0} '
+          'peers=${dynamicTask.connectedPeersNumber ?? 0} '
+          'speed=${dynamicTask.currentDownloadSpeed ?? 0}',
+        );
       } catch (e) {
         debugPrint('[S] err: $e');
       }
