@@ -5,15 +5,20 @@ import 'screens/about_screen.dart';
 import 'screens/browser_screen.dart';
 import 'screens/chat_hub_screen.dart';
 import 'screens/messages_screen.dart';
+import 'screens/torrentspire_ai_screen.dart';
 import 'screens/torrents_screen.dart';
 import 'widgets/platform_adaptive_scaffold.dart';
 
 final appRouter = GoRouter(
-  initialLocation: '/',
+  initialLocation: '/copilot',
   routes: [
     ShellRoute(
       builder: (context, state, child) => AppShell(child: child),
       routes: [
+        GoRoute(
+          path: '/copilot',
+          builder: (_, __) => const TorrentSpireAiScreen(),
+        ),
         GoRoute(
           path: '/',
           builder: (_, __) => const HomeScreen(),

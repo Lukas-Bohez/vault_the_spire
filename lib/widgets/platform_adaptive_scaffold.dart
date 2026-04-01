@@ -11,6 +11,9 @@ class AppShell extends StatelessWidget {
     final location = GoRouterState.of(context).uri.path;
 
     final navItems = [
+      _NavItem(icon: Icons.auto_awesome,
+               activeIcon: Icons.auto_awesome,
+               label: 'TorrentSpire AI', route: '/copilot'),
       _NavItem(icon: Icons.chat_bubble_outline, 
                activeIcon: Icons.chat_bubble,
                label: 'Chats', route: '/chat_hub'),
@@ -104,7 +107,21 @@ class _Sidebar extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 4),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text('TorrentSpire AI',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.grey,
+                    fontWeight: FontWeight.w500,
+                  ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
           ...items.map((item) {
             final isActive = currentPath == item.route;
             return Padding(

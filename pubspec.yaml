@@ -1,7 +1,7 @@
 name: vault_the_spire
-description: "A new Flutter project."
+description: "TorrentSpire AI - torrent manager with AI copilot"
 publish_to: 'none'
-version: 3.0.0+0
+version: 1.0.0+0
 
 environment:
   sdk: ^3.11.0
@@ -41,6 +41,8 @@ dependencies:
   dtorrent_common: ^1.0.8
   flutter_background_service: ^5.1.0
   flutter_local_notifications: ^18.0.0
+  dio: ^5.4.3
+  flutter_markdown: ^0.7.3
 
 dev_dependencies:
   flutter_test:
