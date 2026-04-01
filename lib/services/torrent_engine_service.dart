@@ -514,7 +514,11 @@ class TorrentEngineService {
     final totalBytes = dtModel.files.fold<int>(0, (s, f) => s + f.length);
     if (totalBytes > 0 && (torrent.totalSize ?? 0) != totalBytes) {
       await TorrentService.instance.updateTorrent(
-        torrent.copyWith(totalSize: totalBytes),
+        torrent.copyWith(totalSize: totalBytes, filePath: saveDir),
+      );
+    } else {
+      await TorrentService.instance.updateTorrent(
+        torrent.copyWith(filePath: saveDir),
       );
     }
 
@@ -662,7 +666,11 @@ class TorrentEngineService {
     final totalBytes = dtModel.files.fold<int>(0, (s, f) => s + f.length);
     if (totalBytes > 0) {
       await TorrentService.instance.updateTorrent(
-        torrent.copyWith(totalSize: totalBytes),
+        torrent.copyWith(totalSize: totalBytes, filePath: saveDir),
+      );
+    } else {
+      await TorrentService.instance.updateTorrent(
+        torrent.copyWith(filePath: saveDir),
       );
     }
 
@@ -992,32 +1000,55 @@ class TorrentEngineService {
   void _wireEvents(String torrentId, dt.TorrentTask task) {
     task.createListener()
       ..on<dt.StateFileUpdated>((_) {
-        _emitStats(torrentId, task, 'downloading');
+        _emitStats(torrentId, task);
       })
       ..on<dt.TaskCompleted>((_) async {
-        _emitStats(torrentId, task, 'completed');
+        _emitStats(torrentId, task);
+        final hasOutput = await _verifyOutputExists(torrentId);
         await TorrentService.instance.updateTorrentStatus(
           torrentId,
-          'completed',
+          hasOutput ? 'seeding' : 'error_missing_output',
         );
         final torrent = await TorrentService.instance.getTorrentById(torrentId);
-        if (torrent != null) {
+        if (torrent != null && hasOutput) {
           await NotificationService.instance.showDownloadComplete(torrent.name);
         }
-        _cleanup(torrentId);
       })
       ..on<dt.TaskStopped>((_) {
         _cleanup(torrentId);
       });
   }
 
+  Future<bool> _verifyOutputExists(String torrentId) async {
+    final torrent = await TorrentService.instance.getTorrentById(torrentId);
+    final outputPath = torrent?.filePath;
+    if (outputPath == null || outputPath.trim().isEmpty) {
+      return false;
+    }
+
+    final dir = Directory(outputPath);
+    if (!await dir.exists()) {
+      return false;
+    }
+
+    await for (final entity in dir.list(recursive: true, followLinks: false)) {
+      if (entity is File) {
+        final stat = await entity.stat();
+        if (stat.size > 0) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   void _startPollTimer(String torrentId, dt.TorrentTask task) {
     _pollTimers[torrentId] = Timer.periodic(const Duration(seconds: 2), (_) {
-      _emitStats(torrentId, task, 'downloading');
+      _emitStats(torrentId, task);
     });
   }
 
-  void _emitStats(String torrentId, dt.TorrentTask task, String state) {
+  void _emitStats(String torrentId, dt.TorrentTask task) {
     final downloaded = task.downloaded ?? 0;
     final dlSpeed = task.currentDownloadSpeed * 1000; // bytes/ms → bytes/s
     final ulSpeed = task.uploadSpeed * 1000;
@@ -1033,11 +1064,14 @@ class TorrentEngineService {
 
     final progress = task.progress;
 
-    final msg = peers == 0
-        ? 'Searching for peers...'
-        : downloaded == 0
-        ? 'Connected to $peers peer${peers == 1 ? '' : 's'}, waiting for pieces...'
-        : '${(progress * 100).toStringAsFixed(1)}% — $peers peer${peers == 1 ? '' : 's'}';
+    final state = progress >= 0.999 ? 'seeding' : 'downloading';
+    final msg = state == 'seeding'
+      ? 'Seeding • $peers peer${peers == 1 ? '' : 's'} connected'
+      : peers == 0
+      ? 'Searching for peers...'
+      : downloaded == 0
+      ? 'Connected to $peers peer${peers == 1 ? '' : 's'}, waiting for pieces...'
+      : '${(progress * 100).toStringAsFixed(1)}% — $peers peer${peers == 1 ? '' : 's'}';
 
     int dhtNodes = 0;
     int trackers = 0;

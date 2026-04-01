@@ -92,6 +92,7 @@ class MetadataDownloader
 
   /// Whether the downloader is currently running
   bool _running = false;
+  static const bool _forceTcpOnly = true;
 
   /// End of bencoded data marker
   final int E = 'e'.codeUnits[0];
@@ -359,11 +360,16 @@ class MetadataDownloader
     }
     if (_peersAddress.add(address)) {
       Peer? peer;
-      if (type == PeerType.TCP) {
+      final effectiveType = _forceTcpOnly ? PeerType.TCP : type;
+      if (effectiveType == PeerType.TCP) {
         peer = Peer.newTCPPeer(address, _infoHashBuffer, 0, socket, source);
       }
-      if (type == PeerType.UTP) {
-        peer = Peer.newUTPPeer(address, _infoHashBuffer, 0, socket, source);
+      if (effectiveType == PeerType.UTP) {
+        try {
+          peer = Peer.newUTPPeer(address, _infoHashBuffer, 0, socket, source);
+        } catch (_) {
+          peer = Peer.newTCPPeer(address, _infoHashBuffer, 0, socket, source);
+        }
       }
       if (peer != null) _hookPeer(peer);
     }
@@ -673,7 +679,7 @@ class MetadataDownloader
 
   @override
   void holePunchConnect(CompactAddress ip) {
-    addNewPeerAddress(ip, PeerSource.holepunch, PeerType.UTP);
+    addNewPeerAddress(ip, PeerSource.holepunch, PeerType.TCP);
   }
 
   @override

@@ -28,6 +28,7 @@ var _log = Logger('PeersManager');
 /// TODO:
 /// - The external Suggest Piece/Fast Allow requests are not handled.
 class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
+    static const bool _forceTcpOnly = true;
   final List<InternetAddress> IGNORE_IPS = [
     InternetAddress.tryParse('0.0.0.0')!,
     InternetAddress.tryParse('127.0.0.1')!
@@ -288,7 +289,8 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
     // _peersAddress.remove(address);
     if (_peersAddress.add(address)) {
       Peer? peer;
-      if (type == null || type == PeerType.TCP) {
+      final effectiveType = _forceTcpOnly ? PeerType.TCP : (type ?? PeerType.TCP);
+      if (effectiveType == PeerType.TCP) {
         if (_metaInfo.pieces == null) {
           _log.warning(
               'Cannot create peer: torrent has no pieces (v2-only torrent?)');
@@ -303,14 +305,25 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
           proxyManager: _proxyManager,
         );
       }
-      if (type == PeerType.UTP) {
+      if (effectiveType == PeerType.UTP) {
         if (_metaInfo.pieces == null) {
           _log.warning(
               'Cannot create peer: torrent has no pieces (v2-only torrent?)');
           return;
         }
-        peer = Peer.newUTPPeer(address, _metaInfo.infoHashBuffer,
-            _metaInfo.pieces!.length, socket, source);
+        try {
+          peer = Peer.newUTPPeer(address, _metaInfo.infoHashBuffer,
+              _metaInfo.pieces!.length, socket, source);
+        } catch (_) {
+          peer = Peer.newTCPPeer(
+            address,
+            _metaInfo.infoHashBuffer,
+            _metaInfo.pieces!.length,
+            socket,
+            source,
+            proxyManager: _proxyManager,
+          );
+        }
       }
       if (peer != null) {
         // Set torrent version for v2/hybrid support in handshake
@@ -563,7 +576,7 @@ class PeersManager with Holepunch, PEX, EventsEmittable<PeerEvent> {
   @override
   void holePunchConnect(CompactAddress ip) {
     _log.info("holePunch connect $ip");
-    addNewPeerAddress(ip, PeerSource.holepunch, type: PeerType.UTP);
+    addNewPeerAddress(ip, PeerSource.holepunch, type: PeerType.TCP);
   }
 
   int get utpPeerCount {

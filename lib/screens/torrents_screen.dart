@@ -82,7 +82,12 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
   Future<void> _openTorrentFolder(TorrentModel torrent) async {
     final String pathToOpen;
     if (torrent.filePath != null && torrent.filePath!.isNotEmpty) {
-      pathToOpen = torrent.filePath!;
+      final lowerPath = torrent.filePath!.toLowerCase();
+      if (lowerPath.endsWith('.torrent')) {
+        pathToOpen = SettingsService.instance.downloadDestination;
+      } else {
+        pathToOpen = torrent.filePath!;
+      }
     } else {
       pathToOpen = SettingsService.instance.downloadDestination;
     }
@@ -143,7 +148,7 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
     if (status.contains('download')) return 'Downloading';
     if (status.contains('seed')) return 'Seeding';
     if (status.contains('pause')) return 'Paused';
-    if (status.contains('complete')) return 'Completed';
+    if (status.contains('complete')) return 'Seeding';
     return torrent.status ?? 'Unknown';
   }
 
@@ -273,20 +278,18 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
                           trailing: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              if (isComplete)
-                                IconButton(
-                                  icon: const Icon(Icons.folder_open),
-                                  tooltip: 'Open folder',
-                                  onPressed: () => _openTorrentFolder(torrent),
-                                )
-                              else
-                                IconButton(
-                                  icon: Icon(
-                                    isActive ? Icons.pause : Icons.play_arrow,
-                                  ),
-                                  tooltip: isActive ? 'Pause' : 'Play',
-                                  onPressed: () => _toggleTorrent(torrent),
+                              IconButton(
+                                icon: const Icon(Icons.folder_open),
+                                tooltip: 'Open folder',
+                                onPressed: () => _openTorrentFolder(torrent),
+                              ),
+                              IconButton(
+                                icon: Icon(
+                                  isActive ? Icons.pause : Icons.play_arrow,
                                 ),
+                                tooltip: isActive ? 'Pause' : 'Play',
+                                onPressed: () => _toggleTorrent(torrent),
+                              ),
                               IconButton(
                                 icon: const Icon(Icons.copy),
                                 tooltip: 'Copy magnet link',
