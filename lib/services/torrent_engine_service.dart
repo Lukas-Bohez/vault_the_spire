@@ -110,10 +110,6 @@ class TorrentEngineService {
   }
 
   void _bootstrapDhtNetwork() {
-    debugPrint('Initializing default DHT bootstrap nodes');
-    for (final node in _defaultDhtBootstrapNodes) {
-      debugPrint('DHT bootstrap candidate: $node');
-    }
     _detectRestrictedNetwork();
   }
 
@@ -121,7 +117,6 @@ class TorrentEngineService {
     // Port probe was producing false positives on some networks.
     // Peers are found via DHT/tracker, so do not force restrictions.
     _defaultPortsBlocked = false;
-    debugPrint('Network restriction probe disabled; assuming unrestricted.');
   }
 
   void _log(String torrentId, String message) {
@@ -201,7 +196,6 @@ class TorrentEngineService {
     // This package version does not expose setPort/UPnP/NAT-PMP mutators.
     // Allow the task to bind ports internally instead of spamming NoSuchMethod.
     _defaultPortsBlocked = true;
-    debugPrint('Using internal torrent task port binding (ephemeral).');
   }
 
   void _addDhtBootstrapNodes(dt.TorrentTask task) {
@@ -486,9 +480,6 @@ class TorrentEngineService {
         ? destinationPath!
         : await _defaultDownloadDir();
 
-    debugPrint(
-      '[SAVEPATH] Using: $saveDir exists=${Directory(saveDir).existsSync()}',
-    );
     if (!Directory(saveDir).existsSync()) {
       await Directory(saveDir).create(recursive: true);
     }
@@ -588,40 +579,6 @@ class TorrentEngineService {
         try {
           final Uint8List rawData = Uint8List.fromList(event.data);
           final msg = decode(rawData);
-          debugPrint('Metadata download decoded type: ${msg.runtimeType}');
-          if (msg is Map) {
-            debugPrint('Metadata keys: ${msg.keys}');
-            final rawName = msg['name'];
-            debugPrint(
-              'Top-level name type: ${rawName?.runtimeType}, isUint8List=${rawName is Uint8List}',
-            );
-            final rawPieces = msg['pieces'];
-            debugPrint(
-              'Top-level pieces type: ${rawPieces?.runtimeType}, isUint8List=${rawPieces is Uint8List}',
-            );
-            if (rawName is Uint8List) {
-              try {
-                debugPrint('Top-level name decoded: ${utf8.decode(rawName)}');
-              } catch (_) {
-                debugPrint('Top-level name could not decode to UTF-8');
-              }
-            }
-            if (msg.containsKey('info')) {
-              final info = msg['info'];
-              debugPrint('info type: ${info?.runtimeType}');
-              if (info is Map) {
-                final infoName = info['name'];
-                debugPrint(
-                  'info.name type: ${infoName?.runtimeType}, isUint8List=${infoName is Uint8List}',
-                );
-                if (infoName is Uint8List) {
-                  try {
-                    debugPrint('info.name decoded: ${utf8.decode(infoName)}');
-                  } catch (_) {}
-                }
-              }
-            }
-          }
 
           final model = await _parseTorrentModelFromRawBencode(msg);
           completer.complete(model);
@@ -647,9 +604,6 @@ class TorrentEngineService {
         ? destinationPath!
         : await _defaultDownloadDir();
 
-    debugPrint(
-      '[SAVEPATH] Using: $saveDir exists=${Directory(saveDir).existsSync()}',
-    );
     if (!Directory(saveDir).existsSync()) {
       await Directory(saveDir).create(recursive: true);
     }
@@ -688,7 +642,6 @@ class TorrentEngineService {
     // Start task in background without blocking UI
     unawaited(task.start());
 
-    debugPrint('[TASK] started — calling resume if available');
     try {
       (task as dynamic).resume();
     } catch (_) {}
@@ -706,7 +659,6 @@ class TorrentEngineService {
     // Set up DHT event listeners
     final dht = task.dht;
     if (dht != null) {
-      debugPrint('[S] task.dht is initialized');
       dht.createListener()?..on<NewPeerEvent>((event) {
         _logDhtThrottled(task);
         try {
@@ -768,8 +720,6 @@ class TorrentEngineService {
           }
         }
       });
-    } else {
-      debugPrint('[S] task.dht is null');
     }
 
     // Announce to trackers in background without blocking UI
@@ -821,12 +771,6 @@ class TorrentEngineService {
     _ensureFilePathsAreString(normalizedInfo);
 
     _normalizePiecesField(normalizedInfo);
-    debugPrint('Normalized info types:');
-    final pieceType = normalizedInfo['pieces']?.runtimeType;
-    debugPrint(' - pieces type: $pieceType');
-    final filesType = normalizedInfo['files']?.runtimeType;
-    debugPrint(' - files type: $filesType');
-
     final torrentMap = <String, dynamic>{'info': normalizedInfo};
 
     return dt.TorrentParser.parseFromMap(torrentMap);
