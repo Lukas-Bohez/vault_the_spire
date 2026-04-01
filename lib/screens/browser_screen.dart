@@ -147,6 +147,13 @@ class _BrowserScreenState extends State<BrowserScreen>
             return NavigationDecision.navigate;
           },
           onWebResourceError: (error) {
+            debugPrint(
+              'WebResourceError: ${error.description} (Code: ${error.errorCode}) URL: ${error.url}',
+            );
+            setState(() {
+              _lastLoadError =
+                  '${error.description} (Error: ${error.errorCode})';
+            });
             _captureCrashDump('WebResourceError', error);
           },
         ),

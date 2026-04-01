@@ -36,10 +36,13 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen> {
 
   StreamSubscription<List<SearchResult>>? _searchSubscription;
   Timer? _torrentPoll;
+  Timer? _settingsSyncTimer;
 
   SearchResult? _selected;
   String _category = 'All';
   String _activeModel = 'llama3';
+  String _cachedAiUrl = '';
+  String _cachedAiModel = '';
   String _infoCardText = 'Select a torrent to generate AI analysis.';
   String _trustSignal = 'Yellow';
   bool _aiReady = false;
@@ -56,7 +59,10 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen> {
   void initState() {
     super.initState();
     _activeModel = SettingsService.instance.aiDefaultModel;
-    _aiService.setBaseUrl(SettingsService.instance.aiOllamaUrl);
+    _cachedAiModel = _activeModel;
+    final url = SettingsService.instance.aiOllamaUrl;
+    _aiService.setBaseUrl(url);
+    _cachedAiUrl = url;
     _contextService.addListener(_noop);
     _searchSubscription = SearchService.instance.resultsStream.listen((items) {
       setState(() {
@@ -73,6 +79,12 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen> {
       const Duration(seconds: 2),
       (_) => _refreshTorrents(),
     );
+    // Periodically sync AI settings in case they changed in settings screen
+    _settingsSyncTimer = Timer.periodic(
+      const Duration(seconds: 5),
+      (_) => _syncAiSettings(),
+    );
+    // Verify AI connection immediately
     _checkAiReadiness();
   }
 
@@ -84,6 +96,7 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen> {
     _chatScroll.dispose();
     _searchSubscription?.cancel();
     _torrentPoll?.cancel();
+    _settingsSyncTimer?.cancel();
     _contextService.removeListener(_noop);
     _contextService.dispose();
     super.dispose();
@@ -185,7 +198,9 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen> {
     });
     _contextService.updateSelected(result);
     _triggerAutoEvent(_triggers.onResultSelected(result));
-    _generateInfoCard(result);
+    // Ensure AI is ready before generating info card
+    await _syncAiSettings();
+    await _generateInfoCard(result);
   }
 
   Future<void> _generateInfoCard(SearchResult result) async {
@@ -198,6 +213,29 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen> {
 
     final prompt =
         'Give a concise 2-3 sentence description for this torrent candidate: title=${result.name}, size=${result.size ?? 0} bytes, category=$_category, source=${result.responderId}. Include likely file structure and notable quality hints.';
+
+    if (!mounted) return;
+    
+    if (!_aiReady) {
+      setState(() {
+        _infoCardLoading = false;
+        _trustSignal = 'Neutral';
+        _infoCardText = 'AI not connected. Check Settings > AI Settings and verify Ollama is running.';
+      });
+      return;
+    }
+
+    // Validate that the model exists
+    final modelExists = await _aiService.modelExists(_activeModel);
+    if (!modelExists) {
+      if (!mounted) return;
+      setState(() {
+        _infoCardLoading = false;
+        _trustSignal = 'Neutral';
+        _infoCardText = 'Model "$_activeModel" not found. Download it in Settings > Local AI Chat.';
+      });
+      return;
+    }
 
     try {
       final stream = await _aiService.chatChunkStream(
@@ -223,12 +261,13 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen> {
             ? 'No extra details available yet.'
             : buffer.toString().trim();
       });
-    } catch (_) {
+    } catch (e) {
       if (!mounted) return;
+      debugPrint('AI analysis failed: $e');
       setState(() {
         _infoCardLoading = false;
         _trustSignal = 'Neutral';
-        _infoCardText = 'AI unavailable';
+        _infoCardText = 'AI analysis failed: $e';
       });
     }
   }
@@ -469,6 +508,30 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen> {
     });
   }
 
+  Future<void> _syncAiSettings() async {
+    final currentUrl = SettingsService.instance.aiOllamaUrl;
+    final currentModel = SettingsService.instance.aiDefaultModel;
+
+    if (_cachedAiUrl != currentUrl || _cachedAiModel != currentModel) {
+      if (_cachedAiUrl != currentUrl) {
+        _aiService.setBaseUrl(currentUrl);
+        _cachedAiUrl = currentUrl;
+        _aiReady = false; // Reset ready status when URL changes
+        // Verify connection with new URL
+        final ok = await _aiService.checkVersion();
+        if (mounted) {
+          setState(() {
+            _aiReady = ok;
+          });
+        }
+      }
+      if (_cachedAiModel != currentModel) {
+        _activeModel = currentModel;
+        _cachedAiModel = currentModel;
+      }
+    }
+  }
+
   void _scrollChatToBottom() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!_chatScroll.hasClients) return;
@@ -552,12 +615,20 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen> {
           ),
           IconButton(
             tooltip: 'Chat mode',
-            onPressed: () => setState(() {
-              _chatMode = !_chatMode;
+            onPressed: () {
+              setState(() {
+                _chatMode = !_chatMode;
+                if (_chatMode) {
+                  _focusMode = false;
+                }
+              });
               if (_chatMode) {
-                _focusMode = false;
+                _syncAiSettings();
+                if (!_aiReady) {
+                  _checkAiReadiness();
+                }
               }
-            }),
+            },
             icon: Icon(_chatMode ? Icons.chat : Icons.open_in_full),
           ),
         ],

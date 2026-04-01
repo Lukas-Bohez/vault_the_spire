@@ -256,6 +256,8 @@ class TorrentEngineService {
     _log(torrentId, 'Triggered force refresh.');
 
     final trackers = _torrentTrackers[torrentId] ?? [];
+    _log(torrentId, 'Attempting to contact ${trackers.length} tracker(s).');
+    
     final dynamic maybeInfoHash = (task as dynamic).metaInfo?.infoHash;
     Uint8List? infoHash;
     if (maybeInfoHash is Uint8List) {
@@ -271,14 +273,24 @@ class TorrentEngineService {
       );
     }
 
+    int trackerSuccesses = 0;
     if (infoHash != null) {
       for (final url in trackers) {
         try {
           await _announceUrlWithRetry(task, url, infoHash);
+          trackerSuccesses++;
         } catch (e) {
           debugPrint('Re-announce tracker failed for $url: $e');
+          _log(torrentId, 'Tracker $url failed: $e');
         }
       }
+    }
+    if (trackerSuccesses > 0) {
+      _log(torrentId, 'Successfully announced to $trackerSuccesses tracker(s).');
+    } else if (trackers.isNotEmpty) {
+      _log(torrentId, 'All tracker announcements failed.');
+    } else {
+      _log(torrentId, 'No trackers configured for this torrent.');
     }
 
     _addDhtBootstrapNodes(task);
@@ -593,21 +605,21 @@ class TorrentEngineService {
         );
 
         // Try adding direct announce peer from event.address:event.port
-        final addressString = event.address?.toString();
+        final address = event.address;
         final port = event.port;
-        if (addressString != null) {
+        if (address != null && port != null) {
           try {
-            final parsedAddress = InternetAddress.tryParse(addressString);
-            if (parsedAddress != null) {
-              final caddr = CompactAddress(parsedAddress, port);
-              task.addPeer(caddr, dt.PeerSource.dht);
-              debugPrint(
-                '[PEER] Added direct DHT response peer $addressString:$port',
-              );
-            }
-          } catch (e) {
+            final caddr = CompactAddress(address, port);
+            task.addPeer(caddr, dt.PeerSource.dht);
+            debugPrint(
+              '[PEER] Added direct DHT response peer $address:$port',
+            );
+          } catch (e, st) {
             debugPrint('[PEER] direct addPeer failed: $e');
+            debugPrint(st.toString());
           }
+        } else {
+          debugPrint('[PEER] address=$address port=$port - skipping');
         }
 
         final data = event.data;
@@ -992,9 +1004,11 @@ class TorrentEngineService {
       connectionMsg =
           'Connected to $peers peers (DHT: $dhtNodes, Trackers: $trackers)';
     } else if (dhtNodes == 0) {
-      connectionMsg = 'Searching for DHT nodes...';
+      connectionMsg = 'No DHT nodes found — Check firewall/network or try later';
+    } else if (trackers == 0) {
+      connectionMsg = 'DHT active but no trackers responding — Try force refresh';
     } else {
-      connectionMsg = 'Trackers timed out (Check VPN/Firewall)';
+      connectionMsg = 'Trackers responding but no peers found — Torrent may be dead';
     }
 
     _statusController.add(

@@ -50,6 +50,15 @@ class AiCopilotService {
         .toList();
   }
 
+  Future<bool> modelExists(String modelName) async {
+    try {
+      final models = await fetchModels();
+      return models.contains(modelName);
+    } catch (_) {
+      return false;
+    }
+  }
+
   Stream<Map<String, dynamic>> pullModelStream(String modelName) async* {
     final response = await _dio.post<ResponseBody>(
       '/api/pull',

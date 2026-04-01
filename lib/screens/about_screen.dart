@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:vault_the_spire/constants.dart';
+import 'package:vault_the_spire/services/ai_copilot_service.dart';
 import 'package:vault_the_spire/services/settings_service.dart';
 
 class AboutScreen extends StatefulWidget {
@@ -12,6 +13,12 @@ class AboutScreen extends StatefulWidget {
 class _AboutScreenState extends State<AboutScreen> {
   late final TextEditingController _ollamaUrlController;
   late final TextEditingController _modelController;
+  late AiCopilotService _aiService;
+  
+  List<String> _availableModels = <String>[];
+  String? _selectedModel;
+  bool _loadingModels = false;
+  String _modelStatus = '';
 
   @override
   void initState() {
@@ -22,6 +29,11 @@ class _AboutScreenState extends State<AboutScreen> {
     _modelController = TextEditingController(
       text: SettingsService.instance.aiDefaultModel,
     );
+    _selectedModel = SettingsService.instance.aiDefaultModel;
+    _aiService = AiCopilotService(
+      baseUrl: SettingsService.instance.aiOllamaUrl,
+    );
+    _fetchAvailableModels();
   }
 
   @override
@@ -31,9 +43,51 @@ class _AboutScreenState extends State<AboutScreen> {
     super.dispose();
   }
 
+  Future<void> _fetchAvailableModels() async {
+    setState(() {
+      _loadingModels = true;
+      _modelStatus = 'Fetching models...';
+    });
+
+    try {
+      final models = await _aiService.fetchModels();
+      if (!mounted) return;
+      setState(() {
+        _availableModels = models;
+        _loadingModels = false;
+        if (models.isEmpty) {
+          _modelStatus = 'No models available. Connect to Ollama first.';
+        } else {
+          _modelStatus = 'Successfully fetched ${models.length} model(s)';
+          // Validate that the selected model exists
+          if (!models.contains(_selectedModel)) {
+            _selectedModel = models.first;
+            _modelController.text = _selectedModel!;
+          }
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _availableModels = <String>[];
+        _loadingModels = false;
+        _modelStatus = 'Failed to fetch models: $e';
+      });
+    }
+  }
+
+  Future<void> _onUrlChanged() async {
+    final newUrl = _ollamaUrlController.text.trim();
+    if (newUrl.isEmpty) return;
+
+    _aiService.setBaseUrl(newUrl);
+    await _fetchAvailableModels();
+  }
+
   Future<void> _saveAiSettings() async {
     await SettingsService.instance.setAiOllamaUrl(_ollamaUrlController.text);
-    await SettingsService.instance.setAiDefaultModel(_modelController.text);
+    final modelToSave = _selectedModel ?? _modelController.text;
+    await SettingsService.instance.setAiDefaultModel(modelToSave);
     if (!mounted) return;
     ScaffoldMessenger.of(
       context,
@@ -78,6 +132,7 @@ class _AboutScreenState extends State<AboutScreen> {
             const SizedBox(height: 8),
             TextField(
               controller: _ollamaUrlController,
+              onChanged: (_) => _onUrlChanged(),
               decoration: const InputDecoration(
                 labelText: 'Ollama Host URL',
                 hintText: 'http://localhost:11434',
@@ -85,13 +140,71 @@ class _AboutScreenState extends State<AboutScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            TextField(
-              controller: _modelController,
-              decoration: const InputDecoration(
-                labelText: 'Default AI Model',
-                hintText: 'llama3',
-                border: OutlineInputBorder(),
-              ),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (_availableModels.isNotEmpty)
+                        DropdownButtonFormField<String>(
+                          value: _selectedModel,
+                          decoration: const InputDecoration(
+                            labelText: 'Default AI Model',
+                            border: OutlineInputBorder(),
+                          ),
+                          items: _availableModels
+                              .map(
+                                (model) => DropdownMenuItem<String>(
+                                  value: model,
+                                  child: Text(model),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (value) {
+                            if (value == null) return;
+                            setState(() {
+                              _selectedModel = value;
+                              _modelController.text = value;
+                            });
+                          },
+                        )
+                      else
+                        TextField(
+                          controller: _modelController,
+                          onChanged: (value) {
+                            setState(() {
+                              _selectedModel = value.isNotEmpty ? value : null;
+                            });
+                          },
+                          decoration: const InputDecoration(
+                            labelText: 'Default AI Model',
+                            hintText: 'llama3',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _modelStatus,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: _modelStatus.contains('Failed') ? Colors.red : Colors.grey,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    IconButton(
+                      onPressed: _loadingModels ? null : _fetchAvailableModels,
+                      icon: const Icon(Icons.refresh),
+                      tooltip: 'Refresh available models',
+                    ),
+                  ],
+                ),
+              ],
             ),
             const SizedBox(height: 8),
             Align(
