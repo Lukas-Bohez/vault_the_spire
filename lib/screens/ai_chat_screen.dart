@@ -29,6 +29,10 @@ class _AiChatScreenState extends State<AiChatScreen> {
   bool _ollamaInstalled = false;
   String _status = 'Not connected';
   String _selectedModel = 'llama3';
+  Timer? _streamPaintTimer;
+  DateTime _lastStreamPaint = DateTime.fromMillisecondsSinceEpoch(0);
+  static const Duration _streamPaintInterval = Duration(milliseconds: 80);
+  String _pendingAssistantText = '';
 
   @override
   void initState() {
@@ -39,11 +43,48 @@ class _AiChatScreenState extends State<AiChatScreen> {
 
   @override
   void dispose() {
+    _streamPaintTimer?.cancel();
     _baseUrlController.dispose();
     _chatController.dispose();
     _downloadController.dispose();
     _chatScrollController.dispose();
     super.dispose();
+  }
+
+  void _applyAssistantChunk(String fullText) {
+    final updated = List<_UiMessage>.from(_messages);
+    final idx = updated.lastIndexWhere((m) => m.role == 'assistant');
+    if (idx >= 0) {
+      updated[idx] = updated[idx].copyWith(content: fullText);
+      _messages = updated;
+    }
+  }
+
+  void _queueAssistantChunk(String fullText, {bool force = false}) {
+    _pendingAssistantText = fullText;
+    final now = DateTime.now();
+    final elapsed = now.difference(_lastStreamPaint);
+
+    if (force || elapsed >= _streamPaintInterval) {
+      _streamPaintTimer?.cancel();
+      _lastStreamPaint = now;
+      setState(() {
+        _applyAssistantChunk(_pendingAssistantText);
+      });
+      return;
+    }
+
+    if (_streamPaintTimer?.isActive ?? false) {
+      return;
+    }
+
+    _streamPaintTimer = Timer(_streamPaintInterval - elapsed, () {
+      if (!mounted) return;
+      _lastStreamPaint = DateTime.now();
+      setState(() {
+        _applyAssistantChunk(_pendingAssistantText);
+      });
+    });
   }
 
   Future<void> _initialize() async {
@@ -250,6 +291,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
 
     setState(() {
       _sending = true;
+      _pendingAssistantText = '';
       _messages = <_UiMessage>[
         ..._messages,
         _UiMessage(role: 'user', content: text),
@@ -267,17 +309,20 @@ class _AiChatScreenState extends State<AiChatScreen> {
 
       await for (final chunk in stream) {
         if (!mounted) return;
-        setState(() {
-          final updated = List<_UiMessage>.from(_messages);
-          final idx = updated.lastIndexWhere((m) => m.role == 'assistant');
-          if (idx >= 0) {
-            updated[idx] = updated[idx].copyWith(
-              content: updated[idx].content + chunk,
-            );
-          }
-          _messages = updated;
-        });
+        final updated = List<_UiMessage>.from(_messages);
+        final idx = updated.lastIndexWhere((m) => m.role == 'assistant');
+        if (idx >= 0) {
+          final currentText = _pendingAssistantText.isNotEmpty
+              ? _pendingAssistantText
+              : updated[idx].content;
+          final nextText = currentText + chunk;
+          _queueAssistantChunk(nextText);
+        }
         _scrollToBottom();
+      }
+
+      if (mounted) {
+        _queueAssistantChunk(_pendingAssistantText, force: true);
       }
     } catch (e) {
       if (!mounted) return;

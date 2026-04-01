@@ -375,17 +375,11 @@ class _BrowserScreenState extends State<BrowserScreen>
         );
         await TorrentEngineService.instance.forceRefresh(existing.id);
         if (!mounted) return;
-        try {
-          Navigator.of(
-            context,
-          ).pushNamed('/torrent_detail', arguments: existing);
-        } catch (_) {
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (context) => TorrentDetailScreen(torrent: existing),
-            ),
-          );
-        }
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => TorrentDetailScreen(torrent: existing),
+          ),
+        );
         return;
       }
       if (!mounted) return;

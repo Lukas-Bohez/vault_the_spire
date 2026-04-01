@@ -1,0 +1,13 @@
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bittorrent\peer_connection.dart:129: _socket!.listen(
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\browser_screen.dart:163: controller.url.listen((url) async {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\browser_screen.dart:177: controller.loadingState.listen((state) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\browser_screen.dart:184: controller.historyChanged.listen((history) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\browser_screen.dart:192: controller.onLoadError.listen((error) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\browser_screen.dart:197: controller.webMessage.listen((message) async {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:68: _searchSubscription = SearchService.instance.resultsStream.listen((items) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\background_service.dart:48: service.on('pause').listen((event) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\background_service.dart:58: service.on('resume').listen((event) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\background_service.dart:68: service.on('stop_service').listen((event) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\background_service.dart:97: service.on('update_status').listen((event) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_creator_service.dart:124: receivePort.listen((message) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_service.dart:296: .listen((status) async {

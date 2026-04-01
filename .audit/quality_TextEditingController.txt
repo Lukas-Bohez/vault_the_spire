@@ -1,0 +1,35 @@
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:19: late final TextEditingController _ollamaUrlController;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:20: late final TextEditingController _modelController;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:21: late final TextEditingController _downloadDirController;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:22: late final TextEditingController _listenPortController;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:23: late final TextEditingController _maxGlobalController;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:24: late final TextEditingController _maxPerTorrentController;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:25: late final TextEditingController _maxActiveController;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:26: late final TextEditingController _downloadRateController;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:27: late final TextEditingController _uploadRateController;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:41: _ollamaUrlController = TextEditingController(
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:44: _modelController = TextEditingController(
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:47: _downloadDirController = TextEditingController(
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:50: _listenPortController = TextEditingController(text: '${_settings.listenPort}');
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:51: _maxGlobalController = TextEditingController(
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:54: _maxPerTorrentController = TextEditingController(
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:57: _maxActiveController = TextEditingController(
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:60: _downloadRateController = TextEditingController(
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:63: _uploadRateController = TextEditingController(
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\ai_chat_screen.dart:16: final TextEditingController _baseUrlController = TextEditingController(
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\ai_chat_screen.dart:19: final TextEditingController _chatController = TextEditingController();
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\ai_chat_screen.dart:20: final TextEditingController _downloadController = TextEditingController();
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\browser_screen.dart:40: final TextEditingController _addressController = TextEditingController();
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\chat_hub_screen.dart:18: final _searchController = TextEditingController();
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\chat_hub_screen.dart:19: final _dmTargetController = TextEditingController();
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\chat_screen.dart:28: final _controller = TextEditingController();
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\create_torrent_screen.dart:16: final TextEditingController _nameController = TextEditingController();
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\create_torrent_screen.dart:17: final TextEditingController _trackersController = TextEditingController(
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\create_torrent_screen.dart:20: final TextEditingController _commentController = TextEditingController();
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\dm_screen.dart:20: final _controller = TextEditingController();
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\dm_screen.dart:218: final editController = TextEditingController(
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\messages_screen.dart:14: final _recipientController = TextEditingController();
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\messages_screen.dart:15: final _bodyController = TextEditingController();
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:24: final TextEditingController _searchController = TextEditingController();
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:25: final TextEditingController _magnetController = TextEditingController();
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:26: final TextEditingController _chatController = TextEditingController();

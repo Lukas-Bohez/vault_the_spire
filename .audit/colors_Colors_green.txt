@@ -1,0 +1,3 @@
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\ai_chat_screen.dart:387: color: _ollamaInstalled ? Colors.green : Colors.orange,
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\home_screen.dart:96: color: Colors.green,
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\widgets\platform_adaptive_scaffold.dart:190: color: Colors.green,

@@ -1,0 +1,15 @@
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\messages_screen.dart:158: color: Colors.white,
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\messages_screen.dart:206: color: isDark ? Colors.grey[850] : Colors.white,
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\messages_screen.dart:296: ? Colors.white
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\messages_screen.dart:306: ? Colors.white70
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:656: style: const TextStyle(color: Colors.white70),
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:667: style: const TextStyle(color: Colors.white),
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:670: labelStyle: TextStyle(color: Colors.white70),
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:736: style: const TextStyle(color: Colors.white),
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:739: hintStyle: const TextStyle(color: Colors.white54),
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:879: border: Border.all(color: Colors.white12),
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:1009: p: const TextStyle(color: Colors.white),
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:1012: color: Colors.white,
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:1036: style: const TextStyle(color: Colors.white),
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:1039: hintStyle: TextStyle(color: Colors.white60),
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\widgets\platform_adaptive_scaffold.dart:124: child: const Icon(Icons.lock, color: Colors.white, size: 18),

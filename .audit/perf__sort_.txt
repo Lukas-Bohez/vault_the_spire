@@ -1,0 +1,13 @@
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bittorrent\bencode.dart:28: ..sort((a, b) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bittorrent\dht.dart:39: sorted.sort((a, b) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\db\conversation_dao.dart:34: final sorted = [userA.trim(), userB.trim()]..sort();
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\models\conversation.dart:19: final pair = [participant1Id, participant2Id]..sort();
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\models\conversation.dart:20: final query = [userA, userB]..sort();
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\messages_screen.dart:40: _conversationRecipients = recipients.toList()..sort();
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\messages_screen.dart:91: ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\chat_service.dart:77: final participants = [me.id, peer.id]..sort();
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\chat_service.dart:296: hub.sort((a, b) => b.lastUpdated.compareTo(a.lastUpdated));
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\chat_service.dart:319: final ids = [userA.trim(), userB.trim()]..sort();
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\chat_service.dart:324: final ids = [userA.trim(), userB.trim()]..sort();
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_creator_service.dart:77: entries.sort((a, b) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_service.dart:549: entries.sort((a, b) => a.relativePath.compareTo(b.relativePath));

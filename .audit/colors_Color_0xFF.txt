@@ -1,0 +1,20 @@
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:654: color: const Color(0xFF0F1115),
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:679: dropdownColor: const Color(0xFF1A1F27),
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:770: ? const Color(0xFF1F2733)
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:771: : const Color(0xFF141922),
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:862: trustColor = const Color(0xFF4CAF50);
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:865: trustColor = const Color(0xFFF44336);
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:868: trustColor = const Color(0xFF9E9E9E);
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:871: trustColor = const Color(0xFFFFC107);
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:877: color: const Color(0xFF121A26),
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:932: color: const Color(0xFF151920),
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:938: color: _aiReady ? const Color(0xFF1B5E20) : const Color(0xFFFFA000),
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:966: ? const Color(0xFF2B3442)
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:967: : const Color(0xFF202836),
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:971: color: const Color(0xFFFFC107),
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:988: color: Color(0xFFFFC107),
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:995: color: Color(0xFFFFC107),
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:1015: color: const Color(0xFF101418),
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\widgets\platform_adaptive_scaffold.dart:121: color: const Color(0xFF1A1A2E),
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\main.dart:182: colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF00A86B)),
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\main.dart:188: seedColor: const Color(0xFF00A86B),

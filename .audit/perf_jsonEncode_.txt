@@ -1,0 +1,7 @@
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\models\chat_message.dart:36: 'reactions': reactions.isNotEmpty ? jsonEncode(reactions) : null,
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\models\server.dart:24: 'channels': jsonEncode(channels.map((c) => c.toMap()).toList()),
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\identity_service.dart:38: value: jsonEncode(identity.toJson()),
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\identity_service.dart:52: value: jsonEncode(_identity!.toJson()),
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\identity_service.dart:60: return jsonEncode(_identity!.toJson());
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\identity_service.dart:69: value: jsonEncode(identity.toJson()),
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\server_service.dart:72: String reformatInvite(ServerModel server) => jsonEncode({

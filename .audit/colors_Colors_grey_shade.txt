@@ -1,0 +1,2 @@
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\platform\drag_drop.dart:44: color: _dragging ? Colors.blue.shade100 : Colors.grey.shade200,
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\dm_screen.dart:305: color: Colors.grey.shade200,

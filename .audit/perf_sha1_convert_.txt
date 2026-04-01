@@ -1,0 +1,6 @@
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bittorrent\piece_manager.dart:74: final hash = sha1.convert(piece).bytes;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bittorrent\torrent_file.dart:49: final infoHashV1 = sha1.convert(infoBencoded).toString();
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_creator_service.dart:207: final digest = sha1.convert(pieceData);
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_creator_service.dart:226: final digest = sha1.convert(buffer.toBytes());
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_service.dart:566: final digest = sha1.convert(toHash);
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_service.dart:584: final digest = sha1.convert(bytesBuilder.toBytes());

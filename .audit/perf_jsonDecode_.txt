@@ -1,0 +1,10 @@
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bridges\signal_qr.dart:40: final jsonObj = jsonDecode(qrData) as Map<String, dynamic>;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bridges\telegram_bridge.dart:96: final data = jsonDecode(response.body) as Map<String, dynamic>;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\models\chat_message.dart:53: ? (jsonDecode(map['reactions'] as String) as Map<String, dynamic>)
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\models\server.dart:30: final channelList = (jsonDecode(channelJson) as List<dynamic>)
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\ai_copilot_service.dart:76: final parsed = jsonDecode(line);
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\ai_copilot_service.dart:101: final map = jsonDecode(line);
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\ai_copilot_service.dart:127: final map = jsonDecode(line);
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\identity_service.dart:22: final data = jsonDecode(raw) as Map<String, dynamic>;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\identity_service.dart:64: final data = jsonDecode(jsonString) as Map<String, dynamic>;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\server_service.dart:88: final data = jsonDecode(jsonString) as Map<String, dynamic>;

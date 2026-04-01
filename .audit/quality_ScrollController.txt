@@ -1,0 +1,20 @@
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\ai_chat_screen.dart:21: final ScrollController _chatScrollController = ScrollController();
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\ai_chat_screen.dart:45: _chatScrollController.dispose();
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\ai_chat_screen.dart:302: if (!_chatScrollController.hasClients) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\ai_chat_screen.dart:303: _chatScrollController.animateTo(
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\ai_chat_screen.dart:304: _chatScrollController.position.maxScrollExtent,
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\ai_chat_screen.dart:449: controller: _chatScrollController,
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\chat_screen.dart:30: final ScrollController _scrollController = ScrollController();
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\chat_screen.dart:44: _scrollController.dispose();
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\chat_screen.dart:50: if (!_scrollController.hasClients) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\chat_screen.dart:51: final position = _scrollController.position;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\chat_screen.dart:53: _scrollController.animateTo(
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\chat_screen.dart:59: _scrollController.jumpTo(position.maxScrollExtent);
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\chat_screen.dart:121: controller: _scrollController,
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\dm_screen.dart:21: final ScrollController _scrollController = ScrollController();
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\dm_screen.dart:41: _scrollController.dispose();
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\dm_screen.dart:62: if (_scrollController.hasClients) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\dm_screen.dart:63: _scrollController.animateTo(
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\dm_screen.dart:64: _scrollController.position.maxScrollExtent,
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\dm_screen.dart:111: controller: _scrollController,
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:27: final ScrollController _chatScroll = ScrollController();

@@ -55,6 +55,10 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen> {
   double _splitRatio = 0.58;
   final Set<String> _triggeredEventKeys = <String>{};
   final List<AiTriggerEvent> _queuedAutoEvents = <AiTriggerEvent>[];
+  Timer? _streamPaintTimer;
+  DateTime _lastStreamPaint = DateTime.fromMillisecondsSinceEpoch(0);
+  static const Duration _streamPaintInterval = Duration(milliseconds: 80);
+  String _pendingStreamText = '';
 
   @override
   void initState() {
@@ -105,10 +109,47 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen> {
     _chatScroll.dispose();
     _searchSubscription?.cancel();
     _torrentPoll?.cancel();
+    _streamPaintTimer?.cancel();
     // _settingsSyncTimer?.cancel(); // TODO: re-enable
     _contextService.removeListener(_noop);
     _contextService.dispose();
     super.dispose();
+  }
+
+  void _applyStreamingAssistantText(String fullText) {
+    final index = _messages.lastIndexWhere(
+      (m) => m.isStreaming && m.role == 'assistant',
+    );
+    if (index >= 0) {
+      _messages[index] = _messages[index].copyWith(content: fullText);
+    }
+  }
+
+  void _queueStreamingAssistantText(String fullText, {bool force = false}) {
+    _pendingStreamText = fullText;
+    final now = DateTime.now();
+    final elapsed = now.difference(_lastStreamPaint);
+
+    if (force || elapsed >= _streamPaintInterval) {
+      _streamPaintTimer?.cancel();
+      _lastStreamPaint = now;
+      setState(() {
+        _applyStreamingAssistantText(_pendingStreamText);
+      });
+      return;
+    }
+
+    if (_streamPaintTimer?.isActive ?? false) {
+      return;
+    }
+
+    _streamPaintTimer = Timer(_streamPaintInterval - elapsed, () {
+      if (!mounted) return;
+      _lastStreamPaint = DateTime.now();
+      setState(() {
+        _applyStreamingAssistantText(_pendingStreamText);
+      });
+    });
   }
 
   void _noop() {}
@@ -446,26 +487,19 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen> {
       }
       final buffer = StringBuffer();
       var sawDone = false;
+      _pendingStreamText = '';
       await for (final chunk in stream) {
         buffer.write(chunk.content);
         if (chunk.done) {
           sawDone = true;
         }
         if (!mounted) return;
-        setState(() {
-          final index = _messages.lastIndexWhere(
-            (m) => m.isStreaming && m.role == 'assistant',
-          );
-          if (index >= 0) {
-            _messages[index] = _messages[index].copyWith(
-              content: buffer.toString(),
-            );
-          }
-        });
+        _queueStreamingAssistantText(buffer.toString());
         if (chunk.done) break;
       }
 
       if (!mounted) return;
+      _queueStreamingAssistantText(buffer.toString(), force: true);
       setState(() {
         final index = _messages.lastIndexWhere(
           (m) => m.isStreaming && m.role == 'assistant',

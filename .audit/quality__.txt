@@ -1,0 +1,319 @@
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bittorrent\bencode.dart:93: if (keyBytes is! Uint8List) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bittorrent\bencode.dart:121: if (index != data.length) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bittorrent\bencode.dart:149: if (diff != 0) return diff;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bittorrent\dht.dart:75: if (a[i] != b[i]) return a[i] - b[i];
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bittorrent\magnet_link.dart:21: if (parsed.scheme != 'magnet') {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bittorrent\magnet_link.dart:66: if (infoHashV1 != null) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bittorrent\magnet_link.dart:69: if (infoHashV2 != null) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bittorrent\magnet_link.dart:72: if (displayName != null) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bittorrent\magnet_link.dart:73: params.add('dn=${Uri.encodeComponent(displayName!)}');
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bittorrent\peer_connection.dart:104: if (payload != null) buf.setRange(5, 5 + payloadLen, payload);
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bittorrent\peer_connection.dart:127: _socket!.add(_buildHandshake());
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bittorrent\peer_connection.dart:129: _socket!.listen(
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bittorrent\peer_connection.dart:147: if (!_handshakeDone) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bittorrent\peer_connection.dart:151: if (pstrLen != 19) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bittorrent\peer_connection.dart:158: if (receivedHash[i] != infoHash[i]) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bittorrent\peer_connection.dart:167: _socket!.add(_buildMessage(2)); // 2 = interested
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bittorrent\peer_connection.dart:234: if (!_peerHasPiece[i]) continue;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bittorrent\peer_connection.dart:251: _socket!.add(_buildRequest(pieceIdx, offset, blockLen));
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bittorrent\peer_connection.dart:264: for (final b in _pendingBlocks[pieceIdx]!.values) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bittorrent\peer_connection.dart:270: for (final entry in _pendingBlocks[pieceIdx]!.entries) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bittorrent\peer_wire.dart:64: buffer.setUint8(4, id!);
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bittorrent\peer_wire.dart:95: if (infoHash.length != 20) throw ArgumentError('infoHash must be 20 bytes');
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bittorrent\peer_wire.dart:96: if (peerId.length != 20) throw ArgumentError('peerId must be 20 bytes');
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bittorrent\peer_wire.dart:99: if (reservedBytes.length != 8) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bittorrent\peer_wire.dart:122: if (!isHandshake(data)) throw FormatException('Invalid handshake');
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bittorrent\piece_manager.dart:22: if (!await baseDir.exists()) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bittorrent\piece_manager.dart:65: if (!await file.exists()) return null;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bittorrent\piece_manager.dart:75: if (hash.length != expectedHash.length) return false;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bittorrent\piece_manager.dart:77: if (hash[i] != expectedHash[i]) return false;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bittorrent\torrent_file.dart:39: if (decoded is! Map<String, dynamic>) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bittorrent\torrent_file.dart:44: if (infoObj == null || infoObj is! Map<String, dynamic>) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bittorrent\torrent_file.dart:59: if (pieces.length % 20 != 0) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bittorrent\torrent_file.dart:102: if (!trackers.contains(url)) trackers.add(url);
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bittorrent\tracker.dart:49: if (peers is! Uint8List || peers.length % 6 != 0) return [];
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bittorrent\tracker.dart:69: if (!trackerUrl.startsWith('http')) return [];
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bittorrent\tracker.dart:87: if (response.statusCode != 200) return [];
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bittorrent\tracker.dart:90: if (decoded is! Map) return [];
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bittorrent\tracker.dart:93: if (failure != null) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bridges\signal_qr.dart:12: if (signalMatch != null) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bridges\signal_qr.dart:13: final encoded = signalMatch.group(1)!;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bridges\telegram_bridge.dart:78: if (match != null && match.groupCount > 0) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\bridges\telegram_bridge.dart:92: if (response.statusCode != 200) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\db\database.dart:21: if (_database != null) return _database!;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\db\database.dart:33: if (_encryptionKey != null && _encryptionKey!.isNotEmpty) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\db\database.dart:35: "PRAGMA key = '${_encryptionKey!.replaceAll("'", "''")}'",
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\db\database.dart:43: throw StateError('SQLCipher not loaded — check your dependencies!');
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\db\database.dart:52: return _database!;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\db\database.dart:190: if (!await _tableExists(db, 'chat_messages')) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\db\database.dart:193: if (!await _columnExists(db, 'chat_messages', 'edited_at')) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\db\database.dart:198: if (!await _columnExists(db, 'chat_messages', 'reply_to')) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\db\database.dart:203: if (!await _columnExists(db, 'chat_messages', 'reactions')) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\db\database.dart:240: if (!await _tableExists(db, table)) return false;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\db\database.dart:246: if (!await _columnExists(db, 'chat_messages', 'edited_at')) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\db\database.dart:251: if (!await _columnExists(db, 'chat_messages', 'reply_to')) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\db\database.dart:254: if (!await _columnExists(db, 'chat_messages', 'reactions')) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\db\database.dart:260: if (!await _columnExists(db, 'torrents', 'seeders')) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\db\database.dart:265: if (!await _columnExists(db, 'torrents', 'leechers')) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\db\database.dart:270: if (!await _columnExists(db, 'torrents', 'reputation')) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\db\database.dart:286: if (db != null) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\db\dm_messages_dao.dart:44: WHERE m.is_read = 0 AND m.sender_id != ? AND (c.participant1_id = ? OR c.participant2_id = ?)
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\db\dm_messages_dao.dart:59: where: 'conversation_id = ? AND sender_id != ?',
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\db\dm_messages_dao.dart:107: 'SELECT COUNT(*) as cnt FROM dm_messages WHERE conversation_id = ? AND sender_id != ? AND is_read = 0',
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\models\chat_message.dart:48: editedAt: map['edited_at'] != null
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\models\chat_message.dart:52: reactions: map['reactions'] != null
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\models\torrent.dart:34: return have / totalPieces!;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\platform\desktop_window.dart:30: await windowManager.setFullScreen(!isFull);
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:96: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:105: if (!models.contains(_selectedModel)) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:107: _modelController.text = _selectedModel!;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:112: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:133: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:144: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:174: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:179: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:188: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:196: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:257: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:267: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:277: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:365: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:375: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:385: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:408: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:418: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:534: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:544: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:554: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:564: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:575: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:586: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:620: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\about_screen.dart:635: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\ai_chat_screen.dart:55: if (!Platform.isWindows && !Platform.isMacOS && !Platform.isLinux) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\ai_chat_screen.dart:60: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\ai_chat_screen.dart:65: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\ai_chat_screen.dart:83: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\ai_chat_screen.dart:104: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\ai_chat_screen.dart:107: if (_models.isNotEmpty && !_models.contains(_selectedModel)) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\ai_chat_screen.dart:112: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\ai_chat_screen.dart:126: if (!Platform.isWindows && !Platform.isMacOS && !Platform.isLinux) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\ai_chat_screen.dart:136: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\ai_chat_screen.dart:143: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\ai_chat_screen.dart:151: if (!Platform.isWindows && !Platform.isMacOS && !Platform.isLinux) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\ai_chat_screen.dart:170: if (result.exitCode != 0) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\ai_chat_screen.dart:175: if (result.exitCode != 0) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\ai_chat_screen.dart:189: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\ai_chat_screen.dart:215: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\ai_chat_screen.dart:225: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\ai_chat_screen.dart:231: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\ai_chat_screen.dart:269: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\ai_chat_screen.dart:283: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\ai_chat_screen.dart:302: if (!_chatScrollController.hasClients) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\ai_chat_screen.dart:470: message.content.isEmpty && !isUser
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\browser_screen.dart:85: if (startUrl.isNotEmpty && startUrl != _homeUrl) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\browser_screen.dart:145: if (!_showHomeScreen && startUrl.isNotEmpty) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\browser_screen.dart:152: if (!_windowsWebViewEnvironmentInitialized) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\browser_screen.dart:156: if (e.code != 'environment_already_initialized') rethrow;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\browser_screen.dart:164: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\browser_screen.dart:178: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\browser_screen.dart:185: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\browser_screen.dart:217: if (!url) return false;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\browser_screen.dart:226: while (target && target.tagName !== 'A') target = target.parentElement;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\browser_screen.dart:227: if (!target || target.tagName !== 'A') return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\browser_screen.dart:246: if (!_showHomeScreen && startUrl.isNotEmpty) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\browser_screen.dart:343: if (response.statusCode != HttpStatus.ok) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\browser_screen.dart:369: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\browser_screen.dart:370: if (existing != null) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\browser_screen.dart:377: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\browser_screen.dart:391: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\browser_screen.dart:420: if (Platform.isWindows && _windowsWebViewController != null) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\browser_screen.dart:421: await _windowsWebViewController!.loadUrl(url);
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\browser_screen.dart:430: final back = await _webViewController!.canGoBack();
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\browser_screen.dart:431: final fwd = await _webViewController!.canGoForward();
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\browser_screen.dart:444: if (uri != null && await canLaunchUrl(uri)) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\browser_screen.dart:450: if (!Platform.isWindows) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\browser_screen.dart:473: '${error != null ? 'Error: ${error.description} (${error.errorCode})\n' : ''}'
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\browser_screen.dart:602: foregroundColor: !_showHistory
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\browser_screen.dart:735: if (_webViewError != null) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\browser_screen.dart:745: _webViewError!,
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\browser_screen.dart:758: return webview_windows.Webview(_windowsWebViewController!);
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\browser_screen.dart:764: return WebViewWidget(controller: _webViewController!);
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\browser_screen.dart:806: : _lastLoadError != null
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\chat_hub_screen.dart:154: if (snapshot.stackTrace != null)
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\chat_screen.dart:50: if (!_scrollController.hasClients) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\create_torrent_screen.dart:61: if (path != null && !_files.contains(path)) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\create_torrent_screen.dart:73: if (!_folders.contains(path)) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\create_torrent_screen.dart:104: return entries.fold<int>(0, (sum, e) => sum + (e['length']! as int));
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\create_torrent_screen.dart:154: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\create_torrent_screen.dart:162: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\create_torrent_screen.dart:190: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\create_torrent_screen.dart:195: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\create_torrent_screen.dart:200: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\dm_screen.dart:205: if (emoji != null) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\dm_screen.dart:210: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\dm_screen.dart:245: if (edited != null &&
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\dm_screen.dart:247: edited != m.text) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\dm_screen.dart:252: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\dm_screen.dart:277: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\dm_screen.dart:293: if (_replyTarget != null)
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\dm_screen.dart:307: 'Replying to ${_replyTarget!.author} • tap to cancel',
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\dm_screen.dart:318: hintText: _replyTarget != null
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\dm_screen.dart:319: ? 'Replying to ${_replyTarget!.author}'
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\messages_screen.dart:50: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\messages_screen.dart:144: !m.isSent &&
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\messages_screen.dart:245: _selectedRecipient!,
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:129: if (nowComplete && !previousComplete.contains(torrent.id)) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:155: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:177: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:226: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:228: if (!_aiReady) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:239: if (!modelExists) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:240: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:266: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:274: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:291: if ((seeders != null && seeders < 10) ||
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:292: (age != null && age > 5) ||
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:293: (_category == 'Movies' && !plausibleMovie)) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:296: if ((seeders != null && seeders > 50) &&
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:297: (age != null && age < 2) &&
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:298: (_category != 'Movies' || plausibleMovie)) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:323: parsed.type != TorrentIntentType.none) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:360: if (_selected != null) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:361: await _performSearch('${_selected!.name} 1080p verified');
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:421: .where((m) => !m.isStreaming && m.content.trim().isNotEmpty)
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:442: if (mounted && !_aiReady) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:454: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:468: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:483: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:498: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:514: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:524: if (_cachedAiUrl != currentUrl || _cachedAiModel != currentModel) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:525: if (_cachedAiUrl != currentUrl) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:537: if (_cachedAiModel != currentModel) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:546: if (!_chatScroll.hasClients) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:618: _focusMode = !_focusMode;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:629: _chatMode = !_chatMode;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:636: if (!_aiReady) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:710: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:779: '$sl | Size ${item.size == null ? '—' : _formatSize(item.size!)} | Source $source | Age $age',
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:809: : (item.bytesDown / item.totalSize!).clamp(0.0, 1.0);
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:920: 'Tell me more about ${_selected!.name}';
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrents_screen.dart:30: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrents_screen.dart:57: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrents_screen.dart:69: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrents_screen.dart:74: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrents_screen.dart:84: if (torrent.filePath != null && torrent.filePath!.isNotEmpty) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrents_screen.dart:85: pathToOpen = torrent.filePath!;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrents_screen.dart:91: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrents_screen.dart:105: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrents_screen.dart:113: if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrents_screen.dart:114: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrents_screen.dart:128: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrents_screen.dart:134: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrents_screen.dart:246: status != null
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrents_screen.dart:254: if (magnet != null && magnet.isNotEmpty) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrents_screen.dart:295: if (magnet != null && magnet.isNotEmpty) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrent_detail_screen.dart:25: if (widget.torrent.magnetLink != null)
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrent_detail_screen.dart:32: ClipboardData(text: widget.torrent.magnetLink!),
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrent_detail_screen.dart:34: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrent_detail_screen.dart:112: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrent_detail_screen.dart:131: if (!mounted) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\ai_copilot_service.dart:45: if (raw is! List) return const <String>[];
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\ai_copilot_service.dart:70: .bind(response.data!.stream)
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\ai_copilot_service.dart:97: .bind(response.data!.stream)
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\ai_copilot_service.dart:123: .bind(response.data!.stream)
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\background_service.dart:29: if (!(await service.isRunning())) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\background_service.dart:75: if (!await FlutterBackgroundService().isRunning()) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\chat_service.dart:33: if (existing != null) return existing;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\chat_service.dart:75: if (existing != null) return existing;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\chat_service.dart:114: if (!conv.involves(reader.id)) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\chat_service.dart:307: if (dmMessage != null) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\identity_service.dart:20: if (raw != null && raw.isNotEmpty) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\identity_service.dart:45: publicKeyBase64: _identity!.publicKeyBase64,
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\identity_service.dart:46: privateKeyBase64: _identity!.privateKeyBase64,
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\identity_service.dart:47: nodeId: _identity!.nodeId,
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\identity_service.dart:52: value: jsonEncode(_identity!.toJson()),
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\identity_service.dart:60: return jsonEncode(_identity!.toJson());
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\search_service.dart:103: if (!torrent.name.toLowerCase().contains(normalizedQuery)) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\server_service.dart:57: if (dbServer != null) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\server_service.dart:63: if (decoded != null) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\server_service.dart:85: if (!invite.startsWith('{')) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\server_service.dart:143: channels: server.channels.where((c) => c.id != channelId).toList(),
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\sound_service.dart:17: if (!SettingsService.instance.soundEffectsEnabled) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\sound_service.dart:18: if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\sound_service.dart:22: if (Platform.isWindows && !_initialized) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\sound_service.dart:52: if (!SettingsService.instance.soundEffectsEnabled) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\startup_service.dart:77: if (!await Directory(desktopPath).exists()) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_context.dart:66: final value = (torrent.bytesDown / torrent.totalSize!) * 100;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_creator_service.dart:54: if (!await file.exists()) continue;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_creator_service.dart:65: if (!await root.exists()) continue;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_creator_service.dart:67: if (entity is! File) continue;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_creator_service.dart:78: final ap = a['relativePath']! as String;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_creator_service.dart:79: final bp = b['relativePath']! as String;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_creator_service.dart:103: (sum, e) => sum + (e['length']! as int),
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_creator_service.dart:108: if (!await outDir.exists()) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_creator_service.dart:173: final sendPort = args['sendPort']! as SendPort;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_creator_service.dart:175: final entries = (args['entries']! as List).cast<Map>();
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_creator_service.dart:176: final torrentName = args['name']! as String;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_creator_service.dart:177: final trackers = (args['trackers']! as List).cast<String>();
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_creator_service.dart:178: final pieceLength = args['pieceLength']! as int;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_creator_service.dart:179: final isPrivate = args['isPrivate']! as bool;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_creator_service.dart:180: final comment = args['comment']! as String;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_creator_service.dart:191: if (!await file.exists()) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_creator_service.dart:244: info['length'] = files.first['length']!;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_engine_service.dart:252: if (metaInfo != null) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_engine_service.dart:315: if (taskHash != null &&
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_engine_service.dart:326: if (task != null) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_engine_service.dart:352: if (hex == null || hex.length % 2 != 0) return null;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_engine_service.dart:362: if (parts.length != 4) return false;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_engine_service.dart:371: if (!_looksLikeIPv4(address)) return null;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_engine_service.dart:393: } else if (maybeInfoHash != null) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_engine_service.dart:400: if (infoHash != null) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_engine_service.dart:421: if (node is Map && node['host'] != null && node['port'] != null) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_engine_service.dart:456: if (_peerlessCounters[torrentId]! >= 4) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_engine_service.dart:492: if (torrent.type == 'torrent_file' && torrent.filePath != null) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_engine_service.dart:494: } else if (torrent.magnetLink != null) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_engine_service.dart:505: final dtModel = await dt.TorrentModel.parse(torrent.filePath!);
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_engine_service.dart:507: ? destinationPath!
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_engine_service.dart:510: if (!Directory(saveDir).existsSync()) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_engine_service.dart:515: if (totalBytes > 0 && (torrent.totalSize ?? 0) != totalBytes) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_engine_service.dart:596: final magnet = dt.MagnetParser.parse(torrent.magnetLink!);
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_engine_service.dart:600: final downloader = dt.MetadataDownloader.fromMagnet(torrent.magnetLink!);
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_engine_service.dart:617: if (!completer.isCompleted) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_engine_service.dart:632: if (!listEquals(dtModel.infoHashBuffer, magnet.infoHash) &&
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_engine_service.dart:655: ? destinationPath!
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_engine_service.dart:658: if (!Directory(saveDir).existsSync()) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_engine_service.dart:679: task.applySelectedFiles(magnet.selectedFileIndices!);
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_engine_service.dart:718: if (dht != null) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_engine_service.dart:769: if (caddr != null) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_engine_service.dart:816: if (infoDict is! Map) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_engine_service.dart:822: if (normalizedInfo is! Map<String, dynamic>) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_engine_service.dart:861: final nameParts = nameValue.where((e) => e != null).map((e) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_engine_service.dart:936: if (treeData is! Map) return {};
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_engine_service.dart:1004: if (torrent != null) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_engine_service.dart:1029: if (task.activePeers != null) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_engine_service.dart:1030: seeders = task.activePeers!.where((p) => p.isSeeder).length;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_engine_service.dart:1031: leechers = task.activePeers!.where((p) => !p.isSeeder).length;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_engine_service.dart:1100: if (!result.isSuccess) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_engine_service.dart:1191: if (!await configuredDir.exists()) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_engine_service.dart:1198: if (!await dir.exists()) await dir.create(recursive: true);
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_service.dart:215: if (existing.maxSeedRatio != null && existing.maxSeedRatio! > 0) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_service.dart:217: if (ratio >= existing.maxSeedRatio!) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_service.dart:266: if (!await destinationDir.exists()) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_service.dart:298: if (!completer.isCompleted) completer.complete();
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_service.dart:300: if (!completer.isCompleted) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_service.dart:323: if (completed != null) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_service.dart:336: if (torrent.type == 'torrent_file' && torrent.filePath != null) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_service.dart:337: final file = File(torrent.filePath!);
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_service.dart:356: if (metadata != null && metadata.files.isNotEmpty) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_service.dart:389: if (!await file.exists()) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_service.dart:399: if (existing != null) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_service.dart:462: if (existing != null) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\tray_service.dart:29: !kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS);
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\tray_service.dart:32: if (!isDesktop || _initialised) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\tray_service.dart:194: if (!_initialised) return;
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\main.dart:33: if (!kIsWeb && Platform.isAndroid) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\main.dart:78: if (!kIsWeb && (Platform.isWindows || Platform.isLinux)) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\main.dart:86: if (!kIsWeb &&
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\main.dart:97: if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {

@@ -1,0 +1,4 @@
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\messages_screen.dart:297: : Colors.black87,
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\messages_screen.dart:307: : Colors.black54,
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:601: child: Container(width: 8, color: Colors.black12),
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:901: color: Colors.black,

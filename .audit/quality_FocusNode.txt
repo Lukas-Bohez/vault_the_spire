@@ -1,0 +1,4 @@
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\chat_screen.dart:29: final FocusNode _focusNode = FocusNode();
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\chat_screen.dart:43: _focusNode.dispose();
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\chat_screen.dart:100: _focusNode.requestFocus();
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\chat_screen.dart:225: focusNode: _focusNode,

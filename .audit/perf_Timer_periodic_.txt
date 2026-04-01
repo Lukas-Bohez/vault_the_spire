@@ -1,0 +1,10 @@
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\platform\notifications_desktop.dart:20: _timer ??= Timer.periodic(Duration(seconds: 30), (_) => _poll());
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\browser_screen.dart:451: _memoryPollTimer = Timer.periodic(const Duration(seconds: 8), (_) async {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\dm_screen.dart:30: _typingTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:79: _torrentPoll = Timer.periodic(
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\screens\torrentspire_ai_screen.dart:84: // _settingsSyncTimer = Timer.periodic(
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\background_service.dart:74: Timer.periodic(const Duration(seconds: 5), (timer) async {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_engine_service.dart:439: _healthCheckTimers[torrentId] = Timer.periodic(const Duration(seconds: 30), (
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_engine_service.dart:712: _progressTimers[torrent.id] = Timer.periodic(const Duration(seconds: 5), (_) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_engine_service.dart:1015: _pollTimers[torrentId] = Timer.periodic(const Duration(seconds: 2), (_) {
+C:\development\AiVaultTheSpire\torrent_spire_ai\lib\services\torrent_engine_service.dart:1091: _scrapeTimers[torrentId] = Timer.periodic(const Duration(seconds: 30), (_) {
