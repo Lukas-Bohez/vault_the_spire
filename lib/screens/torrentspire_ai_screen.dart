@@ -808,21 +808,12 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _searchController,
-                      decoration: const InputDecoration(
-                        labelText: 'Search torrents',
-                        prefixIcon: Icon(Icons.search),
-                      ),
-                      onSubmitted: _performSearch,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  DropdownButton<String>(
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final narrow = constraints.maxWidth < 720;
+                  final categoryPicker = DropdownButton<String>(
                     value: _category,
+                    isDense: true,
                     dropdownColor: cs.surfaceContainerHighest,
                     items:
                         const [
@@ -845,9 +836,9 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
                       _contextService.updateCategory(value);
                       _triggerAutoEvent(_triggers.onCategoryChanged(value));
                     },
-                  ),
-                  const SizedBox(width: 8),
-                  FilledButton(
+                  );
+
+                  final createButton = FilledButton(
                     onPressed: () async {
                       await Navigator.of(context).push(
                         MaterialPageRoute(
@@ -858,8 +849,54 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
                       await _refreshTorrents();
                     },
                     child: const Text('Create Torrent'),
-                  ),
-                ],
+                  );
+
+                  if (narrow) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        TextField(
+                          controller: _searchController,
+                          decoration: const InputDecoration(
+                            labelText: 'Search torrents',
+                            prefixIcon: Icon(Icons.search),
+                          ),
+                          onSubmitted: _performSearch,
+                        ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          alignment: WrapAlignment.spaceBetween,
+                          children: [
+                            categoryPicker,
+                            createButton,
+                          ],
+                        ),
+                      ],
+                    );
+                  }
+
+                  return Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _searchController,
+                          decoration: const InputDecoration(
+                            labelText: 'Search torrents',
+                            prefixIcon: Icon(Icons.search),
+                          ),
+                          onSubmitted: _performSearch,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      categoryPicker,
+                      const SizedBox(width: 8),
+                      createButton,
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: 8),
               if (_resolvingMagnet)
@@ -877,24 +914,53 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
                     ],
                   ),
                 ),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _magnetController,
-                      decoration: const InputDecoration(
-                        hintText: 'Paste magnet link',
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final narrow = constraints.maxWidth < 720;
+                  if (narrow) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        TextField(
+                          controller: _magnetController,
+                          decoration: const InputDecoration(
+                            hintText: 'Paste magnet link',
+                          ),
+                          onSubmitted: (_) => _addMagnet(),
+                        ),
+                        const SizedBox(height: 8),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: FilledButton.tonalIcon(
+                            onPressed: _addMagnet,
+                            icon: const Icon(Icons.add_link),
+                            label: const Text('Add'),
+                          ),
+                        ),
+                      ],
+                    );
+                  }
+
+                  return Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _magnetController,
+                          decoration: const InputDecoration(
+                            hintText: 'Paste magnet link',
+                          ),
+                          onSubmitted: (_) => _addMagnet(),
+                        ),
                       ),
-                      onSubmitted: (_) => _addMagnet(),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  FilledButton.tonalIcon(
-                    onPressed: _addMagnet,
-                    icon: const Icon(Icons.add_link),
-                    label: const Text('Add'),
-                  ),
-                ],
+                      const SizedBox(width: 8),
+                      FilledButton.tonalIcon(
+                        onPressed: _addMagnet,
+                        icon: const Icon(Icons.add_link),
+                        label: const Text('Add'),
+                      ),
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: 12),
               const Text(

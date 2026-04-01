@@ -381,7 +381,8 @@ class _AiChatScreenState extends State<AiChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isDesktop = MediaQuery.of(context).size.width >= 900;
+    final size = MediaQuery.of(context).size;
+    final isDesktop = size.width >= 900;
 
     return Scaffold(
       appBar: AppBar(
@@ -394,16 +395,27 @@ class _AiChatScreenState extends State<AiChatScreen> {
           ),
         ],
       ),
-      body: Row(
-        children: [
-          SizedBox(
-            width: isDesktop ? 360 : 300,
-            child: _buildControlPanel(context),
-          ),
-          const VerticalDivider(width: 1),
-          Expanded(child: _buildChatPanel(context)),
-        ],
-      ),
+      body: isDesktop
+          ? Row(
+              children: [
+                SizedBox(
+                  width: 360,
+                  child: _buildControlPanel(context),
+                ),
+                const VerticalDivider(width: 1),
+                Expanded(child: _buildChatPanel(context)),
+              ],
+            )
+          : Column(
+              children: [
+                SizedBox(
+                  height: (size.height * 0.42).clamp(280.0, 420.0),
+                  child: _buildControlPanel(context),
+                ),
+                const Divider(height: 1),
+                Expanded(child: _buildChatPanel(context)),
+              ],
+            ),
     );
   }
 

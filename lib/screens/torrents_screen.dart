@@ -217,6 +217,7 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
                     ),
                     builder: (context, statusSnapshot) {
                       final compactRows = SettingsService.instance.compactTorrentRows;
+                      final narrowActions = MediaQuery.of(context).size.width < 700;
                       final status = statusSnapshot.data;
                       final progress = status == null
                           ? torrent.progress.clamp(0.0, 1.0)
@@ -229,112 +230,96 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
                             'download',
                           ) ||
                           (torrent.status ?? '').toLowerCase().contains('seed');
-                      final isComplete =
-                          progress >= 1.0 ||
-                          (torrent.status ?? '').toLowerCase() == 'complete';
-                      final state = (status?.state ?? torrent.status ?? '').toLowerCase();
-                      final speedText = status == null
-                          ? ''
-                          : state.contains('seed')
-                          ? '${(status.uploadSpeed / 1024).toStringAsFixed(1)} KB/s up'
-                          : '${(status.downloadSpeed / 1024).toStringAsFixed(1)} KB/s down';
-                      return Card(
-                        margin: EdgeInsets.symmetric(
-                          horizontal: compactRows ? 8 : 12,
-                          vertical: compactRows ? 3 : 6,
-                        ),
-                        child: ListTile(
-                          contentPadding: EdgeInsets.symmetric(
-                            horizontal: compactRows ? 10 : 12,
-                            vertical: compactRows ? 4 : 8,
-                          ),
-                          title: Text(
-                            torrent.name,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const SizedBox(height: 6),
-                              LinearProgressIndicator(value: progress),
-                              const SizedBox(height: 4),
-                              Text(
-                                status != null
-                                ? '${status.statusMessage} • ${(progress * 100).toStringAsFixed(1)}% • ${status.peers} peers${speedText.isEmpty ? '' : ' • $speedText'}'
-                                    : '${_statusLabel(torrent)} • ${(progress * 100).toStringAsFixed(1)}%',
+                      void copyMagnetLink() {
+                        final magnet = torrent.magnetLink;
+                        if (magnet != null && magnet.isNotEmpty) {
+                          Clipboard.setData(ClipboardData(text: magnet));
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Magnet link copied to clipboard'),
+                            ),
+                          );
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'No magnet link available for this torrent',
                               ),
-                            ],
-                          ),
-                          onLongPress: () {
-                            final magnet = torrent.magnetLink;
-                            if (magnet != null && magnet.isNotEmpty) {
-                              Clipboard.setData(ClipboardData(text: magnet));
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    'Magnet link copied to clipboard',
+                            ),
+                          );
+                        }
+                      }
+
+                        final actionButton = narrowActions
+                          ? PopupMenuButton<String>(
+                              tooltip: 'More actions',
+                              onSelected: (value) {
+                                switch (value) {
+                                    case 'folder':
+                                      _openTorrentFolder(torrent);
+                                      break;
+                                  case 'toggle':
+                                    _toggleTorrent(torrent);
+                                    break;
+                                  case 'copy':
+                                    copyMagnetLink();
+                                    break;
+                                  case 'delete':
+                                    _removeTorrent(torrent);
+                                    break;
+                                }
+                              },
+                              itemBuilder: (context) => [
+                                const PopupMenuItem<String>(
+                                  value: 'folder',
+                                  child: Text('Open folder'),
+                                ),
+                                PopupMenuItem<String>(
+                                  value: 'toggle',
+                                  child: Text(isActive ? 'Pause' : 'Play'),
+                                ),
+                                const PopupMenuItem<String>(
+                                  value: 'copy',
+                                  child: Text('Copy magnet link'),
+                                ),
+                                const PopupMenuDivider(),
+                                const PopupMenuItem<String>(
+                                  value: 'delete',
+                                  child: Text('Delete'),
+                                ),
+                              ],
+                              child: const Icon(Icons.more_vert),
+                            )
+                          : Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.folder_open),
+                                  tooltip: 'Open folder',
+                                  onPressed: () => _openTorrentFolder(torrent),
+                                ),
+                                IconButton(
+                                  icon: Icon(
+                                    isActive ? Icons.pause : Icons.play_arrow,
                                   ),
+                                  tooltip: isActive ? 'Pause' : 'Play',
+                                  onPressed: () => _toggleTorrent(torrent),
                                 ),
-                              );
-                            } else {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    'No magnet link available for this torrent',
-                                  ),
+                                IconButton(
+                                  icon: const Icon(Icons.copy),
+                                  tooltip: 'Copy magnet link',
+                                  onPressed: copyMagnetLink,
                                 ),
-                              );
-                            }
-                          },
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.folder_open),
-                                tooltip: 'Open folder',
-                                onPressed: () => _openTorrentFolder(torrent),
-                              ),
-                              IconButton(
-                                icon: Icon(
-                                  isActive ? Icons.pause : Icons.play_arrow,
+                                IconButton(
+                                  icon: const Icon(Icons.delete),
+                                  tooltip: 'Delete',
+                                  onPressed: () => _deleteTorrent(torrent),
                                 ),
-                                tooltip: isActive ? 'Pause' : 'Play',
-                                onPressed: () => _toggleTorrent(torrent),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.copy),
-                                tooltip: 'Copy magnet link',
-                                onPressed: () {
-                                  final magnet = torrent.magnetLink;
-                                  if (magnet != null && magnet.isNotEmpty) {
-                                    Clipboard.setData(
-                                      ClipboardData(text: magnet),
-                                    );
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text(
-                                          'Magnet link copied to clipboard',
-                                        ),
-                                      ),
-                                    );
-                                  } else {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text(
-                                          'No magnet link available for this torrent',
-                                        ),
-                                      ),
-                                    );
-                                  }
-                                },
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.delete),
-                                tooltip: 'Delete',
-                                onPressed: () => _deleteTorrent(torrent),
-                              ),
-                            ],
-                          ),
+                              ],
+                            );
+                      
+                      
+                          trailing: actionButton,
                         ),
                       );
                     },

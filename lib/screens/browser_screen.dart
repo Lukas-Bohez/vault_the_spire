@@ -561,93 +561,134 @@ class _BrowserScreenState extends State<BrowserScreen>
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      child: Row(
-        children: [
-          IconButton(
-            icon: const Icon(Icons.arrow_back, size: 20),
-            onPressed: canBack
-                ? () async {
-                    if (Platform.isWindows) {
-                      await _windowsWebViewController?.goBack();
-                    } else {
-                      await _webViewController?.goBack();
-                      await _refreshNavigationState();
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final narrow = constraints.maxWidth < 720;
+
+          final navButtons = [
+            IconButton(
+              icon: const Icon(Icons.arrow_back, size: 20),
+              onPressed: canBack
+                  ? () async {
+                      if (Platform.isWindows) {
+                        await _windowsWebViewController?.goBack();
+                      } else {
+                        await _webViewController?.goBack();
+                        await _refreshNavigationState();
+                      }
                     }
-                  }
-                : null,
-            tooltip: 'Back',
-          ),
-          IconButton(
-            icon: const Icon(Icons.arrow_forward, size: 20),
-            onPressed: canFwd
-                ? () async {
-                    if (Platform.isWindows) {
-                      await _windowsWebViewController?.goForward();
-                    } else {
-                      await _webViewController?.goForward();
-                      await _refreshNavigationState();
+                  : null,
+              tooltip: 'Back',
+            ),
+            IconButton(
+              icon: const Icon(Icons.arrow_forward, size: 20),
+              onPressed: canFwd
+                  ? () async {
+                      if (Platform.isWindows) {
+                        await _windowsWebViewController?.goForward();
+                      } else {
+                        await _webViewController?.goForward();
+                        await _refreshNavigationState();
+                      }
                     }
-                  }
-                : null,
-            tooltip: 'Forward',
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh, size: 20),
-            onPressed: () async {
-              if (Platform.isWindows) {
-                await _windowsWebViewController?.reload();
-              } else {
-                await _webViewController?.reload();
-              }
-            },
-            tooltip: 'Reload',
-          ),
-          IconButton(
-            icon: const Icon(Icons.home_outlined, size: 20),
-            onPressed: () {
-              _stopLoadingGuard();
-              setState(() {
-                _showHomeScreen = true;
-                _isLoading = false;
-                _windowsIsLoading = false;
-                _lastLoadError = null;
-              });
-            },
-            tooltip: 'Home',
-          ),
-          Expanded(
-            child: TextField(
-              controller: _addressController,
-              textInputAction: TextInputAction.go,
-              onSubmitted: _navigateTo,
-              style: const TextStyle(fontSize: 13),
-              decoration: const InputDecoration(
-                hintText: 'Enter URL or magnet link',
-                border: OutlineInputBorder(),
-                isDense: true,
-                contentPadding: EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 7,
+                  : null,
+              tooltip: 'Forward',
+            ),
+            IconButton(
+              icon: const Icon(Icons.refresh, size: 20),
+              onPressed: () async {
+                if (Platform.isWindows) {
+                  await _windowsWebViewController?.reload();
+                } else {
+                  await _webViewController?.reload();
+                }
+              },
+              tooltip: 'Reload',
+            ),
+            IconButton(
+              icon: const Icon(Icons.home_outlined, size: 20),
+              onPressed: () {
+                _stopLoadingGuard();
+                setState(() {
+                  _showHomeScreen = true;
+                  _isLoading = false;
+                  _windowsIsLoading = false;
+                  _lastLoadError = null;
+                });
+              },
+              tooltip: 'Home',
+            ),
+            IconButton(
+              icon: Icon(
+                isFav ? Icons.star : Icons.star_border,
+                size: 20,
+                color: isFav ? Colors.amber : null,
+              ),
+              onPressed: () => _toggleFavourite(currentUrl),
+              tooltip: isFav ? 'Remove favourite' : 'Add favourite',
+            ),
+            IconButton(
+              icon: const Icon(Icons.open_in_new, size: 20),
+              onPressed: _openExternally,
+              tooltip: 'Open in system browser',
+            ),
+          ];
+
+          if (narrow) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Wrap(
+                  spacing: 4,
+                  runSpacing: 4,
+                  alignment: WrapAlignment.start,
+                  children: navButtons,
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _addressController,
+                  textInputAction: TextInputAction.go,
+                  onSubmitted: _navigateTo,
+                  style: const TextStyle(fontSize: 13),
+                  decoration: const InputDecoration(
+                    hintText: 'Enter URL or magnet link',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 7,
+                    ),
+                  ),
+                ),
+              ],
+            );
+          }
+
+          return Row(
+            children: [
+              ...navButtons.take(4),
+              Expanded(
+                child: TextField(
+                  controller: _addressController,
+                  textInputAction: TextInputAction.go,
+                  onSubmitted: _navigateTo,
+                  style: const TextStyle(fontSize: 13),
+                  decoration: const InputDecoration(
+                    hintText: 'Enter URL or magnet link',
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 7,
+                    ),
+                  ),
                 ),
               ),
-            ),
-          ),
-          // ★ Favourite toggle — fills/unfills instantly, persists on disk.
-          IconButton(
-            icon: Icon(
-              isFav ? Icons.star : Icons.star_border,
-              size: 20,
-              color: isFav ? Colors.amber : null,
-            ),
-            onPressed: () => _toggleFavourite(currentUrl),
-            tooltip: isFav ? 'Remove favourite' : 'Add favourite',
-          ),
-          IconButton(
-            icon: const Icon(Icons.open_in_new, size: 20),
-            onPressed: _openExternally,
-            tooltip: 'Open in system browser',
-          ),
-        ],
+              navButtons[4],
+              navButtons[5],
+            ],
+          );
+        },
       ),
     );
   }
