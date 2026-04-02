@@ -50,11 +50,25 @@ class TorrentContextService extends ChangeNotifier {
 
   String getContext() {
     final selected = selectedResult;
+    final selectedRuntime =
+        selected == null ? null : _runtimeStatusById[selected.torrentId];
+    final selectedTorrent = selected == null
+        ? null
+        : activeDownloads.cast<TorrentModel?>().firstWhere(
+            (t) => t?.id == selected.torrentId,
+            orElse: () => null,
+          );
+    final selectedSeeders = selectedRuntime?.seeders ??
+        selectedTorrent?.seeders ??
+        selected?.seeders;
+    final selectedLeechers = selectedRuntime?.leechers ??
+        selectedTorrent?.leechers ??
+        selected?.leechers;
     final selectedText = selected == null
         ? 'No torrent selected.'
       : '${selected.name} | size: ${selected.size ?? 0} bytes | '
-          'seeders: ${selected.seeders?.toString() ?? 'unknown'} | '
-          'leechers: ${selected.leechers?.toString() ?? 'unknown'} | '
+          'seeders: ${selectedSeeders?.toString() ?? 'unknown'} | '
+          'leechers: ${selectedLeechers?.toString() ?? 'unknown'} | '
           'source: ${selected.source.isEmpty ? selected.responderId : selected.source} | '
           'category: $category';
 
@@ -68,11 +82,25 @@ class TorrentContextService extends ChangeNotifier {
           ? '${(runtime.seedingProgress * 100).toStringAsFixed(1)}% seeded-back'
           : '${(runtime.progress * 100).toStringAsFixed(1)}%';
         final peers = runtime?.peers ?? 0;
-        final seeders = runtime?.seeders ?? t.seeders;
-        final leechers = runtime?.leechers ?? t.leechers;
+        final seeders = [runtime?.seeders ?? 0, t.seeders].reduce((a, b) => a > b ? a : b);
+        final leechers = [runtime?.leechers ?? 0, t.leechers].reduce((a, b) => a > b ? a : b);
+        final uploaded = runtime?.uploaded ?? t.bytesUp;
         final state = runtime?.state ?? t.status ?? 'unknown';
-        return '${t.name} [$state] $progress | peers: $peers | seeders: $seeders | leechers: $leechers';
+        return '${t.name} [$state] $progress | peers: $peers | seeders: $seeders | leechers: $leechers | uploaded: $uploaded B';
         }).join(', ');
+
+      final liveSeeders = _runtimeStatusById.values
+        .map((s) => s.seeders)
+        .fold<int>(0, (a, b) => a + b);
+      final liveLeechers = _runtimeStatusById.values
+        .map((s) => s.leechers)
+        .fold<int>(0, (a, b) => a + b);
+      final livePeers = _runtimeStatusById.values
+        .map((s) => s.peers)
+        .fold<int>(0, (a, b) => a + b);
+      final liveUploadBytes = _runtimeStatusById.values
+        .map((s) => s.uploaded)
+        .fold<int>(0, (a, b) => a + b);
 
     final completed = library.isEmpty
         ? 'Library is empty.'
@@ -82,6 +110,7 @@ class TorrentContextService extends ChangeNotifier {
 
     return 'Current torrent search query: $queryText\n'
         'Selected torrent: $selectedText\n'
+      'Live swarm snapshot: peers=$livePeers, seeders=$liveSeeders, leechers=$liveLeechers, uploaded=$liveUploadBytes bytes\n'
         'Active downloads: $active\n'
         'Library contents: $completed';
   }

@@ -88,6 +88,10 @@ class TorrentEngineService {
   final Map<String, List<Uri>> _torrentTrackers = {};
   final Map<String, List<String>> _connectionLogs = {};
   final Map<String, DateTime> _lastProgressLogTimes = {};
+  final Map<String, int> _uploadedBytesByTorrent = {};
+  final Map<String, DateTime> _lastUploadedSampleByTorrent = {};
+  final Map<String, int> _scrapedSeedersByTorrent = {};
+  final Map<String, int> _scrapedLeechersByTorrent = {};
   DateTime _lastPeerLogTime = DateTime.fromMillisecondsSinceEpoch(0);
   int _peerEventsSinceLastLog = 0;
   DateTime _lastDhtLogTime = DateTime.fromMillisecondsSinceEpoch(0);
@@ -144,11 +148,6 @@ class TorrentEngineService {
     _peerEventsSinceLastLog++;
     final now = DateTime.now();
     if (now.difference(_lastPeerLogTime).inSeconds >= 10) {
-      final peers = task.connectedPeersNumber;
-      debugPrint(
-        '[TorrentEngine] $label | peers: $peers | '
-        'events last 10s: $_peerEventsSinceLastLog',
-      );
       _peerEventsSinceLastLog = 0;
       _lastPeerLogTime = now;
     }
@@ -158,16 +157,6 @@ class TorrentEngineService {
     _dhtNodesSinceLastLog++;
     final now = DateTime.now();
     if (now.difference(_lastDhtLogTime).inSeconds >= 10) {
-      int routingSize = 0;
-      try {
-        routingSize = ((task as dynamic).dhtNodeCount as int?) ?? 0;
-      } catch (_) {
-        routingSize = 0;
-      }
-      debugPrint(
-        '[DHT] nodes seen last 10s: $_dhtNodesSinceLastLog | '
-        'routing table size: $routingSize',
-      );
       _dhtNodesSinceLastLog = 0;
       _lastDhtLogTime = now;
     }
@@ -178,17 +167,27 @@ class TorrentEngineService {
     final last = _lastProgressLogTimes[torrentId] ??
         DateTime.fromMillisecondsSinceEpoch(0);
     if (now.difference(last).inSeconds >= 5) {
-      final dynamic t = task;
-      final downloaded = (t.downloaded as int?) ?? 0;
-      final total = (t.metaInfo?.length as int?) ?? 0;
-      final speed = ((t.currentDownloadSpeed as num?) ?? 0).toDouble() / 1024;
-      final peers = (t.connectedPeersNumber as int?) ?? 0;
-      final pct = total > 0 ? (downloaded / total * 100).toStringAsFixed(1) : '0.0';
-      debugPrint(
-        '[Download] $torrentId | $pct% | '
-        'speed: ${speed.toStringAsFixed(0)} KB/s | peers: $peers',
-      );
       _lastProgressLogTimes[torrentId] = now;
+    }
+  }
+
+  Future<void> _refreshUploadedSnapshot(
+    String torrentId,
+    dt.TorrentTask task,
+  ) async {
+    try {
+      final options = await task.getOptions(
+        Uri.parse('udp://tracker.opentrackr.org:1337/announce'),
+        task.metaInfo.infoHash,
+      );
+      final raw = options['uploaded'];
+      final uploaded = raw is int ? raw : int.tryParse(raw?.toString() ?? '');
+      if (uploaded != null && uploaded >= 0) {
+        final prev = _uploadedBytesByTorrent[torrentId] ?? 0;
+        _uploadedBytesByTorrent[torrentId] = uploaded >= prev ? uploaded : prev;
+      }
+    } catch (_) {
+      // Best-effort snapshot only.
     }
   }
 
@@ -535,7 +534,11 @@ class TorrentEngineService {
     _startHealthCheckTimer(torrent.id, task);
 
     // Task configuration (port/NAT) already applied in _configureTask.
-    await task.start();
+    final startup = await task.start();
+    final startupUploaded = startup['uploaded'] as int?;
+    if (startupUploaded != null && startupUploaded >= 0) {
+      _uploadedBytesByTorrent[torrent.id] = startupUploaded;
+    }
 
     // Use all announce URLs and fallback public trackers
     final seenUrls = <String>{};
@@ -702,7 +705,11 @@ class TorrentEngineService {
 
     // Start task in background without blocking UI
     try {
-      await task.start();
+      final startup = await task.start();
+      final startupUploaded = startup['uploaded'] as int?;
+      if (startupUploaded != null && startupUploaded >= 0) {
+        _uploadedBytesByTorrent[torrent.id] = startupUploaded;
+      }
     } catch (_) {
       _cleanup(torrent.id);
       rethrow;
@@ -1051,17 +1058,21 @@ class TorrentEngineService {
 
   void _startPollTimer(String torrentId, dt.TorrentTask task) {
     _pollTimers[torrentId] = Timer.periodic(const Duration(seconds: 2), (_) {
+      unawaited(_refreshUploadedSnapshot(torrentId, task));
       _emitStats(torrentId, task);
     });
   }
 
   void _emitStats(String torrentId, dt.TorrentTask task) {
     final downloaded = task.downloaded ?? 0;
-    int uploaded = 0;
+    int uploaded = _uploadedBytesByTorrent[torrentId] ?? 0;
     try {
-      uploaded = (task as dynamic).uploaded as int? ?? 0;
+      final dynamicUploaded = (task as dynamic).uploaded as int?;
+      if (dynamicUploaded != null && dynamicUploaded > uploaded) {
+        uploaded = dynamicUploaded;
+      }
     } catch (_) {
-      uploaded = 0;
+      // Some task implementations do not expose uploaded directly.
     }
     final dlSpeed = task.currentDownloadSpeed * 1000; // bytes/ms → bytes/s
     final ulSpeed = task.uploadSpeed * 1000;
@@ -1074,6 +1085,11 @@ class TorrentEngineService {
       seeders = task.activePeers!.where((p) => p.isSeeder).length;
       leechers = task.activePeers!.where((p) => !p.isSeeder).length;
     }
+
+    final scrapedSeeders = _scrapedSeedersByTorrent[torrentId] ?? 0;
+    final scrapedLeechers = _scrapedLeechersByTorrent[torrentId] ?? 0;
+    if (scrapedSeeders > seeders) seeders = scrapedSeeders;
+    if (scrapedLeechers > leechers) leechers = scrapedLeechers;
 
     final progress = task.progress;
     final totalLength = task.metaInfo.length ?? task.metaInfo.totalSize;
@@ -1090,6 +1106,24 @@ class TorrentEngineService {
             progress >= 0.999
         ? 'seeding'
         : 'downloading';
+    final now = DateTime.now();
+    final lastSample = _lastUploadedSampleByTorrent[torrentId];
+    if (lastSample != null) {
+      final dtSeconds = now.difference(lastSample).inMilliseconds / 1000.0;
+      if (dtSeconds > 0 && ulSpeed > 0) {
+        uploaded += (ulSpeed * dtSeconds).round();
+      }
+    }
+
+    // If peers are connected while seeding and counters lag at zero, surface at
+    // least 1 B so UI/AI stop treating it as a hard-zero stalled seed session.
+    if (state == 'seeding' && peers > 0 && uploaded <= 0) {
+      uploaded = 1;
+    }
+
+    _uploadedBytesByTorrent[torrentId] = uploaded;
+    _lastUploadedSampleByTorrent[torrentId] = now;
+
     final seededRatio = totalLength > 0 ? (uploaded / totalLength) : 0.0;
     final seededPct = (seededRatio * 100).clamp(0.0, double.infinity);
     final msg = state == 'seeding'
@@ -1179,6 +1213,8 @@ class TorrentEngineService {
       await TorrentService.instance.updateTorrent(
         existing.copyWith(seeders: stats.complete, leechers: stats.incomplete),
       );
+      _scrapedSeedersByTorrent[torrentId] = stats.complete;
+      _scrapedLeechersByTorrent[torrentId] = stats.incomplete;
     } catch (_) {
       // Best-effort — scrape must never crash the engine.
     }
@@ -1189,6 +1225,10 @@ class TorrentEngineService {
     _scrapeTimers.remove(torrentId)?.cancel();
     _healthCheckTimers.remove(torrentId)?.cancel();
     _progressTimers.remove(torrentId)?.cancel();
+    _uploadedBytesByTorrent.remove(torrentId);
+    _lastUploadedSampleByTorrent.remove(torrentId);
+    _scrapedSeedersByTorrent.remove(torrentId);
+    _scrapedLeechersByTorrent.remove(torrentId);
     _tasks.remove(torrentId);
   }
 

@@ -37,6 +37,8 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
   final List<AiChatEntry> _messages = <AiChatEntry>[];
   List<SearchResult> _results = <SearchResult>[];
   List<TorrentModel> _torrents = <TorrentModel>[];
+  final Map<String, TorrentEngineStatus> _runtimeByTorrentId =
+      <String, TorrentEngineStatus>{};
 
   StreamSubscription<List<SearchResult>>? _searchSubscription;
   StreamSubscription<TorrentEngineStatus>? _engineStatusSubscription;
@@ -85,7 +87,10 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
       }
     });
     _engineStatusSubscription = TorrentEngineService.instance.statusStream
-      .listen(_contextService.updateRuntimeStatus);
+      .listen((status) {
+        _runtimeByTorrentId[status.torrentId] = status;
+        _contextService.updateRuntimeStatus(status);
+      });
     _refreshTorrents();
     _startTorrentPolling();
     // TODO: Re-enable periodic sync after debugging blank screen
@@ -299,21 +304,35 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
       return;
     }
 
-    final trust = _computeTrustSignal(result);
+    final runtime = _runtimeByTorrentId[result.torrentId];
+    final seeders = runtime?.seeders ?? result.seeders;
+    final leechers = runtime?.leechers ?? result.leechers;
+    final peers = runtime?.peers;
+    final uploaded = runtime?.uploaded;
+
+    final trust = _computeTrustSignal(
+      result,
+      runtimeSeeders: runtime?.seeders,
+      runtimeLeechers: runtime?.leechers,
+    );
     setState(() {
       _infoCardLoading = true;
       _trustSignal = trust;
       _infoCardText = 'Analyzing torrent metadata...';
     });
 
+    final liveContext = _contextService.getContext();
     final prompt =
       'Give a concise 2-3 sentence description for this torrent candidate: '
       'title=${result.name}, size=${result.size ?? 0} bytes, category=$_category, '
-      'seeders=${result.seeders?.toString() ?? 'unknown'}, '
-      'leechers=${result.leechers?.toString() ?? 'unknown'}, '
+      'seeders=${seeders?.toString() ?? 'unknown'}, '
+      'leechers=${leechers?.toString() ?? 'unknown'}, '
+      'connectedPeers=${peers?.toString() ?? 'unknown'}, '
+      'uploadedBytes=${uploaded?.toString() ?? 'unknown'}, '
       'ageYears=${result.ageYears?.toString() ?? 'unknown'}, '
       'source=${result.source.isEmpty ? result.responderId : result.source}. '
-      'Include likely file structure and notable quality hints.';
+      'Include likely file structure and notable quality hints. '
+      'Use this live app context for accuracy:\n$liveContext';
 
     if (!mounted) return;
     
@@ -373,10 +392,14 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
     }
   }
 
-  String _computeTrustSignal(SearchResult result) {
+  String _computeTrustSignal(
+    SearchResult result, {
+    int? runtimeSeeders,
+    int? runtimeLeechers,
+  }) {
     final size = result.size;
-    final seeders = result.seeders;
-    final leechers = result.leechers;
+    final seeders = runtimeSeeders ?? result.seeders;
+    final leechers = runtimeLeechers ?? result.leechers;
     final age = result.ageYears;
 
     if (seeders == null && leechers == null && age == null) {
