@@ -176,12 +176,18 @@ class TorrentEngineService {
     dt.TorrentTask task,
   ) async {
     try {
-      final options = await (task as dynamic).getOptions(
-        Uri.parse('udp://tracker.opentrackr.org:1337/announce'),
-        task.metaInfo.infoHash,
-      );
-      final raw = options['uploaded'];
-      final uploaded = raw is int ? raw : int.tryParse(raw?.toString() ?? '');
+      final stateUploaded = task.stateFile?.uploaded;
+      if (stateUploaded != null && stateUploaded >= 0) {
+        final prev = _uploadedBytesByTorrent[torrentId] ?? 0;
+        _uploadedBytesByTorrent[torrentId] = stateUploaded >= prev
+            ? stateUploaded
+            : prev;
+      }
+
+      final dynamic taskUploaded = (task as dynamic).uploaded;
+      final uploaded = taskUploaded is int
+          ? taskUploaded
+          : int.tryParse(taskUploaded?.toString() ?? '');
       if (uploaded != null && uploaded >= 0) {
         final prev = _uploadedBytesByTorrent[torrentId] ?? 0;
         _uploadedBytesByTorrent[torrentId] = uploaded >= prev ? uploaded : prev;
@@ -1009,6 +1015,7 @@ class TorrentEngineService {
   void _wireEvents(String torrentId, dt.TorrentTask task) {
     task.createListener()
       ..on<dt.StateFileUpdated>((_) {
+        unawaited(_refreshUploadedSnapshot(torrentId, task));
         _emitStats(torrentId, task);
       })
       ..on<dt.TaskCompleted>((_) async {
@@ -1066,6 +1073,14 @@ class TorrentEngineService {
   void _emitStats(String torrentId, dt.TorrentTask task) {
     final downloaded = task.downloaded ?? 0;
     int uploaded = _uploadedBytesByTorrent[torrentId] ?? 0;
+    try {
+      final stateUploaded = task.stateFile?.uploaded ?? 0;
+      if (stateUploaded > uploaded) {
+        uploaded = stateUploaded;
+      }
+    } catch (_) {
+      // Some task implementations may not expose a state file.
+    }
     try {
       final dynamicUploaded = (task as dynamic).uploaded as int?;
       if (dynamicUploaded != null && dynamicUploaded > uploaded) {

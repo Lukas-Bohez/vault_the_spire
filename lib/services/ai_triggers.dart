@@ -22,7 +22,9 @@ class AiTriggers {
       prompt:
           'The user is looking at ${result.name}. '
           'Observed stats: seeders=$seeders, leechers=$leechers, ageYears=$ageYears. '
-          'Give a brief overview: what it likely is, estimated quality, and any red flags.',
+          'Give a brief overview: what it likely is and estimated quality. '
+          'Do not label it dangerous or suspicious just because seeders are 0, leechers are 0, or age is unknown. '
+          'Only mention a red flag if there is direct evidence such as malware, fake packaging, password-protected archives, broken metadata, or contradictory file info.',
     );
   }
 

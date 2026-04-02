@@ -20,7 +20,7 @@ const MAX_ACTIVE_PEERS = 50;
 
 const MAX_WRITE_BUFFER_SIZE = 10 * 1024 * 1024;
 
-const MAX_UPLOADED_NOTIFY_SIZE = 1024 * 1024 * 10; // 10 mb
+const MAX_UPLOADED_NOTIFY_SIZE = 1024 * 1024; // 1 mb
 
 var _log = Logger('PeersManager');
 

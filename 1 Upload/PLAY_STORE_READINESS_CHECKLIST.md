@@ -2,7 +2,9 @@
 
 ## Build and artifact
 - [x] Release App Bundle built successfully
+- [x] Release APK built successfully
 - [x] Bundle copied to upload folder
+- [x] APK copied to upload folder
 - [x] SHA-256 checksum generated
 
 ## Policy and disclosures
@@ -22,6 +24,7 @@
 - [x] Test suite passes
 - [x] Windows release build passes
 - [x] Android AAB build passes
+- [x] Android APK build passes
 
 ## Final pre-submit checks
 - [ ] Confirm signing key and upload key ownership

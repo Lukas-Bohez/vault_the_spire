@@ -51,7 +51,7 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
   String _cachedAiUrl = '';
   String _cachedAiModel = '';
   String _infoCardText = 'Select a torrent to generate AI analysis.';
-  String _trustSignal = 'Yellow';
+  String _trustSignal = 'Neutral';
   bool _aiReady = false;
   bool _infoCardLoading = false;
   bool _resolvingMagnet = false;
@@ -332,6 +332,9 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
       'ageYears=${result.ageYears?.toString() ?? 'unknown'}, '
       'source=${result.source.isEmpty ? result.responderId : result.source}. '
       'Include likely file structure and notable quality hints. '
+      'Do not call it dangerous or suspicious unless there is direct evidence. '
+      'Treat zero or missing seeders, leechers, or age as unknown signal, not a warning. '
+      'If evidence is weak, say that confidence is limited instead of raising a red flag. '
       'Use this live app context for accuracy:\n$liveContext';
 
     if (!mounted) return;
@@ -402,13 +405,15 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
     final leechers = runtimeLeechers ?? result.leechers;
     final age = result.ageYears;
 
-    if (seeders == null && leechers == null && age == null) {
+    if ((seeders == null || seeders <= 0) &&
+        (leechers == null || leechers <= 0) &&
+        (age == null || age <= 0)) {
       return 'Neutral';
     }
 
     var score = 0;
 
-    if (seeders != null) {
+    if (seeders != null && seeders > 0) {
       if (seeders >= 200) {
         score += 3;
       } else if (seeders >= 80) {
@@ -416,13 +421,13 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
       } else if (seeders >= 20) {
         score += 1;
       } else if (seeders <= 2) {
-        score -= 3;
-      } else if (seeders <= 8) {
         score -= 2;
+      } else if (seeders <= 8) {
+        score -= 1;
       }
     }
 
-    if (seeders != null && leechers != null) {
+    if (seeders != null && seeders > 0 && leechers != null && leechers > 0) {
       if (seeders > leechers * 2) {
         score += 2;
       } else if (seeders < leechers) {
@@ -430,11 +435,11 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
       }
     }
 
-    if (age != null) {
+    if (age != null && age > 0) {
       if (age <= 1) {
         score += 1;
       } else if (age >= 8) {
-        score -= 2;
+        score -= 1;
       } else if (age >= 5) {
         score -= 1;
       }
@@ -449,8 +454,9 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
     }
 
     if (score >= 3) return 'Green';
-    if (score <= -2) return 'Red';
-    return 'Yellow';
+    if (score <= -4) return 'Red';
+    if (score <= -1) return 'Yellow';
+    return 'Neutral';
   }
 
   Future<void> _triggerAutoEvent(AiTriggerEvent event) async {
