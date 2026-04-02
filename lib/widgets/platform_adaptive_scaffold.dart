@@ -161,8 +161,21 @@ class _Sidebar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
-      color: Theme.of(context).colorScheme.surface,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            cs.surfaceContainerLow,
+            cs.surface,
+          ],
+        ),
+        border: Border(
+          right: BorderSide(color: cs.outlineVariant),
+        ),
+      ),
       child: Column(
         children: [
           const SizedBox(height: 16),
@@ -211,29 +224,33 @@ class _Sidebar extends StatelessWidget {
             final isActive = currentPath == item.route;
             return Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              child: ListTile(
-                leading: Icon(
-                  isActive ? item.activeIcon : item.icon,
-                  color: isActive
-                      ? Theme.of(context).colorScheme.primary
-                      : Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-                title: Text(
-                  item.label,
-                  style: TextStyle(
-                    fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
-                    color: isActive
-                        ? Theme.of(context).colorScheme.primary
-                        : Theme.of(context).colorScheme.onSurface,
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOut,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  color: isActive ? cs.primaryContainer : Colors.transparent,
+                  border: Border.all(
+                    color: isActive ? cs.primary.withOpacity(0.2) : Colors.transparent,
                   ),
                 ),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
+                child: ListTile(
+                  leading: Icon(
+                    isActive ? item.activeIcon : item.icon,
+                    color: isActive ? cs.primary : cs.onSurfaceVariant,
+                  ),
+                  title: Text(
+                    item.label,
+                    style: TextStyle(
+                      fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+                      color: isActive ? cs.primary : cs.onSurface,
+                    ),
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  onTap: () => context.go(item.route),
                 ),
-                tileColor: isActive
-                    ? Theme.of(context).colorScheme.primaryContainer
-                    : null,
-                onTap: () => context.go(item.route),
               ),
             );
           }),

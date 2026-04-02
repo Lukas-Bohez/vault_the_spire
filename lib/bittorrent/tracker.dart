@@ -1,6 +1,5 @@
 import 'package:http/http.dart' as http;
 import 'bencode.dart';
-import 'package:flutter/foundation.dart';
 
 class TrackerPeer {
   final String ip;
@@ -16,9 +15,6 @@ class TrackerClient {
     _trackerEventsSinceLastLog++;
     final now = DateTime.now();
     if (now.difference(_lastTrackerLogTime).inSeconds >= 10) {
-      debugPrint(
-        '[Tracker] $label | events last 10s: $_trackerEventsSinceLastLog',
-      );
       _trackerEventsSinceLastLog = 0;
       _lastTrackerLogTime = now;
     }

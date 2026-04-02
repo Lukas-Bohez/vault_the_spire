@@ -698,7 +698,7 @@ class _TorrentTask
   }
 
   void _processLSDPeerEvent(LSDNewPeer event) {
-    print('There is LSD! !');
+    _log.fine('LSD peer event received');
   }
 
   void _processNewPeerFound(CompactAddress url, PeerSource source) {

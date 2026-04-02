@@ -45,7 +45,7 @@ void main() {
 
     expect(text, contains('ubuntu iso'));
     expect(text, contains('Ubuntu'));
-    expect(text, contains('Active (50.0%)'));
+    expect(text, contains('Active [downloading] 50.0%'));
     expect(text, contains('Done'));
   });
 }

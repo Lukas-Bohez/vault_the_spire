@@ -48,12 +48,10 @@ class PeerConnection {
   static int _pieceEventsSinceLastLog = 0;
 
   static void _logPeerEventThrottled(String label) {
+    // Keep counters for optional diagnostics without flooding stdout.
     _peerEventsSinceLastLog++;
     final now = DateTime.now();
     if (now.difference(_lastPeerLogTime).inSeconds >= 10) {
-      debugPrint(
-        '[PeerWire] $label | peer events last 10s: $_peerEventsSinceLastLog',
-      );
       _peerEventsSinceLastLog = 0;
       _lastPeerLogTime = now;
     }
@@ -63,7 +61,6 @@ class PeerConnection {
     _pieceEventsSinceLastLog++;
     final now = DateTime.now();
     if (now.difference(_lastPieceLogTime).inSeconds >= 5) {
-      debugPrint('[Piece] piece events last 5s: $_pieceEventsSinceLastLog');
       _pieceEventsSinceLastLog = 0;
       _lastPieceLogTime = now;
     }

@@ -150,6 +150,69 @@ class MainApp extends StatefulWidget {
 class _MainAppState extends State<MainApp> {
   final themeService = ThemeService.instance;
 
+  static const Color _brand = Color(0xFF0C8F66);
+
+  ThemeData _buildTheme(Brightness brightness) {
+    final scheme = ColorScheme.fromSeed(
+      seedColor: _brand,
+      brightness: brightness,
+    );
+
+    return ThemeData(
+      useMaterial3: true,
+      brightness: brightness,
+      colorScheme: scheme,
+      scaffoldBackgroundColor: scheme.surface,
+      appBarTheme: AppBarTheme(
+        centerTitle: false,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        backgroundColor: scheme.surface,
+        surfaceTintColor: Colors.transparent,
+        titleTextStyle: TextStyle(
+          color: scheme.onSurface,
+          fontSize: 20,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.2,
+        ),
+      ),
+      cardTheme: CardThemeData(
+        elevation: 0,
+        color: scheme.surfaceContainerLow,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        elevation: 0,
+        height: 72,
+        indicatorColor: scheme.secondaryContainer,
+        backgroundColor: scheme.surface,
+        labelTextStyle: MaterialStateProperty.resolveWith((states) {
+          final selected = states.contains(MaterialState.selected);
+          return TextStyle(
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            fontSize: 12,
+          );
+        }),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: scheme.surfaceContainerLow,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: scheme.outlineVariant),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: scheme.outlineVariant),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: scheme.primary, width: 1.5),
+        ),
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -170,19 +233,8 @@ class _MainAppState extends State<MainApp> {
   Widget build(BuildContext context) {
     return MaterialApp.router(
       title: 'TorrentSpire AI',
-      theme: ThemeData(
-        useMaterial3: true,
-        brightness: Brightness.light,
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF00A86B)),
-      ),
-      darkTheme: ThemeData(
-        useMaterial3: true,
-        brightness: Brightness.dark,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF00A86B),
-          brightness: Brightness.dark,
-        ),
-      ),
+      theme: _buildTheme(Brightness.light),
+      darkTheme: _buildTheme(Brightness.dark),
       themeMode: themeService.themeMode,
       routerConfig: appRouter,
     );

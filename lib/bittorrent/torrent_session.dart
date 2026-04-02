@@ -7,7 +7,6 @@ import 'dart:io';
 import 'tracker.dart';
 import 'peer_connection.dart';
 import 'piece_manager.dart';
-import 'package:flutter/foundation.dart';
 
 class TorrentStatus {
   final String name;
@@ -90,9 +89,6 @@ class TorrentSession {
     );
     await _pieceManager.initialize();
 
-    debugPrint('[Session] Starting torrent: $name ($infoHash)');
-    debugPrint('[Session] Trackers: $trackers');
-
     _emitStatus('connecting');
 
     // Announce to trackers
@@ -102,8 +98,6 @@ class TorrentSession {
       peerId: _peerId,
       left: totalSize,
     );
-
-    debugPrint('[Session] Connecting to ${peers.length} peers');
 
     if (peers.isEmpty) {
       _emitStatus('no peers found');

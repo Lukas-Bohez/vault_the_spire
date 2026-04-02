@@ -216,20 +216,30 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
                       (status) => status.torrentId == torrent.id,
                     ),
                     builder: (context, statusSnapshot) {
-                      final compactRows = SettingsService.instance.compactTorrentRows;
-                      final narrowActions = MediaQuery.of(context).size.width < 700;
+                      final compactRows =
+                          SettingsService.instance.compactTorrentRows;
+                      final narrowActions =
+                          MediaQuery.of(context).size.width < 700;
                       final status = statusSnapshot.data;
                       final progress = status == null
                           ? torrent.progress.clamp(0.0, 1.0)
                           : (status.state.toLowerCase().contains('seed')
-                                ? status.seedingProgress
-                                : status.progress)
-                              .clamp(0.0, 1.0);
+                                    ? status.seedingProgress
+                                    : status.progress)
+                                .clamp(0.0, 1.0);
                       final isActive =
                           (torrent.status ?? '').toLowerCase().contains(
                             'download',
                           ) ||
                           (torrent.status ?? '').toLowerCase().contains('seed');
+                      final state =
+                          (status?.state ?? torrent.status ?? '').toLowerCase();
+                      final speedText = status == null
+                          ? ''
+                          : state.contains('seed')
+                          ? '${(status.uploadSpeed / 1024).toStringAsFixed(1)} KB/s up'
+                          : '${(status.downloadSpeed / 1024).toStringAsFixed(1)} KB/s down';
+
                       void copyMagnetLink() {
                         final magnet = torrent.magnetLink;
                         if (magnet != null && magnet.isNotEmpty) {
@@ -250,14 +260,14 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
                         }
                       }
 
-                        final actionButton = narrowActions
+                      final actionButton = narrowActions
                           ? PopupMenuButton<String>(
                               tooltip: 'More actions',
                               onSelected: (value) {
                                 switch (value) {
-                                    case 'folder':
-                                      _openTorrentFolder(torrent);
-                                      break;
+                                  case 'folder':
+                                    _openTorrentFolder(torrent);
+                                    break;
                                   case 'toggle':
                                     _toggleTorrent(torrent);
                                     break;
@@ -265,7 +275,7 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
                                     copyMagnetLink();
                                     break;
                                   case 'delete':
-                                    _removeTorrent(torrent);
+                                    _deleteTorrent(torrent);
                                     break;
                                 }
                               },
@@ -317,8 +327,35 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
                                 ),
                               ],
                             );
-                      
-                      
+
+                      return Card(
+                        margin: EdgeInsets.symmetric(
+                          horizontal: compactRows ? 8 : 12,
+                          vertical: compactRows ? 3 : 6,
+                        ),
+                        child: ListTile(
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: compactRows ? 10 : 12,
+                            vertical: compactRows ? 4 : 8,
+                          ),
+                          title: Text(
+                            torrent.name,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const SizedBox(height: 6),
+                              LinearProgressIndicator(value: progress),
+                              const SizedBox(height: 4),
+                              Text(
+                                status != null
+                                    ? '${status.statusMessage} • ${(progress * 100).toStringAsFixed(1)}% • ${status.peers} peers${speedText.isEmpty ? '' : ' • $speedText'}'
+                                    : '${_statusLabel(torrent)} • ${(progress * 100).toStringAsFixed(1)}%',
+                              ),
+                            ],
+                          ),
+                          onLongPress: copyMagnetLink,
                           trailing: actionButton,
                         ),
                       );
