@@ -176,7 +176,7 @@ class TorrentEngineService {
     dt.TorrentTask task,
   ) async {
     try {
-      final options = await task.getOptions(
+      final options = await (task as dynamic).getOptions(
         Uri.parse('udp://tracker.opentrackr.org:1337/announce'),
         task.metaInfo.infoHash,
       );
