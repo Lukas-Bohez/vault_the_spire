@@ -77,6 +77,8 @@ class TorrentEngineService {
     'udp://exodus.desync.com:6969/announce',
     'http://tracker.openbittorrent.com:80/announce',
     'http://tracker.opentrackr.org:1337/announce',
+    'https://tracker.opentrackr.org:443/announce',
+    'https://opentracker.i2p.rocks:443/announce',
   ];
 
   final Map<String, dt.TorrentTask> _tasks = {};
@@ -85,6 +87,9 @@ class TorrentEngineService {
   final Map<String, Timer> _healthCheckTimers = {};
   final Map<String, Timer> _progressTimers = {};
   final Map<String, int> _peerlessCounters = {};
+  final Map<String, int> _zeroProgressCounters = {};
+  final Map<String, int> _stallRecoveryCycles = {};
+  final Set<String> _hardRecoveryInFlight = <String>{};
   final Map<String, List<Uri>> _torrentTrackers = {};
   final Map<String, List<String>> _connectionLogs = {};
   final Map<String, DateTime> _lastProgressLogTimes = {};
@@ -442,6 +447,8 @@ class TorrentEngineService {
   void _startHealthCheckTimer(String torrentId, dt.TorrentTask task) {
     _healthCheckTimers[torrentId]?.cancel();
     _peerlessCounters[torrentId] = 0;
+    _zeroProgressCounters[torrentId] = 0;
+    _stallRecoveryCycles[torrentId] = 0;
 
     _healthCheckTimers[torrentId] = Timer.periodic(const Duration(seconds: 30), (
       timer,
@@ -469,6 +476,40 @@ class TorrentEngineService {
             _log(torrentId, 'Peers returned at $peers connections');
           }
           _peerlessCounters[torrentId] = 0;
+          final downloaded = task.downloaded ?? 0;
+          final progress = task.progress;
+          if (downloaded <= 0 && progress < 0.001) {
+            _zeroProgressCounters[torrentId] =
+                (_zeroProgressCounters[torrentId] ?? 0) + 1;
+            _log(
+              torrentId,
+              'Peers connected but no piece progress yet '
+              '(stall count ${_zeroProgressCounters[torrentId]}).',
+            );
+            if ((_zeroProgressCounters[torrentId] ?? 0) >= 4) {
+              _zeroProgressCounters[torrentId] = 0;
+              _stallRecoveryCycles[torrentId] =
+                  (_stallRecoveryCycles[torrentId] ?? 0) + 1;
+              _log(
+                torrentId,
+                'Triggering stall recovery: reannounce + DHT refresh.',
+              );
+              await _refreshConnection(torrentId, task);
+              try {
+                task.requestPeersFromDHT();
+              } catch (_) {
+                // Best-effort only.
+              }
+              if ((_stallRecoveryCycles[torrentId] ?? 0) >= 3) {
+                _stallRecoveryCycles[torrentId] = 0;
+                await _hardRestartTorrent(torrentId);
+                return;
+              }
+            }
+          } else {
+            _zeroProgressCounters[torrentId] = 0;
+            _stallRecoveryCycles[torrentId] = 0;
+          }
         }
       } catch (e, st) {
         debugPrint('[HealthCheck] Error (non-fatal): $e');
@@ -510,13 +551,9 @@ class TorrentEngineService {
     String? destinationPath,
   }) async {
     final dtModel = await dt.TorrentModel.parse(torrent.filePath!);
-    final saveDir = destinationPath?.trim().isNotEmpty == true
-        ? destinationPath!
-        : await _defaultDownloadDir();
-
-    if (!Directory(saveDir).existsSync()) {
-      await Directory(saveDir).create(recursive: true);
-    }
+    final saveDir = await _resolveWritableDownloadDir(
+      destinationPath?.trim().isNotEmpty == true ? destinationPath : null,
+    );
 
     final totalBytes = dtModel.files.fold<int>(0, (s, f) => s + f.length);
     if (totalBytes > 0 && (torrent.totalSize ?? 0) != totalBytes) {
@@ -571,6 +608,8 @@ class TorrentEngineService {
       'udp://exodus.desync.com:6969/announce',
       'http://tracker.openbittorrent.com:80/announce',
       'http://tracker.opentrackr.org:1337/announce',
+      'https://tracker.opentrackr.org:443/announce',
+      'https://opentracker.i2p.rocks:443/announce',
     ];
     for (final url in fallbackTrackers) {
       if (seenUrls.add(url)) {
@@ -608,11 +647,16 @@ class TorrentEngineService {
     TorrentModel torrent, {
     String? destinationPath,
   }) async {
-    final magnet = dt.MagnetParser.parse(torrent.magnetLink!);
+    final sourceMagnet = torrent.magnetLink?.trim() ?? '';
+    if (sourceMagnet.isEmpty) {
+      throw FormatException('Invalid magnet link');
+    }
+    final effectiveMagnet = _augmentMagnetWithFallbackTrackers(sourceMagnet);
+    final magnet = dt.MagnetParser.parse(effectiveMagnet);
     if (magnet == null) throw FormatException('Invalid magnet link');
 
     // Step 1: fetch metadata from the swarm.
-    final downloader = dt.MetadataDownloader.fromMagnet(torrent.magnetLink!);
+    final downloader = dt.MetadataDownloader.fromMagnet(effectiveMagnet);
     final completer = Completer<dt.TorrentModel>();
 
     downloader.createListener()
@@ -642,6 +686,12 @@ class TorrentEngineService {
           throw TimeoutException('Metadata timed out for ${torrent.id}'),
     );
 
+    final resolvedName = dtModel.name.trim();
+    final updatedName =
+      resolvedName.isNotEmpty && !resolvedName.toLowerCase().startsWith('magnet:')
+      ? resolvedName
+      : torrent.name;
+
     // Metadata reconstruction can normalize fields and alter encoded info bytes.
     // Keep swarm identity anchored to the magnet info-hash.
     if (!listEquals(dtModel.infoHashBuffer, magnet.infoHash) &&
@@ -666,22 +716,22 @@ class TorrentEngineService {
       _log(torrent.id, 'Adjusted torrent model info-hash to magnet xt hash.');
     }
 
-    final saveDir = destinationPath?.trim().isNotEmpty == true
-        ? destinationPath!
-        : await _defaultDownloadDir();
-
-    if (!Directory(saveDir).existsSync()) {
-      await Directory(saveDir).create(recursive: true);
-    }
+    final saveDir = await _resolveWritableDownloadDir(
+      destinationPath?.trim().isNotEmpty == true ? destinationPath : null,
+    );
 
     final totalBytes = dtModel.files.fold<int>(0, (s, f) => s + f.length);
     if (totalBytes > 0) {
       await TorrentService.instance.updateTorrent(
-        torrent.copyWith(totalSize: totalBytes, filePath: saveDir),
+        torrent.copyWith(
+          name: updatedName,
+          totalSize: totalBytes,
+          filePath: saveDir,
+        ),
       );
     } else {
       await TorrentService.instance.updateTorrent(
-        torrent.copyWith(filePath: saveDir),
+        torrent.copyWith(name: updatedName, filePath: saveDir),
       );
     }
 
@@ -742,7 +792,11 @@ class TorrentEngineService {
       dht.createListener()?..on<NewPeerEvent>((event) {
         _logDhtThrottled(task);
         try {
-          task.addPeer(event.address, dt.PeerSource.dht, type: dt.PeerType.TCP);
+          if (Platform.isAndroid) {
+            task.addPeer(event.address, dt.PeerSource.dht);
+          } else {
+            task.addPeer(event.address, dt.PeerSource.dht, type: dt.PeerType.TCP);
+          }
         } catch (_) {
           try {
             task.addPeer(event.address, dt.PeerSource.dht);
@@ -1229,6 +1283,29 @@ class TorrentEngineService {
     }
   }
 
+  Future<void> _hardRestartTorrent(String torrentId) async {
+    if (_hardRecoveryInFlight.contains(torrentId)) return;
+    _hardRecoveryInFlight.add(torrentId);
+    try {
+      _log(
+        torrentId,
+        'No progress after repeated recovery attempts. Performing hard restart.',
+      );
+      stopTorrent(torrentId);
+      await Future.delayed(const Duration(seconds: 1));
+      final configured = SettingsService.instance.downloadDestination.trim();
+      await startTorrent(
+        torrentId,
+        destinationPath: configured.isEmpty ? null : configured,
+      );
+      _log(torrentId, 'Hard restart complete; resumed download task.');
+    } catch (e) {
+      _log(torrentId, 'Hard restart failed: $e');
+    } finally {
+      _hardRecoveryInFlight.remove(torrentId);
+    }
+  }
+
   void _cleanup(String torrentId) {
     _pollTimers.remove(torrentId)?.cancel();
     _scrapeTimers.remove(torrentId)?.cancel();
@@ -1236,6 +1313,10 @@ class TorrentEngineService {
     _progressTimers.remove(torrentId)?.cancel();
     _uploadedBytesByTorrent.remove(torrentId);
     _lastUploadedSampleByTorrent.remove(torrentId);
+    _zeroProgressCounters.remove(torrentId);
+    _peerlessCounters.remove(torrentId);
+    _stallRecoveryCycles.remove(torrentId);
+    _hardRecoveryInFlight.remove(torrentId);
     _scrapedSeedersByTorrent.remove(torrentId);
     _scrapedLeechersByTorrent.remove(torrentId);
     _tasks.remove(torrentId);
@@ -1320,5 +1401,95 @@ class TorrentEngineService {
     final dir = Directory('${docs.path}${Platform.pathSeparator}TorrentSpireAI');
     if (!await dir.exists()) await dir.create(recursive: true);
     return dir.path;
+  }
+
+  String _augmentMagnetWithFallbackTrackers(String magnetLink) {
+    try {
+      final uri = Uri.parse(magnetLink);
+      if (uri.scheme.toLowerCase() != 'magnet') return magnetLink;
+
+      final params = Map<String, List<String>>.from(uri.queryParametersAll);
+      final existing = <String>{
+        ...(params['tr'] ?? const <String>[]),
+      };
+      for (final tracker in _fallbackTrackers) {
+        if (existing.add(tracker)) {
+          params.putIfAbsent('tr', () => <String>[]).add(tracker);
+        }
+      }
+
+      return uri.replace(queryParameters: params).toString();
+    } catch (_) {
+      return magnetLink;
+    }
+  }
+
+  Future<String> _resolveWritableDownloadDir(String? preferredPath) async {
+    final candidates = <String>[];
+    if (preferredPath != null && preferredPath.trim().isNotEmpty) {
+      candidates.add(preferredPath.trim());
+    }
+
+    final configured = SettingsService.instance.downloadDestination.trim();
+    if (configured.isNotEmpty && !candidates.contains(configured)) {
+      candidates.add(configured);
+    }
+
+    final docs = await getApplicationDocumentsDirectory();
+    final appPrivate =
+        '${docs.path}${Platform.pathSeparator}TorrentSpireAI';
+    if (!candidates.contains(appPrivate)) {
+      candidates.add(appPrivate);
+    }
+
+    for (final path in candidates) {
+      if (await _canWriteToDirectory(path)) {
+        if (Platform.isAndroid &&
+            preferredPath != null &&
+            preferredPath.trim().isNotEmpty &&
+            path != preferredPath.trim()) {
+          debugPrint(
+            '[Android] Download path "$preferredPath" is not writable. Falling back to "$path".',
+          );
+        }
+        if (Platform.isAndroid &&
+            SettingsService.instance.downloadDestination.trim() != path) {
+          await SettingsService.instance.setDownloadDestination(path);
+        }
+        return path;
+      }
+    }
+
+    // Last-resort fallback should always be app-private docs.
+    final fallback = Directory(appPrivate);
+    if (!await fallback.exists()) {
+      await fallback.create(recursive: true);
+    }
+    if (Platform.isAndroid) {
+      debugPrint(
+        '[Android] All configured download paths failed write test. Using app-private "$fallback".',
+      );
+      await SettingsService.instance.setDownloadDestination(fallback.path);
+    }
+    return fallback.path;
+  }
+
+  Future<bool> _canWriteToDirectory(String path) async {
+    try {
+      final dir = Directory(path);
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+      final probe = File(
+        '${dir.path}${Platform.pathSeparator}.vts_write_probe_${DateTime.now().microsecondsSinceEpoch}',
+      );
+      await probe.writeAsString('ok', flush: true);
+      if (await probe.exists()) {
+        await probe.delete();
+      }
+      return true;
+    } catch (e) {
+      return false;
+    }
   }
 }

@@ -475,7 +475,7 @@ class TorrentService {
       status: 'queued',
       filePath: null,
       vaultLink: null,
-      magnetLink: uri,
+      magnetLink: magnetUri,
       bytesDown: 0,
       bytesUp: 0,
       addedAt: DateTime.now().millisecondsSinceEpoch,
