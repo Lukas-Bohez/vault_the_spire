@@ -305,10 +305,19 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
     }
 
     final runtime = _runtimeByTorrentId[result.torrentId];
-    final seeders = runtime?.seeders ?? result.seeders;
-    final leechers = runtime?.leechers ?? result.leechers;
+    final seeders = (runtime?.seeders ?? result.seeders) ?? 0;
+    final leechers = (runtime?.leechers ?? result.leechers) ?? 0;
     final peers = runtime?.peers;
     final uploaded = runtime?.uploaded;
+    final swarmParts = <String>[];
+    if (seeders > 0) swarmParts.add('seeders=$seeders');
+    if (leechers > 0) swarmParts.add('leechers=$leechers');
+    if (peers != null && peers > 0) swarmParts.add('connectedPeers=$peers');
+    if (uploaded != null && uploaded > 0) {
+      swarmParts.add('uploadedBytes=$uploaded');
+    }
+    final swarmSummary = swarmParts.isEmpty ? 'no positive swarm stats yet' : swarmParts.join(', ');
+    final ageText = (result.ageYears ?? 0) > 0 ? 'ageYears=${result.ageYears}' : 'ageYears=unknown';
 
     final trust = _computeTrustSignal(
       result,
@@ -325,16 +334,13 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
     final prompt =
       'Give a concise 2-3 sentence description for this torrent candidate: '
       'title=${result.name}, size=${result.size ?? 0} bytes, category=$_category, '
-      'seeders=${seeders?.toString() ?? 'unknown'}, '
-      'leechers=${leechers?.toString() ?? 'unknown'}, '
-      'connectedPeers=${peers?.toString() ?? 'unknown'}, '
-      'uploadedBytes=${uploaded?.toString() ?? 'unknown'}, '
-      'ageYears=${result.ageYears?.toString() ?? 'unknown'}, '
+      '$ageText, '
       'source=${result.source.isEmpty ? result.responderId : result.source}. '
       'Include likely file structure and notable quality hints. '
       'Do not call it dangerous or suspicious unless there is direct evidence. '
       'Treat zero or missing seeders, leechers, or age as unknown signal, not a warning. '
       'If evidence is weak, say that confidence is limited instead of raising a red flag. '
+      'Current positive swarm stats: $swarmSummary. '
       'Use this live app context for accuracy:\n$liveContext';
 
     if (!mounted) return;
@@ -1105,8 +1111,14 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
                       final safeTitle = item.name.length > 60
                           ? '${item.name.substring(0, 60)}...'
                           : item.name;
-                      final sl =
-                          'S: ${item.seeders?.toString() ?? '—'} / L: ${item.leechers?.toString() ?? '—'}';
+                      final stats = <String>[];
+                      if ((item.seeders ?? 0) > 0) {
+                        stats.add('S: ${item.seeders}');
+                      }
+                      if ((item.leechers ?? 0) > 0) {
+                        stats.add('L: ${item.leechers}');
+                      }
+                      final sl = stats.isEmpty ? '' : stats.join(' / ');
                       final age = item.ageYears == null
                           ? '—'
                           : (item.ageYears == 0
@@ -1124,7 +1136,7 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
                             overflow: TextOverflow.ellipsis,
                           ),
                           subtitle: Text(
-                            '$sl | Size ${item.size == null ? '—' : _formatSize(item.size!)} | Source $source | Age $age',
+                            '${sl.isEmpty ? '' : '$sl | '}Size ${item.size == null ? '—' : _formatSize(item.size!)} | Source $source | Age $age',
                             style: const TextStyle(
                               fontFamily: 'monospace',
                               fontSize: 12,

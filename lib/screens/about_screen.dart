@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:vault_the_spire/constants.dart';
 import 'package:vault_the_spire/platform/desktop_window.dart';
@@ -16,6 +17,8 @@ class AboutScreen extends StatefulWidget {
 }
 
 class _AboutScreenState extends State<AboutScreen> {
+  final bool _androidTorrentOnly =
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
   late final SettingsService _settings;
   late final TextEditingController _ollamaUrlController;
   late final TextEditingController _downloadDirController;
@@ -63,10 +66,12 @@ class _AboutScreenState extends State<AboutScreen> {
     );
     _selectedModel = _settings.aiDefaultModel;
     _themeMode = ThemeService.instance.themeMode;
-    _aiService = AiCopilotService(
-      baseUrl: _settings.aiOllamaUrl,
-    );
-    _fetchAvailableModels();
+    if (!_androidTorrentOnly) {
+      _aiService = AiCopilotService(
+        baseUrl: _settings.aiOllamaUrl,
+      );
+      _fetchAvailableModels();
+    }
   }
 
   @override
@@ -83,6 +88,7 @@ class _AboutScreenState extends State<AboutScreen> {
   }
 
   Future<void> _fetchAvailableModels() async {
+    if (_androidTorrentOnly) return;
     setState(() {
       _loadingModels = true;
       _modelStatus = 'Fetching models...';
@@ -116,6 +122,7 @@ class _AboutScreenState extends State<AboutScreen> {
   }
 
   Future<void> _onUrlChanged() async {
+    if (_androidTorrentOnly) return;
     final newUrl = _ollamaUrlController.text.trim();
     if (newUrl.isEmpty) return;
 
@@ -124,6 +131,7 @@ class _AboutScreenState extends State<AboutScreen> {
   }
 
   Future<void> _saveAiSettings() async {
+    if (_androidTorrentOnly) return;
     await _settings.setAiOllamaUrl(_ollamaUrlController.text);
     await _settings.setAiDefaultModel(_selectedModel ?? kDefaultAiModel);
     if (!mounted) return;
@@ -133,6 +141,7 @@ class _AboutScreenState extends State<AboutScreen> {
   }
 
   Future<void> _downloadRecommendedModel() async {
+    if (_androidTorrentOnly) return;
     if (_downloadingRecommended) return;
     setState(() {
       _downloadingRecommended = true;
@@ -432,9 +441,10 @@ class _AboutScreenState extends State<AboutScreen> {
               ],
             ),
             const SizedBox(height: 10),
-            _sectionCard(
-              title: 'AI',
-              children: [
+            if (!_androidTorrentOnly)
+              _sectionCard(
+                title: 'AI',
+                children: [
                 SwitchListTile(
                   title: const Text('Enable AI Copilot'),
                   contentPadding: EdgeInsets.zero,
@@ -551,9 +561,9 @@ class _AboutScreenState extends State<AboutScreen> {
                     child: const Text('Save AI Settings'),
                   ),
                 ),
-              ],
-            ),
-            const SizedBox(height: 10),
+                ],
+              ),
+            if (!_androidTorrentOnly) const SizedBox(height: 10),
             _sectionCard(
               title: 'Interface',
               children: [
@@ -658,11 +668,15 @@ class _AboutScreenState extends State<AboutScreen> {
             _sectionCard(
               title: 'About and Diagnostics',
               children: [
-                const ListTile(
+                ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: Icon(Icons.info_outline),
-                  title: Text('TorrentSpire AI'),
-                  subtitle: Text('Torrent manager with built-in AI copilot'),
+                  title: Text(_androidTorrentOnly ? 'Vault The Spire' : 'TorrentSpire AI'),
+                  subtitle: Text(
+                    _androidTorrentOnly
+                        ? 'Torrent manager for Android'
+                        : 'Torrent manager with built-in AI copilot',
+                  ),
                 ),
                 const ListTile(
                   contentPadding: EdgeInsets.zero,

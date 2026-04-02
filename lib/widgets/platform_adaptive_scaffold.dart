@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:vault_the_spire/platform/desktop_window.dart';
@@ -11,45 +12,74 @@ class AppShell extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDesktop = MediaQuery.of(context).size.width >= 800;
     final location = GoRouterState.of(context).uri.path;
+    final isAndroid =
+        !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
-    final navItems = [
-      _NavItem(
-        icon: Icons.auto_awesome,
-        activeIcon: Icons.auto_awesome,
-        label: 'TorrentSpire AI',
-        route: '/copilot',
-      ),
-      _NavItem(
-        icon: Icons.chat_bubble_outline,
-        activeIcon: Icons.chat_bubble,
-        label: 'Local AI',
-        route: '/ai_chat',
-      ),
-      _NavItem(
-        icon: Icons.download_outlined,
-        activeIcon: Icons.download,
-        label: 'Torrents',
-        route: '/torrents',
-      ),
-      _NavItem(
-        icon: Icons.menu_book_outlined,
-        activeIcon: Icons.menu_book,
-        label: 'Guide',
-        route: '/guide',
-      ),
-      _NavItem(
-        icon: Icons.campaign_outlined,
-        activeIcon: Icons.campaign,
-        label: 'Channels',
-        route: '/browser',
-      ),
-      _NavItem(
-        icon: Icons.settings_outlined,
-        activeIcon: Icons.settings,
-        label: 'Settings',
-        route: '/about',
-      ),
-    ];
+    final navItems = isAndroid
+        ? [
+            _NavItem(
+              icon: Icons.download_outlined,
+              activeIcon: Icons.download,
+              label: 'Torrents',
+              route: '/torrents',
+            ),
+            _NavItem(
+              icon: Icons.menu_book_outlined,
+              activeIcon: Icons.menu_book,
+              label: 'Guide',
+              route: '/guide',
+            ),
+            _NavItem(
+              icon: Icons.campaign_outlined,
+              activeIcon: Icons.campaign,
+              label: 'Channels',
+              route: '/browser',
+            ),
+            _NavItem(
+              icon: Icons.settings_outlined,
+              activeIcon: Icons.settings,
+              label: 'Settings',
+              route: '/about',
+            ),
+          ]
+        : [
+            _NavItem(
+              icon: Icons.auto_awesome,
+              activeIcon: Icons.auto_awesome,
+              label: 'TorrentSpire AI',
+              route: '/copilot',
+            ),
+            _NavItem(
+              icon: Icons.chat_bubble_outline,
+              activeIcon: Icons.chat_bubble,
+              label: 'Local AI',
+              route: '/ai_chat',
+            ),
+            _NavItem(
+              icon: Icons.download_outlined,
+              activeIcon: Icons.download,
+              label: 'Torrents',
+              route: '/torrents',
+            ),
+            _NavItem(
+              icon: Icons.menu_book_outlined,
+              activeIcon: Icons.menu_book,
+              label: 'Guide',
+              route: '/guide',
+            ),
+            _NavItem(
+              icon: Icons.campaign_outlined,
+              activeIcon: Icons.campaign,
+              label: 'Channels',
+              route: '/browser',
+            ),
+            _NavItem(
+              icon: Icons.settings_outlined,
+              activeIcon: Icons.settings,
+              label: 'Settings',
+              route: '/about',
+            ),
+          ];
 
     if (isDesktop) {
       return ValueListenableBuilder<bool>(

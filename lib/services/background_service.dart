@@ -13,7 +13,7 @@ Future<void> initBackgroundService() async {
     androidConfiguration: AndroidConfiguration(
       onStart: onServiceStart,
       autoStart: false,
-      isForegroundMode: true,
+      isForegroundMode: false,
       notificationChannelId: 'torrent_engine_channel',
       initialNotificationTitle: 'TorrentSpire AI Torrent Service',
       initialNotificationContent: 'Initializing torrent background service...',
@@ -31,37 +31,45 @@ Future<void> initBackgroundService() async {
   }
 }
 
+@pragma('vm:entry-point')
 bool onIosBackground(ServiceInstance service) {
   return true;
 }
 
+@pragma('vm:entry-point')
 void onServiceStart(ServiceInstance service) async {
   if (service is AndroidServiceInstance) {
-    service.setAsForegroundService();
-    service.setForegroundNotificationInfo(
-      title: 'TorrentSpire AI Torrent Service',
-      content: 'Service is running',
-    );
+    if (await service.isForegroundService()) {
+      await service.setAsForegroundService();
+      await service.setForegroundNotificationInfo(
+        title: 'TorrentSpire AI Torrent Service',
+        content: 'Service is running',
+      );
+    }
   }
 
   // Setup listeners from notification actions.
-  service.on('pause').listen((event) {
+  service.on('pause').listen((event) async {
     TorrentEngineService.instance.pauseAll();
     if (service is AndroidServiceInstance) {
-      service.setForegroundNotificationInfo(
-        title: 'Torrent paused',
-        content: 'All downloads paused from notification',
-      );
+      if (await service.isForegroundService()) {
+        await service.setForegroundNotificationInfo(
+          title: 'Torrent paused',
+          content: 'All downloads paused from notification',
+        );
+      }
     }
   });
 
-  service.on('resume').listen((event) {
+  service.on('resume').listen((event) async {
     TorrentEngineService.instance.resumeAll();
     if (service is AndroidServiceInstance) {
-      service.setForegroundNotificationInfo(
-        title: 'Torrent resuming',
-        content: 'All downloads resumed from notification',
-      );
+      if (await service.isForegroundService()) {
+        await service.setForegroundNotificationInfo(
+          title: 'Torrent resuming',
+          content: 'All downloads resumed from notification',
+        );
+      }
     }
   });
 
@@ -81,10 +89,12 @@ void onServiceStart(ServiceInstance service) async {
     final progressPct = (status.progress * 100).toStringAsFixed(1);
 
     if (service is AndroidServiceInstance) {
-      service.setForegroundNotificationInfo(
-        title: '⚡ $speedMBs MB/s - $progressPct%',
-        content: 'DHT ${status.dhtNodes}, Peers ${status.peers}',
-      );
+      if (await service.isForegroundService()) {
+        await service.setForegroundNotificationInfo(
+          title: '⚡ $speedMBs MB/s - $progressPct%',
+          content: 'DHT ${status.dhtNodes}, Peers ${status.peers}',
+        );
+      }
     }
 
     if (TorrentEngineService.instance.shouldStopService()) {
@@ -94,7 +104,7 @@ void onServiceStart(ServiceInstance service) async {
   });
 
   // Background event to handle status update from UI thread.
-  service.on('update_status').listen((event) {
+  service.on('update_status').listen((event) async {
     final double speed = (event?['downloadSpeed'] as num?)?.toDouble() ?? 0.0;
     final double progress = (event?['progress'] as num?)?.toDouble() ?? 0.0;
     final int peers = (event?['peers'] as num?)?.toInt() ?? 0;
@@ -104,10 +114,12 @@ void onServiceStart(ServiceInstance service) async {
     final progressPct = (progress * 100).toStringAsFixed(1);
 
     if (service is AndroidServiceInstance) {
-      service.setForegroundNotificationInfo(
-        title: '⚡ $speedMBs MB/s - $progressPct%',
-        content: 'DHT $dht • Peers $peers',
-      );
+      if (await service.isForegroundService()) {
+        await service.setForegroundNotificationInfo(
+          title: '⚡ $speedMBs MB/s - $progressPct%',
+          content: 'DHT $dht • Peers $peers',
+        );
+      }
     }
   });
 }

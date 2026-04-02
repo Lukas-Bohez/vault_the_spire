@@ -3,7 +3,8 @@ import 'dart:ui';
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart' show kDebugMode, kIsWeb;
+import 'package:flutter/foundation.dart'
+  show kDebugMode, kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -23,19 +24,23 @@ import 'package:vault_the_spire/services/torrent_service.dart';
 import 'package:vault_the_spire/services/background_service.dart';
 import 'package:window_manager/window_manager.dart';
 
-Future<void> _requestAndroidPermissions() async {
+Future<bool> _requestAndroidPermissions() async {
+  var notificationGranted = true;
   if (!kIsWeb && Platform.isAndroid) {
     final perms = await [
       Permission.storage,
       Permission.photos,
       Permission.mediaLibrary,
+      Permission.notification,
     ].request();
+    notificationGranted = perms[Permission.notification]?.isGranted ?? false;
     if (kDebugMode) {
       for (final e in perms.entries) {
         debugPrint('Android permission ${e.key}: ${e.value}');
       }
     }
   }
+  return notificationGranted;
 }
 
 Future<void> main() async {
@@ -88,7 +93,11 @@ Future<void> main() async {
       unawaited(
         Future(() async {
           try {
-            if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
+            if (!kIsWeb && Platform.isAndroid) {
+              debugPrint(
+                'Android background service startup is disabled to keep the app stable while the foreground notification path is fixed.',
+              );
+            } else if (!kIsWeb && Platform.isIOS) {
               await initBackgroundService();
             }
 
@@ -231,8 +240,10 @@ class _MainAppState extends State<MainApp> {
 
   @override
   Widget build(BuildContext context) {
+    final isAndroid =
+        !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
     return MaterialApp.router(
-      title: 'TorrentSpire AI',
+      title: isAndroid ? 'Vault The Spire' : 'TorrentSpire AI',
       theme: _buildTheme(Brightness.light),
       darkTheme: _buildTheme(Brightness.dark),
       themeMode: themeService.themeMode,

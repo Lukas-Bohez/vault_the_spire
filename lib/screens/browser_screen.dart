@@ -138,6 +138,17 @@ class _BrowserScreenState extends State<BrowserScreen>
             debugPrint(
               'WebResourceError: ${error.description} (Code: ${error.errorCode}) URL: ${error.url}',
             );
+            final failingUrl = error.url ?? '';
+            if (failingUrl.isNotEmpty && _isTorrentOrMagnetUrl(failingUrl)) {
+              unawaited(_handleTorrentOrMagnetUrl(failingUrl));
+              return;
+            }
+
+            // Ignore subresource failures (ads/trackers/CDNs). Only a main-frame
+            // navigation failure should replace the browser content with an error view.
+            if (error.isForMainFrame != true) {
+              return;
+            }
             setState(() {
               _isLoading = false;
               _lastLoadError =
@@ -338,11 +349,11 @@ class _BrowserScreenState extends State<BrowserScreen>
         }
         return;
       }
-      if (url.toLowerCase().endsWith('.torrent')) {
+      if (normalizedUrl.toLowerCase().endsWith('.torrent')) {
         if (kIsWeb) return;
-        String localPath = url;
-        if (url.toLowerCase().startsWith('file://')) {
-          localPath = Uri.parse(url).toFilePath();
+        String localPath = normalizedUrl;
+        if (normalizedUrl.toLowerCase().startsWith('file://')) {
+          localPath = Uri.parse(normalizedUrl).toFilePath();
         }
         final torrentFile = File(localPath);
         if (await torrentFile.exists()) {
@@ -354,7 +365,7 @@ class _BrowserScreenState extends State<BrowserScreen>
           }
           return;
         }
-        final uri = Uri.parse(url);
+        final uri = Uri.parse(normalizedUrl);
         if (uri.isScheme('http') || uri.isScheme('https')) {
           final client = HttpClient();
           try {
@@ -374,7 +385,7 @@ class _BrowserScreenState extends State<BrowserScreen>
             await TorrentService.instance.addTorrentFromTorrentFile(tmp.path);
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Torrent added from $url')),
+                SnackBar(content: Text('Torrent added from $normalizedUrl')),
               );
             }
           } finally {

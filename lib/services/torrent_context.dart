@@ -64,11 +64,20 @@ class TorrentContextService extends ChangeNotifier {
     final selectedLeechers = selectedRuntime?.leechers ??
         selectedTorrent?.leechers ??
         selected?.leechers;
+    final selectedStats = <String>[];
+    if ((selectedSeeders ?? 0) > 0) {
+      selectedStats.add('seeders: $selectedSeeders');
+    }
+    if ((selectedLeechers ?? 0) > 0) {
+      selectedStats.add('leechers: $selectedLeechers');
+    }
+    final selectedStatsText = selectedStats.isEmpty
+        ? 'no positive swarm stats'
+        : selectedStats.join(' | ');
     final selectedText = selected == null
         ? 'No torrent selected.'
       : '${selected.name} | size: ${selected.size ?? 0} bytes | '
-          'seeders: ${selectedSeeders?.toString() ?? 'unknown'} | '
-          'leechers: ${selectedLeechers?.toString() ?? 'unknown'} | '
+          '$selectedStatsText | '
           'source: ${selected.source.isEmpty ? selected.responderId : selected.source} | '
           'category: $category';
 
@@ -86,7 +95,13 @@ class TorrentContextService extends ChangeNotifier {
         final leechers = [runtime?.leechers ?? 0, t.leechers].reduce((a, b) => a > b ? a : b);
         final uploaded = runtime?.uploaded ?? t.bytesUp;
         final state = runtime?.state ?? t.status ?? 'unknown';
-        return '${t.name} [$state] $progress | peers: $peers | seeders: $seeders | leechers: $leechers | uploaded: $uploaded B';
+        final stats = <String>[];
+        if (peers > 0) stats.add('peers: $peers');
+        if (seeders > 0) stats.add('seeders: $seeders');
+        if (leechers > 0) stats.add('leechers: $leechers');
+        if (uploaded > 0) stats.add('uploaded: $uploaded B');
+        final statsText = stats.isEmpty ? 'no positive swarm stats' : stats.join(' | ');
+        return '${t.name} [$state] $progress | $statsText';
         }).join(', ');
 
       final liveSeeders = _runtimeStatusById.values
@@ -108,9 +123,16 @@ class TorrentContextService extends ChangeNotifier {
 
     final queryText = currentQuery.isEmpty ? 'No active search.' : currentQuery;
 
+    final liveStats = <String>[];
+    if (livePeers > 0) liveStats.add('peers=$livePeers');
+    if (liveSeeders > 0) liveStats.add('seeders=$liveSeeders');
+    if (liveLeechers > 0) liveStats.add('leechers=$liveLeechers');
+    if (liveUploadBytes > 0) liveStats.add('uploaded=$liveUploadBytes bytes');
+    final liveText = liveStats.isEmpty ? 'no positive swarm stats' : liveStats.join(', ');
+
     return 'Current torrent search query: $queryText\n'
         'Selected torrent: $selectedText\n'
-      'Live swarm snapshot: peers=$livePeers, seeders=$liveSeeders, leechers=$liveLeechers, uploaded=$liveUploadBytes bytes\n'
+      'Live swarm snapshot: $liveText\n'
         'Active downloads: $active\n'
         'Library contents: $completed';
   }

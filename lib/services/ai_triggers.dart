@@ -14,14 +14,22 @@ class AiTriggerEvent {
 
 class AiTriggers {
   AiTriggerEvent onResultSelected(SearchResult result) {
-    final seeders = result.seeders?.toString() ?? 'unknown';
-    final leechers = result.leechers?.toString() ?? 'unknown';
-    final ageYears = result.ageYears?.toString() ?? 'unknown';
+    final stats = <String>[];
+    if ((result.seeders ?? 0) > 0) {
+      stats.add('seeders=${result.seeders}');
+    }
+    if ((result.leechers ?? 0) > 0) {
+      stats.add('leechers=${result.leechers}');
+    }
+    if ((result.ageYears ?? 0) > 0) {
+      stats.add('ageYears=${result.ageYears}');
+    }
+    final observedStats = stats.isEmpty ? 'no positive swarm stats' : stats.join(', ');
     return AiTriggerEvent(
       key: 'result:${result.torrentId}',
       prompt:
           'The user is looking at ${result.name}. '
-          'Observed stats: seeders=$seeders, leechers=$leechers, ageYears=$ageYears. '
+          'Observed stats: $observedStats. '
           'Give a brief overview: what it likely is and estimated quality. '
           'Do not label it dangerous or suspicious just because seeders are 0, leechers are 0, or age is unknown. '
           'Only mention a red flag if there is direct evidence such as malware, fake packaging, password-protected archives, broken metadata, or contradictory file info.',

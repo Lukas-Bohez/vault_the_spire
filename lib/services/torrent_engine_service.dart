@@ -1130,12 +1130,6 @@ class TorrentEngineService {
       }
     }
 
-    // If peers are connected while seeding and counters lag at zero, surface at
-    // least 1 B so UI/AI stop treating it as a hard-zero stalled seed session.
-    if (state == 'seeding' && peers > 0 && uploaded <= 0) {
-      uploaded = 1;
-    }
-
     _uploadedBytesByTorrent[torrentId] = uploaded;
     _lastUploadedSampleByTorrent[torrentId] = now;
 
