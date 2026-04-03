@@ -155,21 +155,18 @@ class TorrentService {
       (_) => unawaited(_reconcileDiskState(force: true)),
     );
 
-    // Emit an initial value immediately to avoid UI stuck loading spinner
-    // while the first refresh is in progress (can be slow on Android with disk I/O)
-    _emitCachedStatesIfAvailable();
-
-    unawaited(_reconcileDiskState(force: true));
-    _queueStateRefresh(force: true);
-  }
-
-  void _emitCachedStatesIfAvailable() {
-    if (_latestStatesByTorrentId.isEmpty) {
-      // If no cached states, emit empty list so stream has data
-      _torrentStatesController.add([]);
-    } else {
+    // If we already have cached merged states, emit them immediately.
+    // Do not emit an empty list here, otherwise UI may show a false
+    // "no torrents" state while DB/runtime refresh is still loading.
+    if (_latestStatesByTorrentId.isNotEmpty) {
       _torrentStatesController.add(_latestStatesByTorrentId.values.toList());
     }
+
+    // First refresh should be lightweight (no forced recursive disk scan).
+    _queueStateRefresh(force: false);
+
+    // Reconcile disk truth in background after initial UI is visible.
+    unawaited(_reconcileDiskState(force: true));
   }
 
   void _queueStateRefresh({bool force = false}) {
@@ -199,12 +196,15 @@ class TorrentService {
         ].reduce(math.max);
 
         final totalSize = torrent.totalSize ?? 0;
+        final persistedSeeding =
+          (torrent.status?.toLowerCase() ?? '').contains('seed');
         final runtimeComplete = runtime != null &&
             (runtime.state.toLowerCase().contains('seed') ||
                 (totalSize > 0 && runtime.downloaded >= totalSize) ||
                 runtime.progress >= 0.999);
         final isComplete = diskSnapshot.isComplete ||
             runtimeComplete ||
+          persistedSeeding ||
             (totalSize > 0 && downloaded >= totalSize);
 
         if (isComplete && totalSize > 0) {
@@ -313,6 +313,23 @@ class TorrentService {
         DateTime.now().difference(cached.checkedAt) <
             const Duration(seconds: 45)) {
       return cached;
+    }
+
+    // Fast non-forced path: avoid expensive recursive storage scan during
+    // initial state hydration. Background reconcile will correct this later.
+    if (!force && cached == null) {
+      final total = torrent.totalSize ?? 0;
+      final bytes = torrent.bytesDown;
+      final status = torrent.status?.toLowerCase() ?? '';
+      final seeded = status.contains('seed');
+      final done = seeded || (total > 0 && bytes >= total);
+      final snap = _DiskReconcileSnapshot(
+        bytesOnDisk: done && total > 0 ? total : bytes,
+        isComplete: done,
+        checkedAt: DateTime.now(),
+      );
+      _diskSnapshots[torrent.id] = snap;
+      return snap;
     }
 
     final totalSize = torrent.totalSize ?? 0;

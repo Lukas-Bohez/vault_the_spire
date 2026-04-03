@@ -216,9 +216,20 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
           onRefresh: _refresh,
           child: StreamBuilder<List<TorrentViewState>>(
             stream: TorrentService.instance.torrentStatesStream,
-            initialData: const <TorrentViewState>[],
             builder: (context, snapshot) {
-              final torrents = snapshot.data ?? const <TorrentViewState>[];
+              if (!snapshot.hasData) {
+                return ListView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  children: const [
+                    SizedBox(height: 120),
+                    Center(child: CircularProgressIndicator()),
+                    SizedBox(height: 12),
+                    Center(child: Text('Loading torrents...')),
+                  ],
+                );
+              }
+
+              final torrents = snapshot.data!;
               if (torrents.isEmpty) {
                 return ListView(
                   physics: const AlwaysScrollableScrollPhysics(),
