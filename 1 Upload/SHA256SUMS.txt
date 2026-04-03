@@ -1,3 +1,3 @@
-cb2674115419d980b401942f9b05f4afa0f879cc8e72452e9c2da3695b1dd3a9  torrent_spire_ai-v3.0.1+1-release.aab
-3bf86bd7adaacbf23c16f7cc13f8b8b74681d4b9bb6f39465937e5495367a098  torrent_spire_ai-v3.0.1+1-release.apk
+33adba233d4f88963924c3a8bc89ea7195bb67b49ddec1a3f7078d0127700951  torrent_spire_ai-v3.0.1+1-release.aab
+b782a0c12b57f5727f4a779cad90cf3d16daf9889b9ae7cbef1184a2ee531e84  torrent_spire_ai-v3.0.1+1-release.apk
 b8b8f00996cd003a181a203ffe547c3cf6e4fe90c2b0e9f5c1cd03f7a9132290  torrent_spire_ai-windows-v3.0.1+1-release.zip
