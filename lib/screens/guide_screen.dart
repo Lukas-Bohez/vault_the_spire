@@ -47,8 +47,8 @@ class GuideScreen extends StatelessWidget {
                 const SizedBox(height: 8),
                 Text(
                   android
-                      ? 'This guide is tailored for Android usage only: adding torrents, tracking progress, managing storage, and avoiding common mobile issues.'
-                      : 'This guide is tailored for desktop usage: search workflows, AI-assisted checks, stable long-running sessions, and safer seeding.',
+                      ? 'This guide is for the Android app: managing torrents you have already imported, checking progress, choosing storage, and handling the common mobile quirks that come with long downloads.'
+                      : 'This guide is for the desktop app: search workflows, AI-assisted checks, stable long-running sessions, and safer seeding.',
                   style: tt.bodyMedium?.copyWith(
                     color: cs.onPrimaryContainer,
                   ),
@@ -85,7 +85,7 @@ class GuideScreen extends StatelessWidget {
             title: 'Quick Start Flow',
             bullets: android
                 ? const [
-                    'Open Torrents and add a .torrent file or magnet link.',
+                    'Open Torrents to manage downloads that have already been added to the app.',
                     'Set your default download folder in Settings before long downloads.',
                     'Watch status in Torrents and use the row actions menu for play/pause/remove.',
                     'Once complete, keep seeding if you want to share back to the swarm.',
@@ -159,7 +159,7 @@ class GuideScreen extends StatelessWidget {
             ),
             child: Text(
               android
-                  ? 'Pro tip: If progress looks delayed after app startup, pull-to-refresh once. If a removed torrent still appears briefly, wait a moment for state sync to complete.'
+                  ? 'Pro tip: If the list feels slow right after launch, pull to refresh once. On Android, torrents can take a moment to sync after add/remove actions.'
                   : 'Pro tip: If a torrent reaches 100% but files are hard to locate, open its folder directly from the torrent row and verify destination settings before re-adding.',
               style: Theme.of(context).textTheme.bodyMedium,
             ),
