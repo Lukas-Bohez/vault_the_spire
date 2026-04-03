@@ -12,10 +12,11 @@ class AppShell extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDesktop = MediaQuery.of(context).size.width >= 800;
     final location = GoRouterState.of(context).uri.path;
-    final isAndroid =
-        !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+    final isMobile = !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.iOS);
 
-    final navItems = isAndroid
+    final navItems = isMobile
         ? [
             _NavItem(
               icon: Icons.download_outlined,

@@ -341,11 +341,14 @@ class _BrowserScreenState extends State<BrowserScreen>
     final normalizedUrl = safeUrl.trim();
     try {
       if (normalizedUrl.toLowerCase().startsWith('magnet:')) {
-        await TorrentService.instance.addTorrentFromMagnetLink(normalizedUrl);
+        final outcome = await TorrentService.instance.addTorrentFromMagnetLink(
+          normalizedUrl,
+        );
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Magnet link added to torrent queue')),
-          );
+          final message = outcome == MagnetAddOutcome.pendingMetadata
+              ? "Couldn't fetch torrent info yet - no peers responded. The torrent was added and will retry metadata automatically."
+              : 'Magnet link added to torrent queue';
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
         }
         return;
       }

@@ -11,7 +11,6 @@ import 'package:vault_the_spire/services/intent_parser.dart';
 import 'package:vault_the_spire/services/search_service.dart';
 import 'package:vault_the_spire/services/settings_service.dart';
 import 'package:vault_the_spire/services/torrent_context.dart';
-import 'package:vault_the_spire/services/torrent_engine_service.dart';
 import 'package:vault_the_spire/services/torrent_service.dart';
 import 'package:vault_the_spire/screens/create_torrent_screen.dart';
 
@@ -37,12 +36,10 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
   final List<AiChatEntry> _messages = <AiChatEntry>[];
   List<SearchResult> _results = <SearchResult>[];
   List<TorrentModel> _torrents = <TorrentModel>[];
-  final Map<String, TorrentEngineStatus> _runtimeByTorrentId =
-      <String, TorrentEngineStatus>{};
+  List<TorrentViewState> _torrentStates = <TorrentViewState>[];
 
   StreamSubscription<List<SearchResult>>? _searchSubscription;
-  StreamSubscription<TorrentEngineStatus>? _engineStatusSubscription;
-  Timer? _torrentPoll;
+  StreamSubscription<List<TorrentViewState>>? _torrentStatesSubscription;
   // Timer? _settingsSyncTimer; // TODO: re-enable periodic sync
 
   SearchResult? _selected;
@@ -86,13 +83,25 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
         );
       }
     });
-    _engineStatusSubscription = TorrentEngineService.instance.statusStream
-      .listen((status) {
-        _runtimeByTorrentId[status.torrentId] = status;
-        _contextService.updateRuntimeStatus(status);
-      });
-    _refreshTorrents();
-    _startTorrentPolling();
+    _torrentStatesSubscription = TorrentService.instance.torrentStatesStream
+        .listen((states) {
+          final previousComplete = _torrentStates
+              .where((t) => t.isComplete)
+              .map((t) => t.id)
+              .toSet();
+          for (final state in states) {
+            if (state.isComplete && !previousComplete.contains(state.id)) {
+              _triggerAutoEvent(_triggers.onDownloadCompleted(state.name));
+            }
+          }
+          _torrentStates = states;
+          _torrents = states.map((s) => s.model).toList();
+          _contextService.updateTorrents(_torrents);
+          if (mounted) {
+            setState(() {});
+          }
+        });
+    unawaited(TorrentService.instance.refreshTorrentStates());
     // TODO: Re-enable periodic sync after debugging blank screen
     // _settingsSyncTimer = Timer.periodic(
     //   const Duration(seconds: 5),
@@ -118,8 +127,7 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
     _chatController.dispose();
     _chatScroll.dispose();
     _searchSubscription?.cancel();
-    _engineStatusSubscription?.cancel();
-    _torrentPoll?.cancel();
+    _torrentStatesSubscription?.cancel();
     _streamPaintTimer?.cancel();
     // _settingsSyncTimer?.cancel(); // TODO: re-enable
     _contextService.removeListener(_noop);
@@ -127,31 +135,11 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
     super.dispose();
   }
 
-  void _startTorrentPolling() {
-    _torrentPoll ??= Timer.periodic(
-      const Duration(seconds: 2),
-      (_) => _refreshTorrents(),
-    );
-  }
-
-  void _stopTorrentPolling() {
-    _torrentPoll?.cancel();
-    _torrentPoll = null;
-  }
-
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _startTorrentPolling();
-      unawaited(_refreshTorrents());
+      unawaited(TorrentService.instance.refreshTorrentStates());
       return;
-    }
-
-    if (state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.paused ||
-        state == AppLifecycleState.detached ||
-        state == AppLifecycleState.hidden) {
-      _stopTorrentPolling();
     }
   }
 
@@ -194,28 +182,7 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
   void _noop() {}
 
   Future<void> _refreshTorrents() async {
-    final all = await TorrentService.instance.allTorrents();
-    final previousComplete = _torrents
-        .where((t) => (t.status ?? '').toLowerCase().contains('complete'))
-        .map((t) => t.id)
-        .toSet();
-
-    _contextService.updateTorrents(all);
-
-    for (final torrent in all) {
-      final nowComplete = (torrent.status ?? '').toLowerCase().contains(
-        'complete',
-      );
-      if (nowComplete && !previousComplete.contains(torrent.id)) {
-        _triggerAutoEvent(_triggers.onDownloadCompleted(torrent.name));
-      }
-    }
-
-    if (mounted) {
-      setState(() {
-        _torrents = all;
-      });
-    }
+    await TorrentService.instance.refreshTorrentStates();
   }
 
   Future<void> _performSearch(String query) async {
@@ -227,9 +194,18 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
         _resolvingMagnet = true;
       });
       try {
-        await TorrentService.instance
+        final outcome = await TorrentService.instance
             .addTorrentFromMagnetLink(value)
             .timeout(const Duration(seconds: 30));
+        if (outcome == MagnetAddOutcome.pendingMetadata && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                "Couldn't fetch torrent info yet - no peers responded. Added to queue and will retry metadata automatically.",
+              ),
+            ),
+          );
+        }
         _magnetController.clear();
       } on TimeoutException {
         if (!mounted) return;
@@ -264,14 +240,34 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
   Future<void> _addMagnet() async {
     final text = _magnetController.text.trim();
     if (text.isEmpty) return;
-    await TorrentService.instance.addTorrentFromMagnetLink(text);
+    final outcome = await TorrentService.instance.addTorrentFromMagnetLink(text);
+    if (outcome == MagnetAddOutcome.pendingMetadata && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            "Couldn't fetch torrent info yet - no peers responded. Added to queue and will retry metadata automatically.",
+          ),
+        ),
+      );
+    }
     _magnetController.clear();
     await _refreshTorrents();
   }
 
   Future<void> _startDownload(SearchResult result) async {
     if (result.magnetLink.isEmpty) return;
-    await TorrentService.instance.addTorrentFromMagnetLink(result.magnetLink);
+    final outcome = await TorrentService.instance.addTorrentFromMagnetLink(
+      result.magnetLink,
+    );
+    if (outcome == MagnetAddOutcome.pendingMetadata && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            "Couldn't fetch torrent info yet - no peers responded. Added to queue and will retry metadata automatically.",
+          ),
+        ),
+      );
+    }
     await _refreshTorrents();
     _triggerAutoEvent(
       _triggers.onDownloadStarted(
@@ -304,7 +300,10 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
       return;
     }
 
-    final runtime = _runtimeByTorrentId[result.torrentId];
+    final runtime = _torrentStates
+      .where((s) => s.id == result.torrentId)
+      .cast<TorrentViewState?>()
+      .firstWhere((s) => s != null, orElse: () => null);
     final seeders = (runtime?.seeders ?? result.seeders) ?? 0;
     final leechers = (runtime?.leechers ?? result.leechers) ?? 0;
     final peers = runtime?.peers;
@@ -830,8 +829,14 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
 
   Widget _buildTorrentPane(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final activeDownloads = _contextService.activeDownloads;
-    final library = _contextService.library;
+    final activeDownloads = _torrentStates.where((t) {
+      final state = t.state.toLowerCase();
+      return state.contains('download') ||
+          state.contains('seed') ||
+          state.contains('queue') ||
+          state.contains('pending_metadata');
+    }).toList();
+    final library = _torrentStates.where((t) => t.isComplete).toList();
     final hasSearchResults = _results.isNotEmpty;
 
     return Container(
@@ -1030,25 +1035,26 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
                             for (final item in activeDownloads)
                               Builder(
                                 builder: (context) {
-                                  final progress =
-                                      (item.totalSize == null ||
-                                              item.totalSize == 0)
-                                      ? 0.0
-                                      : (item.bytesDown / item.totalSize!).clamp(
-                                          0.0,
-                                          1.0,
-                                        );
+                                  final progress = item.progress.clamp(0.0, 1.0);
                                   return ListTile(
                                     dense: true,
                                     title: Text(
-                                      item.name,
+                                      item.model.name,
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                     ),
                                     subtitle: Padding(
                                       padding: const EdgeInsets.only(top: 6),
-                                      child: LinearProgressIndicator(
-                                        value: progress,
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          LinearProgressIndicator(value: progress),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            '${item.statusLabel} • ${(progress * 100).toStringAsFixed(1)}% • ${item.peers} peers',
+                                            style: const TextStyle(fontSize: 11),
+                                          ),
+                                        ],
                                       ),
                                     ),
                                     trailing: Text(
@@ -1079,12 +1085,12 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
                                   color: cs.primary,
                                 ),
                                 title: Text(
-                                  item.name,
+                                  item.model.name,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
                                 subtitle: Text(
-                                  item.filePath ?? 'Completed',
+                                  item.model.filePath ?? 'Completed',
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(fontSize: 11),

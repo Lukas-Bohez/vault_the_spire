@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 
@@ -22,10 +23,415 @@ class TorrentAlreadyExistsException implements Exception {
   String toString() => 'Torrent already exists: $torrentId';
 }
 
+enum MagnetAddOutcome { started, queued, pendingMetadata }
+
+class TorrentViewState {
+  final TorrentModel model;
+  final int downloaded;
+  final int uploaded;
+  final double progress;
+  final String state;
+  final String statusLabel;
+  final String statusMessage;
+  final String connectionMessage;
+  final int peers;
+  final int seeders;
+  final int leechers;
+  final int dhtNodes;
+  final int trackers;
+  final double downloadSpeed;
+  final double uploadSpeed;
+  final bool isComplete;
+  final bool isCompleteOnDisk;
+
+  const TorrentViewState({
+    required this.model,
+    required this.downloaded,
+    required this.uploaded,
+    required this.progress,
+    required this.state,
+    required this.statusLabel,
+    required this.statusMessage,
+    required this.connectionMessage,
+    required this.peers,
+    required this.seeders,
+    required this.leechers,
+    required this.dhtNodes,
+    required this.trackers,
+    required this.downloadSpeed,
+    required this.uploadSpeed,
+    required this.isComplete,
+    required this.isCompleteOnDisk,
+  });
+
+  String get id => model.id;
+  String get name => model.name;
+  bool get isSeeding => state.contains('seed');
+  bool get isActive => state.contains('download') || state.contains('seed');
+  double get seedingProgress {
+    final total = model.totalSize ?? 0;
+    if (total <= 0) return 0.0;
+    return (uploaded / total).clamp(0.0, 1.0);
+  }
+}
+
+class _DiskReconcileSnapshot {
+  final int bytesOnDisk;
+  final bool isComplete;
+  final DateTime checkedAt;
+
+  const _DiskReconcileSnapshot({
+    required this.bytesOnDisk,
+    required this.isComplete,
+    required this.checkedAt,
+  });
+}
+
 class TorrentService {
   TorrentService._();
 
   static final TorrentService instance = TorrentService._();
+
+  final StreamController<List<TorrentViewState>> _torrentStatesController =
+      StreamController<List<TorrentViewState>>.broadcast();
+  StreamSubscription<TorrentEngineStatus>? _engineStatusSubscription;
+  Timer? _stateRefreshTimer;
+  Timer? _diskReconcileTimer;
+  final Map<String, TorrentEngineStatus> _runtimeByTorrentId =
+      <String, TorrentEngineStatus>{};
+  final Map<String, TorrentViewState> _latestStatesByTorrentId =
+      <String, TorrentViewState>{};
+  final Map<String, _DiskReconcileSnapshot> _diskSnapshots =
+      <String, _DiskReconcileSnapshot>{};
+  final Map<String, DateTime> _pendingMetadataRetryAfter =
+      <String, DateTime>{};
+  bool _stateSyncStarted = false;
+  bool _stateRefreshInFlight = false;
+  bool _stateRefreshQueued = false;
+
+  Stream<List<TorrentViewState>> get torrentStatesStream {
+    _ensureStateSyncStarted();
+    return _torrentStatesController.stream;
+  }
+
+  Stream<TorrentViewState?> torrentStateStream(String torrentId) {
+    _ensureStateSyncStarted();
+    return torrentStatesStream.map((states) {
+      for (final state in states) {
+        if (state.id == torrentId) return state;
+      }
+      return null;
+    });
+  }
+
+  TorrentViewState? latestTorrentState(String torrentId) {
+    _ensureStateSyncStarted();
+    return _latestStatesByTorrentId[torrentId];
+  }
+
+  Future<void> refreshTorrentStates() async {
+    _ensureStateSyncStarted();
+    await _refreshMergedTorrentStates(force: true);
+  }
+
+  void _ensureStateSyncStarted() {
+    if (_stateSyncStarted) return;
+    _stateSyncStarted = true;
+
+    _engineStatusSubscription = TorrentEngineService.instance.statusStream
+        .listen((status) {
+          if (status.torrentId.isEmpty) return;
+          _runtimeByTorrentId[status.torrentId] = status;
+          _queueStateRefresh();
+        });
+
+    _stateRefreshTimer = Timer.periodic(
+      const Duration(seconds: 2),
+      (_) => _queueStateRefresh(),
+    );
+
+    _diskReconcileTimer = Timer.periodic(
+      const Duration(seconds: 45),
+      (_) => unawaited(_reconcileDiskState(force: true)),
+    );
+
+    unawaited(_reconcileDiskState(force: true));
+    _queueStateRefresh(force: true);
+  }
+
+  void _queueStateRefresh({bool force = false}) {
+    unawaited(_refreshMergedTorrentStates(force: force));
+  }
+
+  Future<void> _refreshMergedTorrentStates({bool force = false}) async {
+    if (_stateRefreshInFlight) {
+      _stateRefreshQueued = true;
+      return;
+    }
+
+    _stateRefreshInFlight = true;
+    try {
+      final torrents = await TorrentsDao.instance.getAllTorrents();
+      final merged = <TorrentViewState>[];
+
+      for (final torrent in torrents) {
+        await _retryPendingMetadataIfDue(torrent);
+        final diskSnapshot = await _getDiskSnapshot(torrent, force: force);
+        final runtime = _runtimeByTorrentId[torrent.id];
+
+        var downloaded = runtime?.downloaded ?? torrent.bytesDown;
+        if (diskSnapshot.bytesOnDisk > downloaded) {
+          downloaded = diskSnapshot.bytesOnDisk;
+        }
+
+        final totalSize = torrent.totalSize ?? 0;
+        final runtimeComplete = runtime != null &&
+            (runtime.state.toLowerCase().contains('seed') ||
+                (totalSize > 0 && runtime.downloaded >= totalSize) ||
+                runtime.progress >= 0.999);
+        final isComplete = diskSnapshot.isComplete ||
+            runtimeComplete ||
+            (totalSize > 0 && downloaded >= totalSize);
+
+        if (isComplete && totalSize > 0) {
+          downloaded = math.max(downloaded, totalSize);
+        }
+
+        final uploaded = runtime?.uploaded ?? torrent.bytesUp;
+        final state = _deriveState(torrent.status, runtime?.state, isComplete);
+        final progress = isComplete
+            ? 1.0
+            : totalSize > 0
+                ? (downloaded / totalSize).clamp(0.0, 1.0)
+                : (runtime?.progress ?? torrent.progress).clamp(0.0, 1.0);
+
+        final isSeeding = state.contains('seed');
+        final dlSpeed = isSeeding ? 0.0 : (runtime?.downloadSpeed ?? 0.0);
+        final ulSpeed = runtime?.uploadSpeed ?? 0.0;
+        final peers = runtime?.peers ?? 0;
+        final seeders = runtime?.seeders ?? torrent.seeders;
+        final leechers = runtime?.leechers ?? torrent.leechers;
+
+        final mergedState = TorrentViewState(
+          model: torrent,
+          downloaded: downloaded,
+          uploaded: uploaded,
+          progress: progress,
+          state: state,
+          statusLabel: _statusLabelForState(state),
+          statusMessage: runtime?.statusMessage ??
+              _fallbackStatusMessage(state, progress, peers),
+          connectionMessage: runtime?.connectionMessage ?? '',
+          peers: peers,
+          seeders: seeders,
+          leechers: leechers,
+          dhtNodes: runtime?.dhtNodes ?? 0,
+          trackers: runtime?.trackers ?? 0,
+          downloadSpeed: dlSpeed,
+          uploadSpeed: ulSpeed,
+          isComplete: isComplete,
+          isCompleteOnDisk: diskSnapshot.isComplete,
+        );
+
+        await _persistReconciledTorrent(mergedState);
+        merged.add(mergedState);
+      }
+
+      _latestStatesByTorrentId
+        ..clear()
+        ..addEntries(merged.map((s) => MapEntry(s.id, s)));
+      _torrentStatesController.add(merged);
+    } finally {
+      _stateRefreshInFlight = false;
+      if (_stateRefreshQueued) {
+        _stateRefreshQueued = false;
+        _queueStateRefresh();
+      }
+    }
+  }
+
+  Future<void> _persistReconciledTorrent(TorrentViewState view) async {
+    final existing = await TorrentsDao.instance.getTorrentById(view.id);
+    if (existing == null) return;
+
+    final updatedStatus = view.state;
+    final completedAt = view.isComplete
+        ? (existing.completedAt ?? DateTime.now().millisecondsSinceEpoch)
+        : existing.completedAt;
+
+    final shouldUpdate =
+        existing.bytesDown != view.downloaded ||
+            existing.bytesUp != view.uploaded ||
+            (existing.status ?? '') != updatedStatus ||
+            existing.seeders != view.seeders ||
+            existing.leechers != view.leechers ||
+            completedAt != existing.completedAt;
+
+    if (!shouldUpdate) return;
+
+    await TorrentsDao.instance.updateTorrent(
+      existing.copyWith(
+        bytesDown: view.downloaded,
+        bytesUp: view.uploaded,
+        status: updatedStatus,
+        completedAt: completedAt,
+        seeders: view.seeders,
+        leechers: view.leechers,
+      ),
+    );
+  }
+
+  Future<void> _reconcileDiskState({bool force = false}) async {
+    final torrents = await TorrentsDao.instance.getAllTorrents();
+    for (final torrent in torrents) {
+      await _getDiskSnapshot(torrent, force: force);
+    }
+    _queueStateRefresh(force: true);
+  }
+
+  Future<_DiskReconcileSnapshot> _getDiskSnapshot(
+    TorrentModel torrent, {
+    bool force = false,
+  }) async {
+    final cached = _diskSnapshots[torrent.id];
+    if (!force &&
+        cached != null &&
+        DateTime.now().difference(cached.checkedAt) <
+            const Duration(seconds: 45)) {
+      return cached;
+    }
+
+    final totalSize = torrent.totalSize ?? 0;
+    final outputPath = torrent.filePath?.trim();
+    if (totalSize <= 0 || outputPath == null || outputPath.isEmpty) {
+      final snap = _DiskReconcileSnapshot(
+        bytesOnDisk: torrent.bytesDown,
+        isComplete: false,
+        checkedAt: DateTime.now(),
+      );
+      _diskSnapshots[torrent.id] = snap;
+      return snap;
+    }
+
+    final lower = outputPath.toLowerCase();
+    if (lower.endsWith('.torrent')) {
+      final snap = _DiskReconcileSnapshot(
+        bytesOnDisk: torrent.bytesDown,
+        isComplete: false,
+        checkedAt: DateTime.now(),
+      );
+      _diskSnapshots[torrent.id] = snap;
+      return snap;
+    }
+
+    var bytesOnDisk = 0;
+    try {
+      final entityType = await FileSystemEntity.type(outputPath);
+      if (entityType == FileSystemEntityType.directory) {
+        await for (final entity in Directory(outputPath).list(
+          recursive: true,
+          followLinks: false,
+        )) {
+          if (entity is! File) continue;
+          final lp = entity.path.toLowerCase();
+          if (lp.endsWith('.bt.state') || lp.endsWith('.torrent')) {
+            continue;
+          }
+          final stat = await entity.stat();
+          bytesOnDisk += stat.size;
+        }
+      } else if (entityType == FileSystemEntityType.file) {
+        final file = File(outputPath);
+        final lp = file.path.toLowerCase();
+        if (!lp.endsWith('.bt.state') && !lp.endsWith('.torrent')) {
+          final stat = await file.stat();
+          bytesOnDisk = stat.size;
+        }
+      }
+    } catch (_) {
+      // Keep last known bytes if a scan fails.
+      bytesOnDisk = cached?.bytesOnDisk ?? torrent.bytesDown;
+    }
+
+    final snap = _DiskReconcileSnapshot(
+      bytesOnDisk: bytesOnDisk,
+      isComplete: totalSize > 0 && bytesOnDisk >= totalSize,
+      checkedAt: DateTime.now(),
+    );
+    _diskSnapshots[torrent.id] = snap;
+    return snap;
+  }
+
+  String _deriveState(String? persistedState, String? runtimeState, bool complete) {
+    if (complete) return 'seeding';
+    final runtime = runtimeState?.toLowerCase() ?? '';
+    if (runtime.contains('error')) return runtime;
+    if (runtime.contains('pause')) return 'paused';
+    if (runtime.contains('queue')) return 'queued';
+    if (runtime.contains('seed')) return 'seeding';
+    if (runtime.contains('download')) return 'downloading';
+
+    final persisted = persistedState?.toLowerCase() ?? '';
+    if (persisted.contains('pending_metadata')) return 'pending_metadata';
+    if (persisted.contains('error')) return persisted;
+    if (persisted.contains('pause')) return 'paused';
+    if (persisted.contains('queue')) return 'queued';
+    if (persisted.contains('seed')) return 'seeding';
+    if (persisted.contains('download')) return 'downloading';
+    return persisted.isEmpty ? 'queued' : persisted;
+  }
+
+  String _statusLabelForState(String state) {
+    if (state.contains('seed')) return 'Seeding';
+    if (state.contains('download')) return 'Downloading';
+    if (state.contains('pause')) return 'Paused';
+    if (state.contains('pending_metadata')) return 'Pending metadata';
+    if (state.contains('queue')) return 'Queued';
+    if (state.contains('error')) return 'Error';
+    return state;
+  }
+
+  String _fallbackStatusMessage(String state, double progress, int peers) {
+    if (state.contains('pending_metadata')) {
+      return 'Waiting for peers to provide metadata...';
+    }
+    if (state.contains('seed')) {
+      return 'Seeding • ${(progress * 100).toStringAsFixed(1)}%';
+    }
+    if (state.contains('pause')) {
+      return 'Paused • ${(progress * 100).toStringAsFixed(1)}%';
+    }
+    if (state.contains('download')) {
+      if (peers <= 0) {
+        return 'Searching for peers...';
+      }
+      return 'Downloading • ${(progress * 100).toStringAsFixed(1)}% • $peers peers';
+    }
+    if (state.contains('error')) {
+      return 'Torrent error';
+    }
+    return '${(progress * 100).toStringAsFixed(1)}%';
+  }
+
+  Future<void> _retryPendingMetadataIfDue(TorrentModel torrent) async {
+    final status = torrent.status?.toLowerCase() ?? '';
+    if (!status.contains('pending_metadata')) return;
+    if (TorrentEngineService.instance.isRunning(torrent.id)) return;
+
+    final now = DateTime.now();
+    final nextTry = _pendingMetadataRetryAfter[torrent.id];
+    if (nextTry != null && now.isBefore(nextTry)) return;
+    _pendingMetadataRetryAfter[torrent.id] = now.add(const Duration(seconds: 90));
+
+    try {
+      await TorrentEngineService.instance.startTorrent(torrent.id);
+      await updateTorrentStatus(torrent.id, 'downloading');
+    } on TimeoutException {
+      await updateTorrentStatus(torrent.id, 'pending_metadata');
+    } catch (_) {
+      // Keep pending state; retry later.
+    }
+  }
 
   static String _ensureString(dynamic value) {
     if (value == null) return '';
@@ -85,17 +491,27 @@ class TorrentService {
     }).toList();
   }
 
-  Future<void> addTorrent(TorrentModel torrent) =>
-      TorrentsDao.instance.insertTorrent(torrent);
+  Future<void> addTorrent(TorrentModel torrent) async {
+    await TorrentsDao.instance.insertTorrent(torrent);
+    _queueStateRefresh(force: true);
+  }
 
   Future<TorrentModel?> getTorrentById(String id) =>
       TorrentsDao.instance.getTorrentById(id);
 
-  Future<void> updateTorrent(TorrentModel torrent) =>
-      TorrentsDao.instance.updateTorrent(torrent);
+  Future<void> updateTorrent(TorrentModel torrent) async {
+    await TorrentsDao.instance.updateTorrent(torrent);
+    _queueStateRefresh(force: true);
+  }
 
-  Future<void> removeTorrent(String id) =>
-      TorrentsDao.instance.deleteTorrent(id);
+  Future<void> removeTorrent(String id) async {
+    await TorrentsDao.instance.deleteTorrent(id);
+    _runtimeByTorrentId.remove(id);
+    _latestStatesByTorrentId.remove(id);
+    _diskSnapshots.remove(id);
+    _pendingMetadataRetryAfter.remove(id);
+    _queueStateRefresh(force: true);
+  }
 
   Future<void> resumeActiveTorrents() async {
     final torrents = await allTorrents();
@@ -147,6 +563,7 @@ class TorrentService {
       deleteAfterRatioReached: existing.deleteAfterRatioReached,
     );
     await TorrentsDao.instance.updateTorrent(updated);
+    _queueStateRefresh(force: true);
   }
 
   Future<void> setSeedRatioLimit(String id, double ratio) async {
@@ -177,6 +594,7 @@ class TorrentService {
       deleteAfterRatioReached: existing.deleteAfterRatioReached,
     );
     await TorrentsDao.instance.updateTorrent(updated);
+    _queueStateRefresh(force: true);
   }
 
   Future<void> setDeleteAfterRatioReached(String id, bool value) async {
@@ -207,6 +625,7 @@ class TorrentService {
       deleteAfterRatioReached: value,
     );
     await TorrentsDao.instance.updateTorrent(updated);
+    _queueStateRefresh(force: true);
   }
 
   Future<void> updateProgress(String id, int bytesDown, int bytesUp) async {
@@ -252,9 +671,15 @@ class TorrentService {
     );
 
     await TorrentsDao.instance.updateTorrent(updated);
+    _queueStateRefresh();
 
     if (shouldDelete && updatedStatus == 'seed_ratio_reached') {
       await TorrentsDao.instance.deleteTorrent(id);
+      _runtimeByTorrentId.remove(id);
+      _latestStatesByTorrentId.remove(id);
+      _diskSnapshots.remove(id);
+      _pendingMetadataRetryAfter.remove(id);
+      _queueStateRefresh(force: true);
     }
   }
 
@@ -442,9 +867,10 @@ class TorrentService {
     } else {
       await updateTorrentStatus(metadata.infoHashV1, 'queued');
     }
+    _queueStateRefresh(force: true);
   }
 
-  Future<void> addTorrentFromMagnet(String uri) =>
+  Future<MagnetAddOutcome> addTorrentFromMagnet(String uri) =>
       addTorrentFromMagnetLink(uri);
 
   Future<void> handleIncomingSearch(
@@ -455,7 +881,7 @@ class TorrentService {
     return;
   }
 
-  Future<void> addTorrentFromMagnetLink(dynamic uri) async {
+  Future<MagnetAddOutcome> addTorrentFromMagnetLink(dynamic uri) async {
     final magnetUri = _ensureString(uri);
 
     final magnet = MagnetLink.parse(magnetUri);
@@ -491,10 +917,22 @@ class TorrentService {
     await TorrentsDao.instance.insertTorrent(torrent);
     if (SettingsService.instance.autoStartOnAdd) {
       await updateTorrent(torrent.copyWith(status: 'downloading'));
-      await TorrentEngineService.instance.startTorrent(infoHash);
-    } else {
-      await updateTorrent(torrent.copyWith(status: 'queued'));
+      try {
+        await TorrentEngineService.instance.startTorrent(infoHash);
+        _queueStateRefresh(force: true);
+        return MagnetAddOutcome.started;
+      } on TimeoutException {
+        await updateTorrentStatus(infoHash, 'pending_metadata');
+        _pendingMetadataRetryAfter[infoHash] =
+            DateTime.now().add(const Duration(seconds: 90));
+        _queueStateRefresh(force: true);
+        return MagnetAddOutcome.pendingMetadata;
+      }
     }
+
+    await updateTorrent(torrent.copyWith(status: 'queued'));
+    _queueStateRefresh(force: true);
+    return MagnetAddOutcome.queued;
   }
 
   static String createMagnetLink(
