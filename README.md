@@ -1,96 +1,76 @@
-# Vault The Spire
+Vault The Spire
 
-**Vault The Spire** is a privacy-centric, cross-platform Flutter application designed for robust P2P file management and secure local storage. By combining the power of BitTorrent with an encrypted vault and local AI analysis, it provides a sanctuary for your data—no accounts, no telemetry, and zero central servers.
+Vault The Spire is a privacy-first, cross-platform Flutter application dedicated to decentralized P2P file downloading. Combining a powerful BitTorrent engine with a built-in web browser, it provides a seamless, all-in-one environment for finding and managing your files—with no telemetry, no accounts, and zero central servers.
+Privacy-First Mission
 
------
+Vault The Spire is built on the simple idea that your download habits are your own business.
 
-## Privacy-First Mission
+    Zero Surveillance: No centralized tracking or hidden telemetry.
 
-Vault The Spire is built on the radical idea that your files and the way you interact with them should be entirely under your control.
+    Identity-Free: No mandatory accounts or third-party identity providers.
 
-  * **Zero Surveillance:** No centralized tracking or hidden telemetry.
-  * **Identity-Free:** No mandatory accounts or third-party identity providers.
-  * **Local-First AI:** Our AI features run locally via Ollama, ensuring your file queries never leave your machine.
-  * **Hardened Storage:** AES-256-GCM encryption for your local vault by default.
+    Local-First AI (Windows Only): Our AI features run locally via Ollama, ensuring your file queries never leave your machine.
 
------
+Key Features
+📂 Advanced Torrent Management
 
-## Key Features
+    Full Android Support: Fully functional, high-speed torrenting right on your mobile device.
 
-### 📂 Advanced Torrent Management
+    Cross-Platform Desktop: Native support for Windows, macOS, and Linux.
 
-  * **Full Android Support:** Experience fully functional, high-speed torrenting on mobile.
-  * **Cross-Platform Desktop:** Native support for Windows, macOS, and Linux.
-  * **Flexible Imports:** Drag-and-drop support for `.torrent` files and magnet links.
-  * **Real-Time Engine:** Powered by `aria2` JSON-RPC for genuine peer sessions and performance.
+    Flexible Imports: Drag-and-drop support for .torrent files, plus seamless Magnet link integration.
 
-### 🤖 Local AI Insight (Windows Only)
+    Integrated Web Browser: Surf the web and find what you need without ever leaving the app.
 
-  * **Ollama Integration:** Chat with your torrent library. Ask questions about your downloaded content or manage your files using local LLMs.
-  * **Private by Design:** Because the AI runs on your hardware, your chat history and file metadata remain 100% private.
+🤖 Local AI Insight (Windows Only)
 
-### 🔐 The Vault
+    Ollama Integration: Chat with your torrent library. Ask questions about your downloaded content or manage your files using local LLMs.
 
-  * **Encrypted Storage:** A secure local vault utilizing **SQLCipher** for per-item metadata and file security.
-  * **P2P Discovery:** Optional DHT-based file discovery for decentralized sharing without middle-men.
+    Private by Design: Because the AI runs entirely on your hardware, your chat history remains 100% private.
 
------
+Under the Hood
 
-## Under the Hood
+    Torrent Engine: aria2 backend via JSON-RPC for genuine peer sessions, DHT, and high-speed performance (with fallback simulation logic where unavailable).
 
-| Component | Technology |
-| :--- | :--- |
-| **Framework** | Flutter (Stable Channel) |
-| **Database** | `sqflite` with **SQLCipher** (AES-256-GCM) |
-| **Torrent Engine** | `aria2` backend with fallback simulation logic |
-| **Audio** | `audioplayers` + GStreamer for cross-platform playback |
-| **Local AI** | Ollama API (Windows specialized) |
-| **Architecture** | Docker-less, auth-less, and telemetry-free |
+    Framework: Built on the Flutter stable channel for responsive UI across all platforms.
 
------
+    Audio: audioplayers and GStreamer for cross-platform media playback.
 
-## Quickstart
+    Architecture: Docker-less, auth-less, and telemetry-free.
 
-### End-User Install (Recommended)
+Quickstart
+End-User Install (Recommended)
 
-1.  **Download:** Grab the latest package from [quizthespire.com](https://quizthespire.com/) (Windows MSI, macOS DMG, Linux AppImage, or Android APK).
-2.  **Launch:** Install and open the app.
-3.  **Config:** (Optional) Enable `Settings -> Launch on startup` to keep your seeds active.
+    Download the latest package from quizthespire.com (Windows zip or Android APK).
 
-### Developer Setup
+    Install and launch.
 
-**Requirements:**
+    Optional: Enable Settings -> Launch on startup to keep your seeds active.
 
-  * Flutter SDK & Dart SDK
-  * Platform-specific tools (C++ tools for Windows, Xcode for macOS, GTK/GStreamer for Linux)
+Developer Install
 
-<!-- end list -->
+Requirements:
 
-```bash
-# Fetch dependencies
+    Flutter SDK (stable channel)
+
+    Dart SDK
+
+    Platform tools for your OS (Windows C++ tools / Xcode / Linux GTK+GStreamer)
+
+Bash
+
 flutter pub get
-
-# Run quality checks
 flutter analyze --no-fatal-infos
 flutter test --coverage
+flutter run -d windows  # or -d android, -d macos, -d linux
 
-# Launch on your preferred platform
-flutter run -d windows  # or android, macos, linux
-```
+CI / GitHub Actions
 
------
+    ci.yml runs analysis + tests only.
 
-## CI / GitHub Actions
+    release.yml runs full cross-platform builds and includes required dependencies for Linux (GTK/GStreamer).
 
-  * **`ci.yml`**: Handles automated analysis and unit testing.
-  * **`release.yml`**: Manages full cross-platform builds, including specific Linux dependencies like GTK and GStreamer to ensure compatibility across distributions.
+Contributing & License
 
------
-
-## Contributing & License
-
-We welcome contributions to the Spire\! Please review our [CONTRIBUTING.md](https://www.google.com/search?q=CONTRIBUTING.md) for our workflow.
-
-**License:** Vault The Spire is proud to be open-source under the **GNU GPL 3.0**. See [LICENSE](https://www.google.com/search?q=LICENSE) for details.
-
-> **Note:** Keep your environment lean. Use `flutter pub outdated` regularly and refer to the internal `todo.md` for the current development backlog. For public bugs, please use GitHub Issues.
+Please see CONTRIBUTING.md for our project workflow.
+Vault The Spire is released under GNU GPL 3.0. See LICENSE for details.
