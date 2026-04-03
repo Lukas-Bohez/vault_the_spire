@@ -296,7 +296,7 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
                           LinearProgressIndicator(value: progress),
                           const SizedBox(height: 4),
                           Text(
-                            '${torrentState.statusMessage} • ${(progress * 100).toStringAsFixed(1)}% • ${torrentState.peers} peers • $speedText',
+                            '${torrentState.statusLabel} • ${(progress * 100).toStringAsFixed(1)}% • ${torrentState.peers} peers • $speedText',
                           ),
                         ],
                       ),

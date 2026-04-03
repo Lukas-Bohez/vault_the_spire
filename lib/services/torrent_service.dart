@@ -179,10 +179,11 @@ class TorrentService {
         final diskSnapshot = await _getDiskSnapshot(torrent, force: force);
         final runtime = _runtimeByTorrentId[torrent.id];
 
-        var downloaded = runtime?.downloaded ?? torrent.bytesDown;
-        if (diskSnapshot.bytesOnDisk > downloaded) {
-          downloaded = diskSnapshot.bytesOnDisk;
-        }
+        var downloaded = [
+          runtime?.downloaded ?? 0,
+          torrent.bytesDown,
+          diskSnapshot.bytesOnDisk,
+        ].reduce(math.max);
 
         final totalSize = torrent.totalSize ?? 0;
         final runtimeComplete = runtime != null &&
