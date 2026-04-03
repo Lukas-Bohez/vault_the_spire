@@ -1,12 +1,17 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 
 class GuideScreen extends StatelessWidget {
   const GuideScreen({super.key});
+
+  bool get _isAndroidOnlyBuild =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
+    final android = _isAndroidOnlyBuild;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Guide')),
@@ -31,7 +36,9 @@ class GuideScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'TorrentSpire Release Guide',
+                  android
+                      ? 'Android Torrent Guide'
+                      : 'Desktop TorrentSpire Guide',
                   style: tt.titleLarge?.copyWith(
                     fontWeight: FontWeight.w700,
                     color: cs.onPrimaryContainer,
@@ -39,7 +46,9 @@ class GuideScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'From first magnet to secure seeding, this flow covers the fastest way to operate safely and avoid common pitfalls.',
+                  android
+                      ? 'This guide is tailored for Android usage only: adding torrents, tracking progress, managing storage, and avoiding common mobile issues.'
+                      : 'This guide is tailored for desktop usage: search workflows, AI-assisted checks, stable long-running sessions, and safer seeding.',
                   style: tt.bodyMedium?.copyWith(
                     color: cs.onPrimaryContainer,
                   ),
@@ -48,10 +57,23 @@ class GuideScreen extends StatelessWidget {
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
-                  children: const [
-                    _GuideChip(label: 'Desktop + Android ready', icon: Icons.devices),
-                    _GuideChip(label: 'AI-assisted decisions', icon: Icons.smart_toy_outlined),
-                    _GuideChip(label: 'Safer download workflow', icon: Icons.health_and_safety_outlined),
+                  children: [
+                    _GuideChip(
+                      label: android ? 'Android focused' : 'Desktop focused',
+                      icon: Icons.devices,
+                    ),
+                    _GuideChip(
+                      label: android
+                          ? 'Storage-safe workflow'
+                          : 'AI-assisted decisions',
+                      icon: android
+                          ? Icons.folder_open_outlined
+                          : Icons.smart_toy_outlined,
+                    ),
+                    const _GuideChip(
+                      label: 'Safer download workflow',
+                      icon: Icons.health_and_safety_outlined,
+                    ),
                   ],
                 ),
               ],
@@ -61,44 +83,71 @@ class GuideScreen extends StatelessWidget {
           _GuideCard(
             icon: Icons.flag_outlined,
             title: 'Quick Start Flow',
-            bullets: const [
-              'Open TorrentSpire AI, search or paste a magnet link, then add it.',
-              'Confirm destination folder in Settings before long downloads.',
-              'Track progress in Torrents and use Open folder to inspect output.',
-              'Once complete, leave seeding active to contribute back to swarm health.',
-            ],
+            bullets: android
+                ? const [
+                    'Open Torrents and add a .torrent file or magnet link.',
+                    'Set your default download folder in Settings before long downloads.',
+                    'Watch status in Torrents and use the row actions menu for play/pause/remove.',
+                    'Once complete, keep seeding if you want to share back to the swarm.',
+                  ]
+                : const [
+                    'Open TorrentSpire AI and search or paste a magnet link.',
+                    'Confirm destination folder in Settings before long downloads.',
+                    'Track progress in Torrents and use Open folder to inspect output.',
+                    'Once complete, leave seeding active to contribute back to swarm health.',
+                  ],
           ),
           const SizedBox(height: 12),
           _GuideCard(
             icon: Icons.shield_outlined,
             title: 'Trust and Safety Signals',
-            bullets: const [
-              'Prefer strong seed counts and balanced swarm ratios over single-source listings.',
-              'Treat unknown uploaders and extremely old listings as higher risk.',
-              'Use AI context cards for second-pass sanity checks before opening files.',
-              'Always scan executables and archives with trusted security tools.',
-            ],
+            bullets: android
+                ? const [
+                    'Prefer torrents with stable seed counts rather than single-source links.',
+                    'Treat unknown uploaders and very old listings as higher risk.',
+                    'Avoid installing APKs from untrusted sources.',
+                    'Scan downloaded archives before opening on any device.',
+                  ]
+                : const [
+                    'Prefer strong seed counts and balanced swarm ratios over single-source listings.',
+                    'Treat unknown uploaders and extremely old listings as higher risk.',
+                    'Use AI context cards for second-pass sanity checks before opening files.',
+                    'Always scan executables and archives with trusted security tools.',
+                  ],
           ),
           const SizedBox(height: 12),
           _GuideCard(
-            icon: Icons.android,
-            title: 'Android and Mobile Usage',
-            bullets: const [
-              'Default local Ollama URL on Android emulator is 10.0.2.2.',
-              'Use app-managed storage paths for better compatibility and visibility.',
-              'Keep battery optimization disabled for long-running torrent sessions.',
-              'Use compact actions menu on small screens for folder/play/copy/delete tools.',
-            ],
+            icon: android ? Icons.android : Icons.desktop_windows_outlined,
+            title: android ? 'Android Usage' : 'Desktop Workflow',
+            bullets: android
+                ? const [
+                    'Use app-managed storage paths for best Android compatibility.',
+                    'If folder opening is restricted by Android, use the shown saved path in Files app.',
+                    'Disable battery optimization for long-running downloads when possible.',
+                    'Use the compact row actions menu on smaller screens.',
+                  ]
+                : const [
+                    'Use browser and AI tabs for triage before starting large downloads.',
+                    'Keep long-running sessions on stable network/power for best seeding uptime.',
+                    'Use Open Folder directly from torrent row to verify output quickly.',
+                    'Close stale duplicate app instances before rebuilding/rerunning on Windows.',
+                  ],
           ),
           const SizedBox(height: 12),
           _GuideCard(
             icon: Icons.rocket_launch_outlined,
             title: 'Performance and Reliability',
-            bullets: const [
-              'Keep at least one reliable tracker and allow enough time for peer discovery.',
-              'If metadata resolution stalls, retry with a healthy magnet and known trackers.',
-              'For stable desktop sessions, avoid running multiple heavy browser tabs in parallel.',
-            ],
+            bullets: android
+                ? const [
+                    'Metadata fetching can be slower on mobile networks; allow time for peer discovery.',
+                    'If metadata stalls repeatedly, remove and re-add with a healthier magnet/trackers.',
+                    'Avoid aggressive battery/data saver modes during active downloads.',
+                  ]
+                : const [
+                    'Keep at least one reliable tracker and allow enough time for peer discovery.',
+                    'If metadata resolution stalls, retry with a healthy magnet and known trackers.',
+                    'For stable desktop sessions, avoid running multiple heavy browser tabs in parallel.',
+                  ],
           ),
           const SizedBox(height: 16),
           Container(
@@ -109,7 +158,9 @@ class GuideScreen extends StatelessWidget {
               border: Border.all(color: cs.outlineVariant),
             ),
             child: Text(
-              'Pro tip: If a torrent reaches 100% but files are hard to locate, open its folder directly from the torrent row and verify destination settings before re-adding.',
+              android
+                  ? 'Pro tip: If progress looks delayed after app startup, pull-to-refresh once. If a removed torrent still appears briefly, wait a moment for state sync to complete.'
+                  : 'Pro tip: If a torrent reaches 100% but files are hard to locate, open its folder directly from the torrent row and verify destination settings before re-adding.',
               style: Theme.of(context).textTheme.bodyMedium,
             ),
           ),
