@@ -101,14 +101,20 @@ class TorrentService {
     final torrents = await allTorrents();
     final active = torrents.where((torrent) {
       final status = torrent.status?.toLowerCase() ?? '';
-      return status == 'downloading' || status == 'seeding';
+      // Only resume downloading/seeding torrents, not error states
+      return (status == 'downloading' || status == 'seeding') &&
+             !status.contains('error');
     });
 
     for (final torrent in active) {
       try {
+        // Try to resume through the engine service
         await TorrentEngineService.instance.startTorrent(torrent.id);
-      } catch (e) {
+      } catch (e, st) {
         debugPrint('Failed to resume torrent ${torrent.id}: $e');
+        debugPrint(st.toString());
+        // Update status to error so we don't keep retrying forever
+        await updateTorrentStatus(torrent.id, 'error_resume_failed');
       }
     }
   }

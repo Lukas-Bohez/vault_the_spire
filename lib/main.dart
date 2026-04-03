@@ -8,6 +8,8 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:dtorrent_task_v2/dtorrent_task_v2.dart' as dt;
+import 'package:path_provider/path_provider.dart';
 import 'package:vault_the_spire/db/sqlcipher_bootstrap.dart';
 import 'package:vault_the_spire/platform/desktop_window.dart';
 import 'package:vault_the_spire/platform/hotkeys.dart';
@@ -43,6 +45,32 @@ Future<bool> _requestAndroidPermissions() async {
   return notificationGranted;
 }
 
+Future<void> _initializeMetadataCache() async {
+  try {
+    // Set up persistent metadata cache directory for torrent metadata downloads
+    if (!kIsWeb) {
+      Directory? appCacheDir;
+      if (Platform.isAndroid || Platform.isIOS) {
+        appCacheDir = await getApplicationCacheDirectory();
+      } else if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+        appCacheDir = await getApplicationSupportDirectory();
+      }
+      
+      if (appCacheDir != null) {
+        final metadataCacheDir = Directory('${appCacheDir.path}/torrent_metadata_cache');
+        if (!await metadataCacheDir.exists()) {
+          await metadataCacheDir.create(recursive: true);
+        }
+        dt.MetadataDownloader.setCacheDirectory(metadataCacheDir.path);
+        debugPrint('Metadata cache initialized: ${metadataCacheDir.path}');
+      }
+    }
+  } catch (e, st) {
+    debugPrint('Failed to initialize metadata cache: $e');
+    debugPrint(st.toString());
+  }
+}
+
 Future<void> main() async {
   PlatformDispatcher.instance.onError = (error, stack) {
     debugPrint('UNCAUGHT PLATFORM ERROR: $error');
@@ -71,6 +99,7 @@ Future<void> main() async {
     () async {
       WidgetsFlutterBinding.ensureInitialized();
       await setupServiceLocator();
+      await _initializeMetadataCache();
       await initSqlCipherOnAndroid();
       await _requestAndroidPermissions();
 

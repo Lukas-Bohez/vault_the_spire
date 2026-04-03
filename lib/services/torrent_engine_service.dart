@@ -369,6 +369,15 @@ class TorrentEngineService {
     return result;
   }
 
+  String _bytesToHex(Uint8List bytes) {
+    StringBuffer buf = StringBuffer();
+    for (int i = 0; i < bytes.length; i++) {
+      final b = bytes[i];
+      buf.write((b < 16 ? '0' : '') + b.toRadixString(16));
+    }
+    return buf.toString();
+  }
+
   bool _looksLikeIPv4(String address) {
     final parts = address.split('.');
     if (parts.length != 4) return false;
@@ -533,7 +542,9 @@ class TorrentEngineService {
   }
 
   Future<void> startTorrent(String torrentId, {String? destinationPath}) async {
+    // If already running, do nothing
     if (isRunning(torrentId)) return;
+    
     final torrent = await TorrentService.instance.getTorrentById(torrentId);
     if (torrent == null) throw StateError('Torrent not found: $torrentId');
 
@@ -544,6 +555,80 @@ class TorrentEngineService {
     } else {
       throw StateError('Torrent has no source');
     }
+  }
+
+  /// Attach DHT event listeners to a task BEFORE task.start() is called
+  /// This ensures DHT events that fire during startup are captured
+  void _attachDhtListeners(String torrentId, dt.TorrentTask task) {
+    final dht = task.dht;
+    if (dht == null) return;
+
+    dht.createListener()?..on<NewPeerEvent>((event) {
+      _logDhtThrottled(task);
+      try {
+        if (Platform.isAndroid) {
+          task.addPeer(event.address, dt.PeerSource.dht);
+        } else {
+          task.addPeer(event.address, dt.PeerSource.dht, type: dt.PeerType.TCP);
+        }
+      } catch (_) {
+        try {
+          task.addPeer(event.address, dt.PeerSource.dht);
+        } catch (_) {
+          _logPeerEventThrottled('dht peer add failed', task);
+        }
+      }
+    });
+
+    dht.krpc?.createListener()?..on<AnnouncePeerResponseEvent>((event) {
+      _logDhtThrottled(task);
+
+      // Try adding direct announce peer from event.address:event.port
+      final address = event.address;
+      final port = event.port;
+      try {
+        final caddr = CompactAddress(address, port);
+        task.addPeer(caddr, dt.PeerSource.dht);
+        _logPeerEventThrottled('peer update', task);
+      } catch (_) {
+        _logPeerEventThrottled('dht direct peer add failed', task);
+      }
+
+      final data = event.data;
+      if (data is Map) {
+        final values = data['values'];
+        final peersField = data['peers'] ?? values;
+        if (peersField is Iterable) {
+          for (final peer in peersField) {
+            try {
+              CompactAddress? caddr;
+              if (peer is CompactAddress) {
+                caddr = peer;
+              } else if (peer is List<int>) {
+                if (peer.length == 6) {
+                  caddr = CompactAddress.parseIPv4Address(peer);
+                } else if (peer.length == 18) {
+                  caddr = CompactAddress.parseIPv6Address(peer);
+                }
+              } else if (peer is String) {
+                final bytes = peer.codeUnits;
+                if (bytes.length == 6) {
+                  caddr = CompactAddress.parseIPv4Address(bytes);
+                } else if (bytes.length == 18) {
+                  caddr = CompactAddress.parseIPv6Address(bytes);
+                }
+              }
+              if (caddr != null) {
+                task.addPeer(caddr, dt.PeerSource.dht);
+                _logPeerEventThrottled('peer update', task);
+              }
+            } catch (_) {
+              _logPeerEventThrottled('dht peer add failed', task);
+            }
+          }
+        }
+      }
+    });
   }
 
   Future<void> _startFromFile(
@@ -576,12 +661,31 @@ class TorrentEngineService {
         .toList();
     _startHealthCheckTimer(torrent.id, task);
 
+    // Attach DHT listeners BEFORE starting task to capture all events
+    _attachDhtListeners(torrent.id, task);
+
     // Task configuration (port/NAT) already applied in _configureTask.
     final startup = await task.start();
     final startupUploaded = startup['uploaded'] as int?;
     if (startupUploaded != null && startupUploaded >= 0) {
       _uploadedBytesByTorrent[torrent.id] = startupUploaded;
     }
+
+    // Ensure tasks are running
+    try {
+      (task as dynamic).resume();
+    } catch (_) {}
+    try {
+      (task as dynamic).unpause();
+    } catch (_) {}
+    try {
+      (task as dynamic).download();
+    } catch (_) {}
+
+    _progressTimers[torrent.id]?.cancel();
+    _progressTimers[torrent.id] = Timer.periodic(const Duration(seconds: 5), (_) {
+      _logProgressThrottled(torrent.id, task);
+    });
 
     // Use all announce URLs and fallback public trackers
     final seenUrls = <String>{};
@@ -655,36 +759,81 @@ class TorrentEngineService {
     final magnet = dt.MagnetParser.parse(effectiveMagnet);
     if (magnet == null) throw FormatException('Invalid magnet link');
 
-    // Step 1: fetch metadata from the swarm.
-    final downloader = dt.MetadataDownloader.fromMagnet(effectiveMagnet);
-    final completer = Completer<dt.TorrentModel>();
-
-    downloader.createListener()
-      ..on<dt.MetaDataDownloadComplete>((event) async {
-        if (completer.isCompleted) return;
+    // Step 1: fetch metadata from the swarm with caching and retry logic.
+    dt.TorrentModel? dtModel;
+    dt.MetadataDownloader? downloader;
+    String errorMessage = '';
+    
+    // First, try to load from cache (fastest path for resuming torrents)
+    try {
+      final infoHashString = _bytesToHex(Uint8List.fromList(magnet.infoHash));
+      final cachedMetadata = await dt.MetadataDownloader.loadFromCache(infoHashString);
+      if (cachedMetadata != null) {
+        _log(torrent.id, 'Using cached metadata from previous download');
+        final msg = decode(cachedMetadata);
+        dtModel = await _parseTorrentModelFromRawBencode(msg);
+      }
+    } catch (e) {
+      _log(torrent.id, 'Cache lookup failed (this is OK): $e');
+    }
+    
+    // If cache miss, try to download with retry logic
+    if (dtModel == null) {
+      for (int attempt = 1; attempt <= 2; attempt++) {
         try {
-          final Uint8List rawData = Uint8List.fromList(event.data);
-          final msg = decode(rawData);
+          downloader = dt.MetadataDownloader.fromMagnet(effectiveMagnet);
+          final completer = Completer<dt.TorrentModel>();
 
-          final model = await _parseTorrentModelFromRawBencode(msg);
-          completer.complete(model);
+          downloader.createListener()
+            ..on<dt.MetaDataDownloadComplete>((event) async {
+              if (completer.isCompleted) return;
+              try {
+                final Uint8List rawData = Uint8List.fromList(event.data);
+                final msg = decode(rawData);
+
+                final model = await _parseTorrentModelFromRawBencode(msg);
+                completer.complete(model);
+              } catch (e) {
+                completer.completeError(e);
+              }
+            })
+            ..on<dt.MetaDataDownloadFailed>((event) {
+              if (!completer.isCompleted) {
+                completer.completeError(StateError(event.error));
+              }
+            });
+
+          downloader.startDownload();
+
+          // First attempt: 3 minutes timeout, retry attempt: 90 seconds
+          final timeout = attempt == 1 
+            ? const Duration(minutes: 3)
+            : const Duration(seconds: 90);
+            
+          dtModel = await completer.future.timeout(
+            timeout,
+            onTimeout: () => throw TimeoutException('Metadata download timed out'),
+          );
+          
+          // Success - break out of retry loop
+          _log(torrent.id, 'Metadata downloaded successfully on attempt $attempt');
+          break;
         } catch (e) {
-          completer.completeError(e);
+          errorMessage = e.toString();
+          _log(torrent.id, 'Metadata download attempt $attempt failed: $e');
+          
+          if (attempt < 2) {
+            // Wait before retrying
+            await Future.delayed(const Duration(seconds: 2));
+          }
         }
-      })
-      ..on<dt.MetaDataDownloadFailed>((event) {
-        if (!completer.isCompleted) {
-          completer.completeError(StateError(event.error));
-        }
-      });
+      }
+    }
 
-    downloader.startDownload();
-
-    var dtModel = await completer.future.timeout(
-      const Duration(minutes: 3),
-      onTimeout: () =>
-          throw TimeoutException('Metadata timed out for ${torrent.id}'),
-    );
+    if (dtModel == null) {
+      // Metadata download failed after all attempts - this is a hard error
+      throw TimeoutException('Failed to fetch metadata for ${torrent.id}: $errorMessage');
+    }
 
     final resolvedName = dtModel.name.trim();
     final updatedName =
@@ -759,6 +908,9 @@ class TorrentEngineService {
     ];
     _startHealthCheckTimer(torrent.id, task);
 
+    // Attach DHT listeners BEFORE starting task to capture all events
+    _attachDhtListeners(torrent.id, task);
+
     // Start task in background without blocking UI
     try {
       final startup = await task.start();
@@ -771,6 +923,7 @@ class TorrentEngineService {
       rethrow;
     }
 
+    // Ensure tasks are running
     try {
       (task as dynamic).resume();
     } catch (_) {}
@@ -786,86 +939,18 @@ class TorrentEngineService {
       _logProgressThrottled(torrent.id, task);
     });
 
-    // Set up DHT event listeners
-    final dht = task.dht;
-    if (dht != null) {
-      dht.createListener()?..on<NewPeerEvent>((event) {
-        _logDhtThrottled(task);
-        try {
-          if (Platform.isAndroid) {
-            task.addPeer(event.address, dt.PeerSource.dht);
-          } else {
-            task.addPeer(event.address, dt.PeerSource.dht, type: dt.PeerType.TCP);
-          }
-        } catch (_) {
-          try {
-            task.addPeer(event.address, dt.PeerSource.dht);
-          } catch (_) {
-            _logPeerEventThrottled('dht peer add failed', task);
-          }
-        }
-      });
-      dht.krpc?.createListener()?..on<AnnouncePeerResponseEvent>((event) {
-        _logDhtThrottled(task);
-
-        // Try adding direct announce peer from event.address:event.port
-        final address = event.address;
-        final port = event.port;
-        try {
-          final caddr = CompactAddress(address, port);
-          task.addPeer(caddr, dt.PeerSource.dht);
-          _logPeerEventThrottled('peer update', task);
-        } catch (_) {
-          _logPeerEventThrottled('dht direct peer add failed', task);
-        }
-
-        final data = event.data;
-        if (data is Map) {
-          final values = data['values'];
-          final peersField = data['peers'] ?? values;
-          if (peersField is Iterable) {
-            for (final peer in peersField) {
-              try {
-                CompactAddress? caddr;
-                if (peer is CompactAddress) {
-                  caddr = peer;
-                } else if (peer is List<int>) {
-                  if (peer.length == 6) {
-                    caddr = CompactAddress.parseIPv4Address(peer);
-                  } else if (peer.length == 18) {
-                    caddr = CompactAddress.parseIPv6Address(peer);
-                  }
-                } else if (peer is String) {
-                  final bytes = peer.codeUnits;
-                  if (bytes.length == 6) {
-                    caddr = CompactAddress.parseIPv4Address(bytes);
-                  } else if (bytes.length == 18) {
-                    caddr = CompactAddress.parseIPv6Address(bytes);
-                  }
-                }
-                if (caddr != null) {
-                  task.addPeer(caddr, dt.PeerSource.dht);
-                  _logPeerEventThrottled('peer update', task);
-                }
-              } catch (_) {
-                _logPeerEventThrottled('dht peer add failed', task);
-              }
-            }
-          }
-        }
-      });
-    }
-
     // Announce to trackers in background without blocking UI
     _announceTrackers(torrent.id, task);
 
-    // Hand off peers from metadata fetch so download starts immediately.
-    for (final peer in downloader.activePeers) {
-      try {
-        task.addPeer(peer.address, dt.PeerSource.manual, type: peer.type);
-      } catch (e, st) {
-        debugPrint('Peer add error: ${peer.address} $e');
-        debugPrint(st.toString());
+    // Hand off peers from metadata fetch so download starts immediately (if downloader exists).
+    if (downloader != null) {
+      for (final peer in downloader.activePeers) {
+        try {
+          task.addPeer(peer.address, dt.PeerSource.manual, type: peer.type);
+        } catch (e, st) {
+          debugPrint('Peer add error: ${peer.address} $e');
+          debugPrint(st.toString());
+        }
       }
     }
 
@@ -1365,18 +1450,72 @@ class TorrentEngineService {
       );
     }
 
-    final firstTask = _tasks.values.first;
-    final dhtNodes = 0;
+    // Aggregate stats across all tasks
+    int totalDownloaded = 0;
+    int totalUploaded = 0;
+    double totalProgress = 0.0;
+    int totalPeers = 0;
+    int totalDhtNodes = 0;
+    int totalTrackers = 0;
+    double totalDownloadSpeed = 0.0;
+    double totalUploadSpeed = 0.0;
+    int taskCount = _tasks.length;
+
+    String title = '';
+    String state = 'downloading';
+
+    for (final entry in _tasks.entries) {
+      final torrentId = entry.key;
+      final task = entry.value;
+      final downloaded = task.downloaded ?? 0;
+      final uploaded = _uploadedBytesByTorrent[torrentId] ?? 0;
+      final progress = task.progress;
+      final peers = task.connectedPeersNumber;
+      final dlSpeed = task.currentDownloadSpeed * 1000;
+      final ulSpeed = task.uploadSpeed * 1000;
+
+      totalDownloaded += downloaded;
+      totalUploaded += uploaded;
+      totalProgress += progress;
+      totalPeers += peers;
+      totalDownloadSpeed += dlSpeed;
+      totalUploadSpeed += ulSpeed;
+
+      try {
+        final dynamic t = task;
+        final dhtNodes = (t.dhtNodeCount as int?) ?? 0;
+        totalDhtNodes += dhtNodes;
+      } catch (_) {
+        // ignore if not available
+      }
+
+      try {
+        final dynamic t = task;
+        final trackers = (t.trackerPeersNumber as int?) ?? 0;
+        totalTrackers += trackers;
+      } catch (_) {
+        // ignore if not available
+      }
+
+      // Use first task name for title
+      if (title.isEmpty) {
+        title = task.metaInfo.name;
+      }
+    }
+
+    final avgProgress = taskCount > 0 ? totalProgress / taskCount : 0.0;
+
     return TorrentEngineStatus(
-      torrentId: firstTask.metaInfo.name,
-      downloaded: firstTask.downloaded ?? 0,
-      uploaded: 0,
-      progress: firstTask.progress,
-      state: 'downloading',
-      peers: firstTask.connectedPeersNumber,
-      dhtNodes: dhtNodes,
-      downloadSpeed: firstTask.currentDownloadSpeed * 1000,
-      uploadSpeed: firstTask.uploadSpeed * 1000,
+      torrentId: title,
+      downloaded: totalDownloaded,
+      uploaded: totalUploaded,
+      progress: avgProgress,
+      state: state,
+      peers: totalPeers,
+      dhtNodes: totalDhtNodes,
+      trackers: totalTrackers,
+      downloadSpeed: totalDownloadSpeed,
+      uploadSpeed: totalUploadSpeed,
     );
   }
 
