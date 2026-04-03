@@ -39,6 +39,48 @@ class _AboutScreenState extends State<AboutScreen> {
   bool _savingNetwork = false;
   ThemeMode _themeMode = ThemeMode.system;
 
+  String? _androidDocumentsUriForPath(String directoryPath) {
+    final normalized = directoryPath.replaceAll('\\', '/');
+    const prefixes = <String>['/storage/emulated/0/', '/sdcard/'];
+    for (final prefix in prefixes) {
+      if (normalized.startsWith(prefix)) {
+        final relative = normalized.substring(prefix.length);
+        final encodedDocId = Uri.encodeComponent('primary:$relative');
+        return 'content://com.android.externalstorage.documents/document/$encodedDocId';
+      }
+    }
+    return null;
+  }
+
+  Future<bool> _tryOpenFolderOnAndroid(String directoryPath) async {
+    final docUri = _androidDocumentsUriForPath(directoryPath);
+    if (docUri != null) {
+      try {
+        if (await launchUrl(
+          Uri.parse(docUri),
+          mode: LaunchMode.externalApplication,
+        )) {
+          return true;
+        }
+      } catch (_) {
+        // Fall through to file URI fallback.
+      }
+    }
+
+    try {
+      if (await launchUrl(
+        Uri.file(directoryPath),
+        mode: LaunchMode.externalApplication,
+      )) {
+        return true;
+      }
+    } catch (_) {
+      // Keep fallback snackbar path below.
+    }
+
+    return false;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -207,12 +249,13 @@ class _AboutScreenState extends State<AboutScreen> {
     }
 
     if (Platform.isAndroid) {
+      final opened = await _tryOpenFolderOnAndroid(directoryPath);
+      if (opened) return;
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Files saved to: $directoryPath'),
-          duration: const Duration(seconds: 5),
-          action: SnackBarAction(label: 'OK', onPressed: () {}),
+          content: Text('Unable to open folder automatically. Files saved to: $directoryPath'),
+          duration: const Duration(seconds: 6),
         ),
       );
       return;
