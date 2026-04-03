@@ -1111,30 +1111,39 @@ class _TorrentTask
   Future<void> processPieceAccepted(int index) async {
     var piece = _pieceManager?[index];
     if (piece == null || _fileManager == null || _pieceManager == null) return;
+    final fileManager = _fileManager;
+    if (fileManager == null) return;
 
     var block = piece.flush();
     if (block == null) return;
 
-    if (_fileManager!.localHave(index)) return;
-    var written = await _fileManager!.writeFile(
+    if (fileManager.localHave(index)) return;
+    var written = await fileManager.writeFile(
       index,
       0,
       block,
     );
 
+    // Task may be disposed while awaiting file writes.
+    if (_fileManager == null || _pieceManager == null) return;
+
     if (!written) return;
     _pieceManager!.processPieceWriteComplete(index);
-    await _fileManager!.updateBitfield(index);
+    final updateManager = _fileManager;
+    if (updateManager == null) return;
+    await updateManager.updateBitfield(index);
 
     // In superseeding mode, send HAVE only to specific peers for specific pieces
-    if (_superseeder != null && _fileManager!.isAllComplete) {
+    final completionManager = _fileManager;
+    if (_superseeder != null && completionManager != null && completionManager.isAllComplete) {
       _sendHaveSuperseeding(index);
     } else {
       _peersManager?.sendHaveToAll(index);
     }
     _flushIndicesBuffer.add(index);
     await _flushFiles(_flushIndicesBuffer);
-    if (_fileManager!.isAllComplete) {
+    final finalManager = _fileManager;
+    if (finalManager != null && finalManager.isAllComplete) {
       events.emit(AllComplete());
       _whenTaskDownloadComplete();
 

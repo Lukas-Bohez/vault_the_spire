@@ -463,6 +463,13 @@ class TorrentEngineService {
       timer,
     ) async {
       try {
+        if (_isTaskComplete(task)) {
+          _peerlessCounters[torrentId] = 0;
+          _zeroProgressCounters[torrentId] = 0;
+          _stallRecoveryCycles[torrentId] = 0;
+          return;
+        }
+
         final peers = task.connectedPeersNumber;
         if (peers == 0) {
           try {
@@ -548,7 +555,10 @@ class TorrentEngineService {
     final torrent = await TorrentService.instance.getTorrentById(torrentId);
     if (torrent == null) throw StateError('Torrent not found: $torrentId');
 
-    if (torrent.type == 'torrent_file' && torrent.filePath != null) {
+    final hasTorrentFileSource =
+        torrent.type == 'torrent_file' && _isTorrentFilePath(torrent.filePath);
+
+    if (hasTorrentFileSource) {
       await _startFromFile(torrent, destinationPath: destinationPath);
     } else if (torrent.magnetLink != null) {
       await _startFromMagnet(torrent, destinationPath: destinationPath);
@@ -636,8 +646,12 @@ class TorrentEngineService {
     String? destinationPath,
   }) async {
     final dtModel = await dt.TorrentModel.parse(torrent.filePath!);
+    final preferredDownloadPath =
+        destinationPath?.trim().isNotEmpty == true
+            ? destinationPath
+            : _storedDownloadDirForResume(torrent);
     final saveDir = await _resolveWritableDownloadDir(
-      destinationPath?.trim().isNotEmpty == true ? destinationPath : null,
+      preferredDownloadPath,
     );
 
     final totalBytes = dtModel.files.fold<int>(0, (s, f) => s + f.length);
@@ -678,9 +692,7 @@ class TorrentEngineService {
     try {
       (task as dynamic).unpause();
     } catch (_) {}
-    try {
-      (task as dynamic).download();
-    } catch (_) {}
+    _ensureTaskRunningMode(task);
 
     _progressTimers[torrent.id]?.cancel();
     _progressTimers[torrent.id] = Timer.periodic(const Duration(seconds: 5), (_) {
@@ -745,6 +757,9 @@ class TorrentEngineService {
     );
     _startPollTimer(torrent.id, task);
     _startScrapeTimer(torrent.id, task);
+
+    final status = _isTaskComplete(task) ? 'seeding' : 'downloading';
+    await TorrentService.instance.updateTorrentStatus(torrent.id, status);
   }
 
   Future<void> _startFromMagnet(
@@ -865,9 +880,11 @@ class TorrentEngineService {
       _log(torrent.id, 'Adjusted torrent model info-hash to magnet xt hash.');
     }
 
-    final saveDir = await _resolveWritableDownloadDir(
-      destinationPath?.trim().isNotEmpty == true ? destinationPath : null,
-    );
+    final preferredDownloadPath =
+        destinationPath?.trim().isNotEmpty == true
+            ? destinationPath
+            : _storedDownloadDirForResume(torrent);
+    final saveDir = await _resolveWritableDownloadDir(preferredDownloadPath);
 
     final totalBytes = dtModel.files.fold<int>(0, (s, f) => s + f.length);
     if (totalBytes > 0) {
@@ -930,9 +947,7 @@ class TorrentEngineService {
     try {
       (task as dynamic).unpause();
     } catch (_) {}
-    try {
-      (task as dynamic).download();
-    } catch (_) {}
+    _ensureTaskRunningMode(task);
 
     _progressTimers[torrent.id]?.cancel();
     _progressTimers[torrent.id] = Timer.periodic(const Duration(seconds: 5), (_) {
@@ -964,10 +979,8 @@ class TorrentEngineService {
       debugPrint(st.toString());
     }
 
-    await TorrentService.instance.updateTorrentStatus(
-      torrent.id,
-      'downloading',
-    );
+    final status = _isTaskComplete(task) ? 'seeding' : 'downloading';
+    await TorrentService.instance.updateTorrentStatus(torrent.id, status);
     _startPollTimer(torrent.id, task);
     _startScrapeTimer(torrent.id, task);
   }
@@ -1419,8 +1432,51 @@ class TorrentEngineService {
   }
 
   void resumeTorrent(String torrentId) {
-    _tasks[torrentId]?.resume();
-    TorrentService.instance.updateTorrentStatus(torrentId, 'downloading');
+    final task = _tasks[torrentId];
+    task?.resume();
+    final status = task != null && _isTaskComplete(task) ? 'seeding' : 'downloading';
+    TorrentService.instance.updateTorrentStatus(torrentId, status);
+  }
+
+  bool _isTorrentFilePath(String? path) {
+    if (path == null) return false;
+    final normalized = path.trim().toLowerCase();
+    return normalized.isNotEmpty && normalized.endsWith('.torrent');
+  }
+
+  String? _storedDownloadDirForResume(TorrentModel torrent) {
+    final path = torrent.filePath?.trim();
+    if (path == null || path.isEmpty) return null;
+    if (_isTorrentFilePath(path)) return null;
+    return path;
+  }
+
+  bool _isTaskComplete(dt.TorrentTask task) {
+    try {
+      final dynamicTask = task as dynamic;
+      final isAllComplete = dynamicTask.fileManager?.isAllComplete as bool?;
+      if (isAllComplete == true) return true;
+    } catch (_) {
+      // Fallback to downloaded/progress checks below.
+    }
+
+    final totalLength = task.metaInfo.length ?? task.metaInfo.totalSize;
+    final downloaded = task.downloaded ?? 0;
+    if (totalLength > 0 && downloaded >= totalLength) {
+      return true;
+    }
+    return task.progress >= 0.999;
+  }
+
+  void _ensureTaskRunningMode(dt.TorrentTask task) {
+    if (_isTaskComplete(task)) {
+      return;
+    }
+    try {
+      (task as dynamic).download();
+    } catch (_) {
+      // Older API surfaces may not expose download().
+    }
   }
 
   void pauseAll() {
