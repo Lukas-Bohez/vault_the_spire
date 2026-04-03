@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
@@ -85,15 +86,6 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
     });
     _torrentStatesSubscription = TorrentService.instance.torrentStatesStream
         .listen((states) {
-          final previousComplete = _torrentStates
-              .where((t) => t.isComplete)
-              .map((t) => t.id)
-              .toSet();
-          for (final state in states) {
-            if (state.isComplete && !previousComplete.contains(state.id)) {
-              _triggerAutoEvent(_triggers.onDownloadCompleted(state.name));
-            }
-          }
           _torrentStates = states;
           _torrents = states.map((s) => s.model).toList();
           _contextService.updateTorrents(_torrents);
@@ -1095,6 +1087,19 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
                                   overflow: TextOverflow.ellipsis,
                                   style: const TextStyle(fontSize: 11),
                                 ),
+                                onTap: Platform.isWindows
+                                    ? () {
+                                        // Allow re-triggering on each explicit tap
+                                        _triggeredEventKeys.remove(
+                                          'download_completed:${item.model.name}',
+                                        );
+                                        _triggerAutoEvent(
+                                          _triggers.onDownloadCompleted(
+                                            item.model.name,
+                                          ),
+                                        );
+                                      }
+                                    : null,
                               ),
                           ],
                         ),
