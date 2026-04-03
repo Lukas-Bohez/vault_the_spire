@@ -102,6 +102,7 @@ class _BrowserScreenState extends State<BrowserScreen>
       ..setNavigationDelegate(
         NavigationDelegate(
           onProgress: (progress) {
+            if (!mounted) return;
             setState(() {
               _progress = progress / 100.0;
               _isLoading = progress < 100;
@@ -109,6 +110,7 @@ class _BrowserScreenState extends State<BrowserScreen>
           },
           onPageStarted: (url) {
             _startLoadingGuard();
+            if (!mounted) return;
             setState(() {
               _isLoading = true;
               _showHomeScreen = false;
@@ -118,6 +120,7 @@ class _BrowserScreenState extends State<BrowserScreen>
           onPageFinished: (url) async {
             _stopLoadingGuard();
             _addressController.text = url;
+            if (!mounted) return;
             setState(() {
               _isLoading = false;
               _progress = 1.0;

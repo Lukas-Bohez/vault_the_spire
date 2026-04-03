@@ -99,6 +99,18 @@ class _TorrentsScreenState extends State<TorrentsScreen> {
       return;
     }
 
+    if (Platform.isAndroid) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Files saved to: $directoryPath'),
+          duration: const Duration(seconds: 5),
+          action: SnackBarAction(label: 'OK', onPressed: () {}),
+        ),
+      );
+      return;
+    }
+
     final uri = Uri.file(directoryPath);
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
       if (!mounted) return;

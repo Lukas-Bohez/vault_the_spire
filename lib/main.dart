@@ -111,6 +111,16 @@ Future<void> main() async {
       await ThemeService.instance.load();
       await SettingsService.instance.load();
 
+      if (!kIsWeb && Platform.isAndroid &&
+          SettingsService.instance.downloadDestination.isEmpty) {
+        final externalDir = await getExternalStorageDirectory();
+        if (externalDir != null) {
+          await SettingsService.instance.setDownloadDestination(
+            externalDir.path,
+          );
+        }
+      }
+
       if (!kIsWeb &&
           (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
         await setupDesktopWindow();
@@ -168,6 +178,13 @@ Future<void> main() async {
       );
     },
     (error, stack) {
+      if (error is SocketException &&
+          !kIsWeb &&
+          Platform.isAndroid &&
+          error.osError?.errorCode == 1 &&
+          error.address?.address == '0.0.0.0') {
+        return;
+      }
       debugPrint('UNCAUGHT ZONED ERROR: $error');
       debugPrint(stack.toString());
     },

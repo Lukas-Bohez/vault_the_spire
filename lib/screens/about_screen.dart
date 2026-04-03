@@ -279,14 +279,29 @@ class _AboutScreenState extends State<AboutScreen> {
                   ),
                 ),
                 const SizedBox(height: 8),
-                Row(
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
                   children: [
                     ElevatedButton.icon(
                       onPressed: _pickDownloadDirectory,
                       icon: const Icon(Icons.folder_open),
                       label: const Text('Browse'),
                     ),
-                    const SizedBox(width: 8),
+                    if (Platform.isAndroid)
+                      ElevatedButton.icon(
+                        onPressed: () async {
+                          final result = await FilePicker.platform.getDirectoryPath();
+                          if (result != null) {
+                            _downloadDirController.text = result;
+                            await _settings.setDownloadDestination(result);
+                            if (!mounted) return;
+                            setState(() {});
+                          }
+                        },
+                        icon: const Icon(Icons.folder),
+                        label: const Text('Choose download folder'),
+                      ),
                     OutlinedButton(
                       onPressed: _saveDownloadDestination,
                       child: const Text('Save Folder'),
