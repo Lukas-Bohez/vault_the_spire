@@ -28,6 +28,6 @@
 
 ## Final pre-submit checks
 - [ ] Confirm signing key and upload key ownership
-- [ ] Confirm app version code is higher than previous release
+- [x] Confirm app version code is higher than previous release
 - [ ] Validate in internal testing track first
 - [ ] Roll out staged production release
