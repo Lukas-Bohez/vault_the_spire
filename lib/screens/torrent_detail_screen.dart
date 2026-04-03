@@ -58,7 +58,11 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
                 const SizedBox(height: 8),
                 LinearProgressIndicator(value: progress),
                 const SizedBox(height: 8),
-                Text('Progress: ${(progress * 100).toStringAsFixed(1)}%'),
+                Text(
+                  statusLabel == 'Pending Metadata'
+                      ? 'Status: Waiting for metadata from peers...'
+                      : 'Progress: ${(progress * 100).toStringAsFixed(1)}%',
+                ),
                 if ((view?.isSeeding ?? false))
                   Padding(
                     padding: const EdgeInsets.only(top: 4),

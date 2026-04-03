@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:vault_the_spire/constants.dart';
 import 'package:vault_the_spire/platform/desktop_window.dart';
 import 'package:vault_the_spire/services/ai_copilot_service.dart';
@@ -181,13 +182,49 @@ class _AboutScreenState extends State<AboutScreen> {
     }
   }
 
-  Future<void> _pickDownloadDirectory() async {
-    final chosen = await FilePicker.platform.getDirectoryPath();
-    if (chosen == null || chosen.trim().isEmpty) return;
-    _downloadDirController.text = chosen;
-    await _settings.setDownloadDestination(chosen);
-    if (!mounted) return;
-    setState(() {});
+  Future<void> _openDownloadFolder() async {
+    final pathToOpen = _downloadDirController.text.trim();
+    if (pathToOpen.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No download folder set.')),
+      );
+      return;
+    }
+
+    String directoryPath;
+
+    if (Directory(pathToOpen).existsSync()) {
+      directoryPath = pathToOpen;
+    } else if (File(pathToOpen).existsSync()) {
+      directoryPath = File(pathToOpen).parent.path;
+    } else {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Download folder does not exist.')),
+      );
+      return;
+    }
+
+    if (Platform.isAndroid) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Files saved to: $directoryPath'),
+          duration: const Duration(seconds: 5),
+          action: SnackBarAction(label: 'OK', onPressed: () {}),
+        ),
+      );
+      return;
+    }
+
+    final uri = Uri.file(directoryPath);
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to open folder.')),
+      );
+    }
   }
 
   Future<void> _saveNetworkSettings() async {
@@ -284,7 +321,7 @@ class _AboutScreenState extends State<AboutScreen> {
                   runSpacing: 8,
                   children: [
                     ElevatedButton.icon(
-                      onPressed: _pickDownloadDirectory,
+                      onPressed: _openDownloadFolder,
                       icon: const Icon(Icons.folder_open),
                       label: const Text('Browse'),
                     ),
@@ -664,6 +701,15 @@ class _AboutScreenState extends State<AboutScreen> {
                       await _settings.setUseSystemTray(v);
                       if (!mounted) return;
                       setState(() {});
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            v
+                                ? 'System tray will be enabled when you restart the app'
+                                : 'System tray will be disabled when you restart the app',
+                          ),
+                        ),
+                      );
                     },
                   ),
                 if (Platform.isWindows || Platform.isLinux || Platform.isMacOS)

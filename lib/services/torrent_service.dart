@@ -155,8 +155,21 @@ class TorrentService {
       (_) => unawaited(_reconcileDiskState(force: true)),
     );
 
+    // Emit an initial value immediately to avoid UI stuck loading spinner
+    // while the first refresh is in progress (can be slow on Android with disk I/O)
+    _emitCachedStatesIfAvailable();
+
     unawaited(_reconcileDiskState(force: true));
     _queueStateRefresh(force: true);
+  }
+
+  void _emitCachedStatesIfAvailable() {
+    if (_latestStatesByTorrentId.isEmpty) {
+      // If no cached states, emit empty list so stream has data
+      _torrentStatesController.add([]);
+    } else {
+      _torrentStatesController.add(_latestStatesByTorrentId.values.toList());
+    }
   }
 
   void _queueStateRefresh({bool force = false}) {
@@ -386,7 +399,7 @@ class TorrentService {
     if (state.contains('seed')) return 'Seeding';
     if (state.contains('download')) return 'Downloading';
     if (state.contains('pause')) return 'Paused';
-    if (state.contains('pending_metadata')) return 'Pending metadata';
+    if (state.contains('pending_metadata')) return 'Pending Metadata';
     if (state.contains('queue')) return 'Queued';
     if (state.contains('error')) return 'Error';
     return state;
