@@ -105,6 +105,7 @@ class TorrentService {
       <String, _DiskReconcileSnapshot>{};
   final Map<String, DateTime> _pendingMetadataRetryAfter =
       <String, DateTime>{};
+  final Set<String> _pendingMetadataRetryInFlight = <String>{};
   bool _stateSyncStarted = false;
   bool _stateRefreshInFlight = false;
   bool _stateRefreshQueued = false;
@@ -185,7 +186,7 @@ class TorrentService {
       final merged = <TorrentViewState>[];
 
       for (final torrent in torrents) {
-        await _retryPendingMetadataIfDue(torrent);
+        _retryPendingMetadataIfDue(torrent);
         final diskSnapshot = await _getDiskSnapshot(torrent, force: force);
         final runtime = _runtimeByTorrentId[torrent.id];
 
@@ -444,24 +445,30 @@ class TorrentService {
     return '${(progress * 100).toStringAsFixed(1)}%';
   }
 
-  Future<void> _retryPendingMetadataIfDue(TorrentModel torrent) async {
+  void _retryPendingMetadataIfDue(TorrentModel torrent) {
     final status = torrent.status?.toLowerCase() ?? '';
     if (!status.contains('pending_metadata')) return;
     if (TorrentEngineService.instance.isRunning(torrent.id)) return;
+    if (_pendingMetadataRetryInFlight.contains(torrent.id)) return;
 
     final now = DateTime.now();
     final nextTry = _pendingMetadataRetryAfter[torrent.id];
     if (nextTry != null && now.isBefore(nextTry)) return;
     _pendingMetadataRetryAfter[torrent.id] = now.add(const Duration(seconds: 90));
+    _pendingMetadataRetryInFlight.add(torrent.id);
 
-    try {
-      await TorrentEngineService.instance.startTorrent(torrent.id);
-      await updateTorrentStatus(torrent.id, 'downloading');
-    } on TimeoutException {
-      await updateTorrentStatus(torrent.id, 'pending_metadata');
-    } catch (_) {
-      // Keep pending state; retry later.
-    }
+    unawaited(() async {
+      try {
+        await TorrentEngineService.instance.startTorrent(torrent.id);
+        await updateTorrentStatus(torrent.id, 'downloading');
+      } on TimeoutException {
+        await updateTorrentStatus(torrent.id, 'pending_metadata');
+      } catch (_) {
+        // Keep pending state; retry later.
+      } finally {
+        _pendingMetadataRetryInFlight.remove(torrent.id);
+      }
+    }());
   }
 
   static String _ensureString(dynamic value) {
@@ -541,6 +548,7 @@ class TorrentService {
     _latestStatesByTorrentId.remove(id);
     _diskSnapshots.remove(id);
     _pendingMetadataRetryAfter.remove(id);
+    _pendingMetadataRetryInFlight.remove(id);
     _queueStateRefresh(force: true);
   }
 
@@ -710,6 +718,7 @@ class TorrentService {
       _latestStatesByTorrentId.remove(id);
       _diskSnapshots.remove(id);
       _pendingMetadataRetryAfter.remove(id);
+      _pendingMetadataRetryInFlight.remove(id);
       _queueStateRefresh(force: true);
     }
   }
