@@ -14,7 +14,33 @@ class TorrentDetailScreen extends StatefulWidget {
 }
 
 class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
+  Future<bool> _confirmRedownload() async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Redownload torrent?'),
+        content: const Text(
+          'This will stop the torrent, clear downloaded content, and start from 0%.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Redownload'),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
+  }
+
   Future<void> _redownload(TorrentModel torrent) async {
+    final confirmed = await _confirmRedownload();
+    if (!confirmed || !mounted) return;
+
     try {
       await TorrentEngineService.instance.forceRedownload(torrent.id);
 

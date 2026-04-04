@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:ui' show Offset, Size;
 
-import 'package:flutter/foundation.dart' show VoidCallback, debugPrint, kIsWeb;
+import 'package:flutter/foundation.dart' show debugPrint, kIsWeb;
 import 'package:path/path.dart' as p;
 import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
@@ -16,8 +16,8 @@ class TrayService with TrayListener, WindowListener {
 
   bool _initialised = false;
   final bool Function() shouldMinimiseToTray;
-  final VoidCallback? onTrayShow;
-  final VoidCallback? onTrayQuit;
+  final FutureOr<void> Function()? onTrayShow;
+  final Future<void> Function()? onTrayQuit;
 
   TrayService({
     required this.shouldMinimiseToTray,
@@ -113,7 +113,7 @@ class TrayService with TrayListener, WindowListener {
         TorrentEngineService.instance.pauseAll();
         break;
       case 'quit':
-        onTrayQuit?.call();
+        unawaited(onTrayQuit?.call() ?? Future<void>.value());
         break;
     }
   }
@@ -125,7 +125,7 @@ class TrayService with TrayListener, WindowListener {
       debugPrint('TrayService: minimizing to tray on close');
       windowManager.hide();
     } else {
-      onTrayQuit?.call();
+      unawaited(onTrayQuit?.call() ?? Future<void>.value());
     }
   }
 
@@ -185,7 +185,10 @@ class TrayService with TrayListener, WindowListener {
   }
 
   Future<void> _showWindow() async {
-    onTrayShow?.call();
+    final show = onTrayShow?.call();
+    if (show is Future<void>) {
+      await show;
+    }
     await windowManager.show();
     await windowManager.focus();
   }

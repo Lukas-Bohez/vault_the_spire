@@ -91,6 +91,8 @@ class TorrentEngineService {
   final Map<String, int> _zeroProgressCounters = {};
   final Map<String, int> _stallRecoveryCycles = {};
   final Set<String> _hardRecoveryInFlight = <String>{};
+  final Map<String, int> _hardRestartCounts = {};
+  final Map<String, DateTime> _nextAllowedHardRestart = {};
   final Map<String, List<Uri>> _torrentTrackers = {};
   final Map<String, List<String>> _connectionLogs = {};
   final Map<String, DateTime> _lastProgressLogTimes = {};
@@ -145,9 +147,11 @@ class TorrentEngineService {
   }
 
   void _log(String torrentId, String message) {
-    _connectionLogs
-        .putIfAbsent(torrentId, () => [])
-        .add('[${DateTime.now().toIso8601String()}] $message');
+    final logs = _connectionLogs.putIfAbsent(torrentId, () => []);
+    logs.add('[${DateTime.now().toIso8601String()}] $message');
+    if (logs.length > 200) {
+      logs.removeRange(0, logs.length - 200);
+    }
   }
 
   void _logPeerEventThrottled(String label, dt.TorrentTask task) {
@@ -1490,12 +1494,32 @@ class TorrentEngineService {
 
   Future<void> _hardRestartTorrent(String torrentId) async {
     if (_hardRecoveryInFlight.contains(torrentId)) return;
-    _hardRecoveryInFlight.add(torrentId);
-    try {
+
+    final restartCount = _hardRestartCounts[torrentId] ?? 0;
+    if (restartCount >= 3) {
       _log(
         torrentId,
-        'No progress after repeated recovery attempts. Performing hard restart.',
+        'Max hard restarts reached. Marking torrent as error_stalled.',
       );
+      await TorrentService.instance.updateTorrentStatus(torrentId, 'error_stalled');
+      return;
+    }
+
+    final nextAllowed = _nextAllowedHardRestart[torrentId];
+    if (nextAllowed != null && DateTime.now().isBefore(nextAllowed)) {
+      _log(torrentId, 'Hard restart deferred until $nextAllowed due to backoff.');
+      return;
+    }
+
+    final backoffMinutes = <int>[0, 10, 30][restartCount];
+    _nextAllowedHardRestart[torrentId] = DateTime.now().add(
+      Duration(minutes: backoffMinutes),
+    );
+    _hardRestartCounts[torrentId] = restartCount + 1;
+
+    _hardRecoveryInFlight.add(torrentId);
+    try {
+      _log(torrentId, 'Hard restart #${restartCount + 1} of 3 starting.');
       await stopTorrent(torrentId);
       await Future.delayed(const Duration(seconds: 1));
       final configured = SettingsService.instance.downloadDestination.trim();
@@ -1503,7 +1527,7 @@ class TorrentEngineService {
         torrentId,
         destinationPath: configured.isEmpty ? null : configured,
       );
-      _log(torrentId, 'Hard restart complete; resumed download task.');
+      _log(torrentId, 'Hard restart complete.');
     } catch (e) {
       _log(torrentId, 'Hard restart failed: $e');
     } finally {
@@ -1565,14 +1589,8 @@ class TorrentEngineService {
       }
     }
 
-    await TorrentService.instance.updateTorrent(
-      torrent.copyWith(
-        status: 'downloading',
-        bytesDown: 0,
-        bytesUp: 0,
-        completedAt: null,
-      ),
-    );
+    await TorrentService.instance.updateProgress(torrentId, 0, 0);
+    await TorrentService.instance.updateTorrentStatus(torrentId, 'downloading');
     TorrentService.instance.invalidateDiskSnapshot(torrentId);
 
     final destination = contentDir ?? (configuredDir.isNotEmpty ? configuredDir : null);
@@ -1598,19 +1616,35 @@ class TorrentEngineService {
   Future<void> stopTorrent(String torrentId) async {
     _tasks[torrentId]?.stop();
     _cleanup(torrentId);
-    await TorrentService.instance.updateTorrentStatus(torrentId, 'paused');
+    try {
+      await TorrentService.instance.updateTorrentStatus(torrentId, 'paused');
+    } catch (e) {
+      debugPrint('stopTorrent: status update failed (non-fatal): $e');
+    }
   }
 
   void pauseTorrent(String torrentId) {
     _tasks[torrentId]?.pause();
-    TorrentService.instance.updateTorrentStatus(torrentId, 'paused');
+    unawaited(
+      TorrentService.instance
+          .updateTorrentStatus(torrentId, 'paused')
+          .catchError(
+            (Object e) => debugPrint('pauseTorrent status write failed: $e'),
+          ),
+    );
   }
 
   void resumeTorrent(String torrentId) {
     final task = _tasks[torrentId];
     task?.resume();
     final status = task != null && _isTaskComplete(task) ? 'seeding' : 'downloading';
-    TorrentService.instance.updateTorrentStatus(torrentId, status);
+    unawaited(
+      TorrentService.instance
+          .updateTorrentStatus(torrentId, status)
+          .catchError(
+            (Object e) => debugPrint('resumeTorrent status write failed: $e'),
+          ),
+    );
   }
 
   bool _isTorrentFilePath(String? path) {
@@ -1752,9 +1786,10 @@ class TorrentEngineService {
 
   bool shouldStopService() => _tasks.isEmpty;
 
-  void stopAll() {
-    for (final id in _tasks.keys.toList()) {
-      unawaited(stopTorrent(id));
+  Future<void> stopAll() async {
+    final ids = _tasks.keys.toList();
+    for (final id in ids) {
+      await stopTorrent(id);
     }
   }
 

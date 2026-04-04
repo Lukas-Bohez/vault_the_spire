@@ -512,7 +512,7 @@ class _BrowserScreenState extends State<BrowserScreen>
 
   void _startLoadingGuard() {
     _loadingGuardTimer?.cancel();
-    _loadingGuardTimer = Timer(const Duration(seconds: 12), () {
+    _loadingGuardTimer = Timer(const Duration(seconds: 10), () {
       if (!mounted) return;
       setState(() {
         _isLoading = false;

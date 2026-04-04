@@ -182,9 +182,11 @@ class TorrentService {
   final Set<String> _pendingMetadataRetryInFlight = <String>{};
   bool _stateSyncStarted = false;
   DateTime _lastSnapshotTime = DateTime.fromMillisecondsSinceEpoch(0);
+  DateTime _lastRefreshTrigger = DateTime.fromMillisecondsSinceEpoch(0);
   bool _snapshotInProgress = false;
   bool _snapshotPending = false;
-  static const Duration _snapshotInterval = Duration(seconds: 1);
+  static const Duration _snapshotInterval = Duration(seconds: 3);
+  static const Duration _minRefreshInterval = Duration(seconds: 1);
   static const Duration _diskReconcileInterval = Duration(seconds: 60);
 
   Stream<List<TorrentViewState>> get torrentStatesStream {
@@ -241,10 +243,20 @@ class TorrentService {
   }
 
   void _queueStateRefresh({bool force = false}) {
-    _snapshotPending = true;
     if (force) {
+      _snapshotPending = true;
       unawaited(_takeSnapshot(force: true));
+      return;
     }
+
+    final now = DateTime.now();
+    if (now.difference(_lastRefreshTrigger) < _minRefreshInterval) {
+      return;
+    }
+
+    _lastRefreshTrigger = now;
+    _snapshotPending = true;
+    unawaited(_takeSnapshot(force: false));
   }
 
   Future<void> _takeSnapshot({bool force = false}) async {
@@ -352,13 +364,13 @@ class TorrentService {
         ? (existing.completedAt ?? DateTime.now().millisecondsSinceEpoch)
         : existing.completedAt;
 
+    final bytesDelta = (view.downloaded - existing.bytesDown).abs();
     final shouldUpdate =
-        existing.bytesDown != view.downloaded ||
-            existing.bytesUp != view.uploaded ||
-            (existing.status ?? '') != updatedStatus ||
-            existing.seeders != view.seeders ||
-            existing.leechers != view.leechers ||
-            completedAt != existing.completedAt;
+      bytesDelta > 512 * 1024 ||
+        (existing.status ?? '') != updatedStatus ||
+        existing.seeders != view.seeders ||
+        existing.leechers != view.leechers ||
+        completedAt != existing.completedAt;
 
     if (!shouldUpdate) return;
 
@@ -632,17 +644,25 @@ class TorrentService {
       // Only resume downloading/seeding torrents, not error states
       return (status == 'downloading' || status == 'seeding') &&
              !status.contains('error');
-    });
+    }).toList();
 
-    for (final torrent in active) {
-      try {
-        // Try to resume through the engine service
-        await TorrentEngineService.instance.startTorrent(torrent.id);
-      } catch (e, st) {
-        debugPrint('Failed to resume torrent ${torrent.id}: $e');
-        debugPrint(st.toString());
-        // Update status to error so we don't keep retrying forever
-        await updateTorrentStatus(torrent.id, 'error_resume_failed');
+    const batchSize = 2;
+    for (var i = 0; i < active.length; i += batchSize) {
+      final batch = active.skip(i).take(batchSize).toList();
+      await Future.wait(
+        batch.map((torrent) async {
+          try {
+            await TorrentEngineService.instance.startTorrent(torrent.id);
+          } catch (e, st) {
+            debugPrint('Failed to resume torrent ${torrent.id}: $e');
+            debugPrint(st.toString());
+            await updateTorrentStatus(torrent.id, 'error_resume_failed');
+          }
+        }),
+      );
+
+      if (i + batchSize < active.length) {
+        await Future.delayed(const Duration(milliseconds: 500));
       }
     }
   }

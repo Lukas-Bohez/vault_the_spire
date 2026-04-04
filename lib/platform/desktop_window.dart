@@ -1,7 +1,22 @@
 import 'package:flutter/material.dart';
+import 'package:vault_the_spire/services/torrent_engine_service.dart';
 import 'package:window_manager/window_manager.dart';
 
-Future<void> setupDesktopWindow() async {
+class _CleanShutdownListener extends WindowListener {
+  bool _closing = false;
+
+  @override
+  void onWindowClose() async {
+    if (_closing) return;
+    _closing = true;
+    await TorrentEngineService.instance.stopAll();
+    await Future.delayed(const Duration(milliseconds: 400));
+    await windowManager.setPreventClose(false);
+    await windowManager.close();
+  }
+}
+
+Future<void> setupDesktopWindow({required bool installShutdownListener}) async {
   await windowManager.ensureInitialized();
 
   const options = WindowOptions(
@@ -21,6 +36,11 @@ Future<void> setupDesktopWindow() async {
       await windowManager.setIcon('assets/icons/app_icon.ico');
     } catch (e) {
       // Not all platforms/plugins support runtime icon changes.
+    }
+
+    if (installShutdownListener) {
+      windowManager.addListener(_CleanShutdownListener());
+      await windowManager.setPreventClose(true);
     }
   });
 }

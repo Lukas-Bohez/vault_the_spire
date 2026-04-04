@@ -27,6 +27,10 @@ class AppDatabase {
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
       onConfigure: (db) async {
+        await db.execute('PRAGMA journal_mode = WAL;');
+        await db.execute('PRAGMA busy_timeout = 5000;');
+        await db.execute('PRAGMA cache_size = -8000;');
+
         // Enable foreign keys
         await db.execute('PRAGMA foreign_keys = ON');
 
