@@ -89,12 +89,14 @@ class _DiskReconcileSnapshot {
 
 class _DiskScanInput {
   final String torrentId;
+  final String torrentName;
   final String outputPath;
   final int totalSize;
   final int fallbackBytes;
 
   const _DiskScanInput({
     required this.torrentId,
+    required this.torrentName,
     required this.outputPath,
     required this.totalSize,
     required this.fallbackBytes,
@@ -124,17 +126,19 @@ _DiskScanResult _runDiskScanSync(_DiskScanInput input) {
 
   var bytes = 0;
   try {
+    final nameToken = input.torrentName.trim().toLowerCase();
     final lowerOutputPath = input.outputPath.toLowerCase();
     if (lowerOutputPath.endsWith('.torrent')) {
       return _DiskScanResult(
         torrentId: input.torrentId,
-        bytesOnDisk: input.fallbackBytes,
+        bytesOnDisk: 0,
         isComplete: false,
       );
     }
 
     final type = FileSystemEntity.typeSync(input.outputPath);
     if (type == FileSystemEntityType.directory) {
+      var matchedFiles = 0;
       for (final entity in Directory(input.outputPath)
           .listSync(recursive: true, followLinks: false)) {
         if (entity is! File) continue;
@@ -142,7 +146,24 @@ _DiskScanResult _runDiskScanSync(_DiskScanInput input) {
         if (lowerPath.endsWith('.bt.state') || lowerPath.endsWith('.torrent')) {
           continue;
         }
+
+        if (nameToken.isNotEmpty) {
+          final normalizedPath = lowerPath.replaceAll('\\', '/');
+          final fileName = normalizedPath.split('/').last;
+          final belongsToTorrent =
+              fileName.contains(nameToken) ||
+              normalizedPath.contains('/$nameToken/');
+          if (!belongsToTorrent) {
+            continue;
+          }
+        }
+
         bytes += entity.statSync().size;
+        matchedFiles++;
+      }
+
+      if (matchedFiles == 0) {
+        bytes = 0;
       }
     } else if (type == FileSystemEntityType.file) {
       final lowerPath = input.outputPath.toLowerCase();
@@ -418,6 +439,7 @@ class TorrentService {
           _runDiskScanSync,
           _DiskScanInput(
             torrentId: torrent.id,
+            torrentName: torrent.name,
             outputPath: torrent.filePath?.trim() ?? '',
             totalSize: torrent.totalSize ?? 0,
             fallbackBytes: cached?.bytesOnDisk ?? torrent.bytesDown,
@@ -598,7 +620,11 @@ class TorrentService {
   }
 
   void invalidateDiskSnapshot(String id) {
-    _diskSnapshots.remove(id);
+    _diskSnapshots[id] = _DiskReconcileSnapshot(
+      bytesOnDisk: 0,
+      isComplete: false,
+      checkedAt: DateTime.now(),
+    );
     _snapshotPending = true;
     unawaited(_reconcileDiskState(force: true));
   }
