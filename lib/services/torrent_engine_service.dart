@@ -1540,14 +1540,16 @@ class TorrentEngineService {
     final dir = Directory(directoryPath);
     if (!await dir.exists()) return;
     var seen = 0;
-    await for (final entity in dir.list(recursive: false, followLinks: false)) {
+    await for (final entity in dir.list(recursive: true, followLinks: false)) {
       seen++;
       if (seen % 100 == 0) {
         await Future<void>.delayed(Duration.zero);
       }
       if (entity is! File) continue;
       final lowerPath = entity.path.toLowerCase();
-      if (!lowerPath.endsWith('.bt.state')) continue;
+      final isState = lowerPath.endsWith('.bt.state');
+      final isBackup = lowerPath.contains('.bt.state.backup.');
+      if (!isState && !isBackup) continue;
       try {
         await entity.delete();
       } catch (_) {

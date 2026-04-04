@@ -277,6 +277,7 @@ class TorrentService {
         final runtime = _runtimeByTorrentId[torrent.id];
         final diskBytes = diskSnapshot?.bytesOnDisk ?? torrent.bytesDown;
         final diskComplete = diskSnapshot?.isComplete ?? false;
+        final hasDiskSnapshot = diskSnapshot != null;
 
         var downloaded = [
           runtime?.downloaded ?? 0,
@@ -285,20 +286,36 @@ class TorrentService {
         ].reduce(math.max);
 
         final totalSize = torrent.totalSize ?? 0;
-        final runtimeComplete = runtime != null &&
-            (runtime.state.toLowerCase().contains('seed') ||
+        final runtimeState = runtime?.state.toLowerCase() ?? '';
+        final runtimeLooksComplete = runtime != null &&
+            (runtimeState.contains('seed') ||
                 (totalSize > 0 && runtime.downloaded >= totalSize) ||
                 runtime.progress >= 0.999);
+        final diskContradictsCompletion = hasDiskSnapshot &&
+            totalSize > 0 &&
+            !diskComplete &&
+            diskBytes < (totalSize * 0.98).round();
+        final runtimeComplete = runtimeLooksComplete && !diskContradictsCompletion;
         final isComplete = diskComplete ||
             runtimeComplete ||
             (totalSize > 0 && downloaded >= totalSize);
+
+        if (diskContradictsCompletion) {
+          downloaded = math.max(torrent.bytesDown, diskBytes);
+        }
 
         if (isComplete && totalSize > 0) {
           downloaded = math.max(downloaded, totalSize);
         }
 
         final uploaded = runtime?.uploaded ?? torrent.bytesUp;
-        final state = _deriveState(torrent.status, runtime?.state, isComplete);
+        final effectiveRuntimeState =
+            diskContradictsCompletion ? 'downloading' : runtime?.state;
+        final state = _deriveState(
+          torrent.status,
+          effectiveRuntimeState,
+          isComplete,
+        );
         final progress = isComplete
             ? 1.0
             : totalSize > 0
@@ -583,6 +600,7 @@ class TorrentService {
   void invalidateDiskSnapshot(String id) {
     _diskSnapshots.remove(id);
     _snapshotPending = true;
+    unawaited(_reconcileDiskState(force: true));
   }
 
   Future<void> purgeTorrentArtifacts(String id) async {
