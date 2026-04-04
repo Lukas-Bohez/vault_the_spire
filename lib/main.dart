@@ -113,11 +113,20 @@ Future<void> main() async {
 
       if (!kIsWeb && Platform.isAndroid &&
           SettingsService.instance.downloadDestination.isEmpty) {
-        final externalDir = await getExternalStorageDirectory();
-        if (externalDir != null) {
-          await SettingsService.instance.setDownloadDestination(
-            externalDir.path,
-          );
+        try {
+          final externalDir = await getExternalStorageDirectory();
+          if (externalDir != null) {
+            final downloadsDir = Directory('${externalDir.path}/TorrentSpire');
+            if (!await downloadsDir.exists()) {
+              await downloadsDir.create(recursive: true);
+            }
+            await SettingsService.instance.setDownloadDestination(
+              downloadsDir.path,
+            );
+            debugPrint('Android default download dir: ${downloadsDir.path}');
+          }
+        } catch (e) {
+          debugPrint('Could not set Android default download dir: $e');
         }
       }
 
@@ -178,11 +187,13 @@ Future<void> main() async {
       );
     },
     (error, stack) {
-      if (error is SocketException &&
-          !kIsWeb &&
+      // Suppress NAT-PMP UDP discovery failures on Android.
+      if (!kIsWeb &&
           Platform.isAndroid &&
+          error is SocketException &&
           error.osError?.errorCode == 1 &&
-          error.address?.address == '0.0.0.0') {
+          (error.address?.address == '0.0.0.0' ||
+              error.address?.address == null)) {
         return;
       }
       debugPrint('UNCAUGHT ZONED ERROR: $error');
@@ -241,8 +252,8 @@ class _MainAppState extends State<MainApp> {
         height: 72,
         indicatorColor: scheme.secondaryContainer,
         backgroundColor: scheme.surface,
-        labelTextStyle: MaterialStateProperty.resolveWith((states) {
-          final selected = states.contains(MaterialState.selected);
+        labelTextStyle: WidgetStateProperty.resolveWith((states) {
+          final selected = states.contains(WidgetState.selected);
           return TextStyle(
             fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
             fontSize: 12,

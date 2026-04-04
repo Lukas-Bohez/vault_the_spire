@@ -278,11 +278,12 @@ class TorrentEngineService {
             debugPrint('[Trackers] Could not extract infoHash for $torrentId');
             return;
           }
+          final infoHashBytes = infoHash;
 
           // Announce to all trackers in parallel, ignore individual failures
           await Future.wait(
             trackers.map((trackerUri) =>
-              _announceUrlWithRetry(task, trackerUri, infoHash).catchError((e) {
+              _announceUrlWithRetry(task, trackerUri, infoHashBytes).catchError((e) {
                 _log(torrentId, 'Tracker announce failed for $trackerUri: $e');
               }),
             ),
@@ -1312,29 +1313,21 @@ class TorrentEngineService {
 
   void _startPollTimer(String torrentId, dt.TorrentTask task) {
     _pollTimers[torrentId]?.cancel();
+    _schedulePoll(torrentId, task);
+  }
 
-    void schedulePoll() {
-      try {
-        final dlSpeed = (task.currentDownloadSpeed);
-        final isActive = dlSpeed > 0;
-        final interval = isActive ? const Duration(seconds: 2) : const Duration(seconds: 10);
-
-        _pollTimers[torrentId] = Timer(interval, () async {
-          unawaited(_refreshUploadedSnapshot(torrentId, task));
-          _emitStats(torrentId, task);
-          // Reschedule adaptively
-          schedulePoll();
-        });
-      } catch (e) {
-        // If task introspection fails, fallback to a safe periodic poll
-        _pollTimers[torrentId] = Timer.periodic(const Duration(seconds: 10), (_) {
-          unawaited(_refreshUploadedSnapshot(torrentId, task));
-          _emitStats(torrentId, task);
-        });
-      }
-    }
-
-    schedulePoll();
+  void _schedulePoll(String torrentId, dt.TorrentTask task) {
+    if (!_tasks.containsKey(torrentId)) return;
+    final dlSpeed = task.currentDownloadSpeed;
+    final isDownloading = dlSpeed > 0;
+    final duration = isDownloading
+        ? const Duration(seconds: 2)
+        : const Duration(seconds: 8);
+    _pollTimers[torrentId] = Timer(duration, () {
+      unawaited(_refreshUploadedSnapshot(torrentId, task));
+      _emitStats(torrentId, task);
+      _schedulePoll(torrentId, task);
+    });
   }
 
   void _emitStats(String torrentId, dt.TorrentTask task) {

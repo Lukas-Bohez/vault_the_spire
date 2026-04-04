@@ -87,6 +87,59 @@ class _DiskReconcileSnapshot {
   });
 }
 
+class _DiskScanInput {
+  final String outputPath;
+  final int totalSize;
+  final int fallbackBytes;
+
+  const _DiskScanInput({
+    required this.outputPath,
+    required this.totalSize,
+    required this.fallbackBytes,
+  });
+}
+
+class _DiskScanOutput {
+  final int bytesOnDisk;
+  final bool isComplete;
+
+  const _DiskScanOutput({required this.bytesOnDisk, required this.isComplete});
+}
+
+_DiskScanOutput _runDiskScan(_DiskScanInput input) {
+  if (input.totalSize <= 0 || input.outputPath.isEmpty) {
+    return _DiskScanOutput(bytesOnDisk: input.fallbackBytes, isComplete: false);
+  }
+
+  var bytes = 0;
+  try {
+    final type = FileSystemEntity.typeSync(input.outputPath);
+    if (type == FileSystemEntityType.directory) {
+      for (final entity in Directory(input.outputPath)
+          .listSync(recursive: true, followLinks: false)) {
+        if (entity is! File) continue;
+        final lowerPath = entity.path.toLowerCase();
+        if (lowerPath.endsWith('.bt.state') || lowerPath.endsWith('.torrent')) {
+          continue;
+        }
+        bytes += entity.statSync().size;
+      }
+    } else if (type == FileSystemEntityType.file) {
+      final lowerPath = input.outputPath.toLowerCase();
+      if (!lowerPath.endsWith('.bt.state') && !lowerPath.endsWith('.torrent')) {
+        bytes = File(input.outputPath).statSync().size;
+      }
+    }
+  } catch (_) {
+    bytes = input.fallbackBytes;
+  }
+
+  return _DiskScanOutput(
+    bytesOnDisk: bytes,
+    isComplete: input.totalSize > 0 && bytes >= input.totalSize,
+  );
+}
+
 class TorrentService {
   TorrentService._();
 
@@ -356,74 +409,22 @@ class TorrentService {
       return snap;
     }
 
-    // Offload the expensive filesystem walk to a background isolate
-    try {
-      final params = {
-        'outputPath': outputPath,
-        'totalSize': totalSize,
-        'fallbackBytes': torrent.bytesDown,
-      };
-      final result = await compute(_scanDiskIsolate, params);
-      final bytesOnDisk = result['bytesOnDisk'] as int? ?? (cached?.bytesOnDisk ?? torrent.bytesDown);
-      final isComplete = result['isComplete'] as bool? ?? (totalSize > 0 && bytesOnDisk >= totalSize);
-      final checkedAtMs = result['checkedAt'] as int? ?? DateTime.now().millisecondsSinceEpoch;
-      final snap = _DiskReconcileSnapshot(
-        bytesOnDisk: bytesOnDisk,
-        isComplete: isComplete,
-        checkedAt: DateTime.fromMillisecondsSinceEpoch(checkedAtMs),
-      );
-      _diskSnapshots[torrent.id] = snap;
-      return snap;
-    } catch (_) {
-      final snap = _DiskReconcileSnapshot(
-        bytesOnDisk: cached?.bytesOnDisk ?? torrent.bytesDown,
-        isComplete: false,
-        checkedAt: DateTime.now(),
-      );
-      _diskSnapshots[torrent.id] = snap;
-      return snap;
-    }
+    final result = await compute(
+      _runDiskScan,
+      _DiskScanInput(
+        outputPath: outputPath,
+        totalSize: totalSize,
+        fallbackBytes: cached?.bytesOnDisk ?? torrent.bytesDown,
+      ),
+    );
+    final snap = _DiskReconcileSnapshot(
+      bytesOnDisk: result.bytesOnDisk,
+      isComplete: result.isComplete,
+      checkedAt: DateTime.now(),
+    );
+    _diskSnapshots[torrent.id] = snap;
+    return snap;
   }
-
-// Top-level isolate entrypoint for scanning disk; returns a plain map.
-Map<String, dynamic> _scanDiskIsolate(Map<String, dynamic> params) {
-  final String outputPath = params['outputPath'] as String? ?? '';
-  final int totalSize = params['totalSize'] as int? ?? 0;
-  final int fallbackBytes = params['fallbackBytes'] as int? ?? 0;
-
-  var bytesOnDisk = 0;
-  try {
-    final type = FileSystemEntity.typeSync(outputPath);
-    if (type == FileSystemEntityType.directory) {
-      for (final entity in Directory(outputPath).listSync(recursive: true, followLinks: false)) {
-        if (entity is! File) continue;
-        final lp = entity.path.toLowerCase();
-        if (lp.endsWith('.bt.state') || lp.endsWith('.torrent')) continue;
-        try {
-          bytesOnDisk += entity.statSync().size;
-        } catch (_) {}
-      }
-    } else if (type == FileSystemEntityType.file) {
-      final lp = outputPath.toLowerCase();
-      if (!lp.endsWith('.bt.state') && !lp.endsWith('.torrent')) {
-        try {
-          bytesOnDisk = File(outputPath).statSync().size;
-        } catch (_) {
-          bytesOnDisk = fallbackBytes;
-        }
-      }
-    }
-  } catch (_) {
-    bytesOnDisk = fallbackBytes;
-  }
-
-  final isComplete = totalSize > 0 && bytesOnDisk >= totalSize;
-  return {
-    'bytesOnDisk': bytesOnDisk,
-    'isComplete': isComplete,
-    'checkedAt': DateTime.now().millisecondsSinceEpoch,
-  };
-}
 
   String _deriveState(String? persistedState, String? runtimeState, bool complete) {
     if (complete) return 'seeding';

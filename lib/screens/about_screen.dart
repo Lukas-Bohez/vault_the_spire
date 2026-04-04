@@ -17,7 +17,11 @@ class AboutScreen extends StatefulWidget {
   State<AboutScreen> createState() => _AboutScreenState();
 }
 
-class _AboutScreenState extends State<AboutScreen> {
+class _AboutScreenState extends State<AboutScreen>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
   final bool _androidTorrentOnly =
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
   late final SettingsService _settings;
@@ -342,6 +346,7 @@ class _AboutScreenState extends State<AboutScreen> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     return Scaffold(
       appBar: AppBar(title: const Text('Settings')),
       body: Padding(
@@ -369,17 +374,20 @@ class _AboutScreenState extends State<AboutScreen> {
                       label: const Text('Browse'),
                     ),
                     if (Platform.isAndroid)
-                      ElevatedButton.icon(
+                      FilledButton.icon(
                         onPressed: () async {
                           final result = await FilePicker.platform.getDirectoryPath();
                           if (result != null) {
                             _downloadDirController.text = result;
                             await _settings.setDownloadDestination(result);
                             if (!mounted) return;
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('Download folder set: $result')),
+                            );
                             setState(() {});
                           }
                         },
-                        icon: const Icon(Icons.folder),
+                        icon: const Icon(Icons.folder_open),
                         label: const Text('Choose download folder'),
                       ),
                     OutlinedButton(

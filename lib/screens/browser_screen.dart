@@ -152,6 +152,7 @@ class _BrowserScreenState extends State<BrowserScreen>
             if (error.isForMainFrame != true) {
               return;
             }
+            if (!mounted) return;
             setState(() {
               _isLoading = false;
               _lastLoadError =
@@ -575,6 +576,7 @@ class _BrowserScreenState extends State<BrowserScreen>
     final isFav = _isFavourite(currentUrl);
     final canBack = Platform.isWindows ? _windowsCanGoBack : _canGoBack;
     final canFwd = Platform.isWindows ? _windowsCanGoForward : _canGoForward;
+    final isActivelyLoading = Platform.isWindows ? _windowsIsLoading : _isLoading;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
@@ -612,15 +614,29 @@ class _BrowserScreenState extends State<BrowserScreen>
               tooltip: 'Forward',
             ),
             IconButton(
-              icon: const Icon(Icons.refresh, size: 20),
+              icon: Icon(isActivelyLoading ? Icons.close : Icons.refresh, size: 20),
               onPressed: () async {
-                if (Platform.isWindows) {
-                  await _windowsWebViewController?.reload();
+                if (isActivelyLoading) {
+                  if (Platform.isWindows) {
+                    await _windowsWebViewController?.stop();
+                  } else {
+                    await _webViewController?.runJavaScript('window.stop();');
+                  }
+                  _stopLoadingGuard();
+                  if (!mounted) return;
+                  setState(() {
+                    _isLoading = false;
+                    _windowsIsLoading = false;
+                  });
                 } else {
-                  await _webViewController?.reload();
+                  if (Platform.isWindows) {
+                    await _windowsWebViewController?.reload();
+                  } else {
+                    await _webViewController?.reload();
+                  }
                 }
               },
-              tooltip: 'Reload',
+              tooltip: isActivelyLoading ? 'Stop' : 'Reload',
             ),
             IconButton(
               icon: const Icon(Icons.home_outlined, size: 20),

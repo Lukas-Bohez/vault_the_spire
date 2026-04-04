@@ -1,14 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 
-class GuideScreen extends StatelessWidget {
+class GuideScreen extends StatefulWidget {
   const GuideScreen({super.key});
+
+  @override
+  State<GuideScreen> createState() => _GuideScreenState();
+}
+
+class _GuideScreenState extends State<GuideScreen>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
 
   bool get _isAndroidOnlyBuild =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
     final android = _isAndroidOnlyBuild;
@@ -183,7 +193,7 @@ class _GuideChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(999),
-        color: cs.surface.withOpacity(0.45),
+        color: cs.surface.withValues(alpha: 0.45),
         border: Border.all(color: cs.outlineVariant),
       ),
       child: Row(

@@ -149,7 +149,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             border: Border.all(
                               color: Theme.of(
                                 context,
-                              ).colorScheme.onSurface.withOpacity(0.15),
+                              ).colorScheme.onSurface.withValues(alpha: 0.15),
                               width: 1,
                             ),
                           ),

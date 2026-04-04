@@ -14,6 +14,60 @@ class TorrentDetailScreen extends StatefulWidget {
 }
 
 class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
+  Future<void> _redownload(TorrentModel torrent) async {
+    try {
+      TorrentEngineService.instance.stopTorrent(torrent.id);
+      await TorrentService.instance.removeTorrent(torrent.id);
+
+      if (torrent.type == 'magnet_link' &&
+          torrent.magnetLink != null &&
+          torrent.magnetLink!.isNotEmpty) {
+        await TorrentService.instance.addTorrentFromMagnetLink(
+          torrent.magnetLink!,
+        );
+      } else if (torrent.filePath != null && torrent.filePath!.isNotEmpty) {
+        await TorrentService.instance.addTorrentFromTorrentFile(
+          torrent.filePath!,
+        );
+      } else {
+        throw StateError('No source available for redownload');
+      }
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Torrent re-added.')));
+      Navigator.of(context).pop();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Redownload failed: $e')));
+    }
+  }
+
+  Future<void> _recheck(String torrentId) async {
+    try {
+      final result = await TorrentEngineService.instance.recheckTorrent(torrentId);
+      if (!mounted) return;
+      final valid = result['isValid'] == true;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            valid
+                ? 'Recheck complete: all pieces valid.'
+                : 'Recheck complete: ${result['invalidPieces']} piece(s) invalid.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Recheck failed: $e')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<TorrentViewState?>(
@@ -46,50 +100,98 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
                 ),
             ],
           ),
-          body: Padding(
+          body: SingleChildScrollView(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'InfoHash: ${torrent.id}',
-                  style: const TextStyle(fontSize: 12, color: Colors.grey),
-                ),
-                const SizedBox(height: 8),
-                LinearProgressIndicator(value: progress),
-                const SizedBox(height: 8),
-                Text(
-                  statusLabel == 'Pending Metadata'
-                      ? 'Status: Waiting for metadata from peers...'
-                      : 'Progress: ${(progress * 100).toStringAsFixed(1)}%',
-                ),
-                if ((view?.isSeeding ?? false))
-                  Padding(
-                    padding: const EdgeInsets.only(top: 4),
-                    child: Text(
-                      'Seeding back: ${(view!.seedingProgress * 100).toStringAsFixed(1)}% of original size shared',
+                Card(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              statusLabel,
+                              style: TextStyle(
+                                fontWeight: FontWeight.w700,
+                                color: Theme.of(context).colorScheme.primary,
+                                fontSize: 13,
+                              ),
+                            ),
+                            Text(
+                              '${(progress * 100).toStringAsFixed(2)}%',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                                fontSize: 20,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(6),
+                          child: LinearProgressIndicator(
+                            value: progress,
+                            minHeight: 10,
+                            backgroundColor: Theme.of(
+                              context,
+                            ).colorScheme.surfaceContainerHighest,
+                          ),
+                        ),
+                        if (torrent.totalSize != null && torrent.totalSize! > 0) ...[
+                          const SizedBox(height: 8),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                '${_fmtBytes((progress * torrent.totalSize!).round())} downloaded',
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                              Text(
+                                'of ${_fmtBytes(torrent.totalSize!)}',
+                                style: Theme.of(context).textTheme.bodySmall,
+                              ),
+                            ],
+                          ),
+                        ],
+                      ],
                     ),
                   ),
-                const SizedBox(height: 8),
-                Text(
-                  'Seeders (DHT: ${view?.dhtNodes ?? 0}, Trackers: ${view?.trackers ?? 0}): ${view?.seeders ?? torrent.seeders} • '
-                  'Leechers: ${view?.leechers ?? torrent.leechers}',
                 ),
-                const SizedBox(height: 16),
-                if (view != null) ...[
-                  Text('Connection: ${view.connectionMessage}'),
-                  Text('DHT nodes: ${view.dhtNodes}, peers: ${view.peers}'),
-                  Text(
-                    'Download: ${(view.downloadSpeed / 1024).toStringAsFixed(2)} kB/s',
+                const SizedBox(height: 12),
+                if (view != null)
+                  Row(
+                    children: [
+                      _StatChip(
+                        icon: Icons.arrow_downward_rounded,
+                        label: '${_fmtBytes(view.downloadSpeed.round())}/s',
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      const SizedBox(width: 8),
+                      _StatChip(
+                        icon: Icons.arrow_upward_rounded,
+                        label: '${_fmtBytes(view.uploadSpeed.round())}/s',
+                        color: Theme.of(context).colorScheme.tertiary,
+                      ),
+                      const SizedBox(width: 8),
+                      _StatChip(
+                        icon: Icons.people_outline,
+                        label: '${view.peers} peers',
+                        color: Theme.of(context).colorScheme.secondary,
+                      ),
+                    ],
                   ),
-                  Text(
-                    'Upload: ${(view.uploadSpeed / 1024).toStringAsFixed(2)} kB/s',
-                  ),
-                ],
-                const SizedBox(height: 8),
-                Row(
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
                   children: [
-                    ElevatedButton(
+                    FilledButton.tonalIcon(
+                      icon: const Icon(Icons.refresh, size: 16),
+                      label: const Text('Refresh'),
                       onPressed: () async {
                         final messenger = ScaffoldMessenger.of(context);
                         await TorrentEngineService.instance.forceRefresh(torrent.id);
@@ -98,10 +200,23 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
                           const SnackBar(content: Text('Connection refresh triggered')),
                         );
                       },
-                      child: const Text('Refresh'),
                     ),
-                    const SizedBox(width: 8),
-                    ElevatedButton(
+                    FilledButton.tonalIcon(
+                      icon: const Icon(Icons.fact_check_outlined, size: 16),
+                      label: const Text('Recheck files'),
+                      onPressed: () => _recheck(torrent.id),
+                    ),
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.replay, size: 16),
+                      label: const Text('Redownload'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: Theme.of(context).colorScheme.error,
+                      ),
+                      onPressed: () => _redownload(torrent),
+                    ),
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.copy, size: 16),
+                      label: const Text('Copy logs'),
                       onPressed: () async {
                         final messenger = ScaffoldMessenger.of(context);
                         final logs = TorrentEngineService.instance.getLogs(
@@ -115,19 +230,32 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
                           const SnackBar(content: Text('Connection logs copied')),
                         );
                       },
-                      child: const Text('Copy Logs'),
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
-                Text('State: $statusLabel'),
-                Text('Type: ${torrent.type}'),
-                Text('Size: ${torrent.totalSize ?? 0} bytes'),
-                Text('Downloaded: ${view?.downloaded ?? torrent.bytesDown}'),
-                Text('Uploaded: ${view?.uploaded ?? torrent.bytesUp}'),
                 const SizedBox(height: 16),
-                Text('Pieces: $haveCount / ${torrent.totalPieces ?? 0}'),
-                const SizedBox(height: 16),
+                _InfoTile('InfoHash', torrent.id, small: true),
+                _InfoTile('Type', torrent.type),
+                _InfoTile('Status', statusLabel),
+                if (view != null) ...[
+                  _InfoTile(
+                    'Seeders',
+                    '${view.seeders} (DHT: ${view.dhtNodes}, Tracker: ${view.trackers})',
+                  ),
+                  _InfoTile('Leechers', '${view.leechers}'),
+                  _InfoTile('Connection', view.connectionMessage),
+                ],
+                _InfoTile('Pieces', '$haveCount / ${torrent.totalPieces ?? 0}'),
+                _InfoTile(
+                  'Downloaded',
+                  _fmtBytes(view?.downloaded ?? torrent.bytesDown),
+                ),
+                _InfoTile('Uploaded', _fmtBytes(view?.uploaded ?? torrent.bytesUp)),
+                if ((view?.isSeeding ?? false))
+                  _InfoTile(
+                    'Shared back',
+                    '${(view!.seedingProgress * 100).toStringAsFixed(1)}% of size',
+                  ),
               ],
             ),
           ),
@@ -135,4 +263,95 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
       },
     );
   }
+}
+
+class _StatChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+
+  const _StatChip({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: color),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InfoTile extends StatelessWidget {
+  final String label;
+  final String value;
+  final bool small;
+
+  const _InfoTile(this.label, this.value, {this.small = false});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 110,
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: small ? 10 : 12,
+                fontWeight: FontWeight.w600,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(
+                fontSize: small ? 10 : 13,
+                fontFamily: small ? 'monospace' : null,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+String _fmtBytes(int bytes) {
+  if (bytes <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  var value = bytes.toDouble();
+  var index = 0;
+  while (value >= 1024 && index < units.length - 1) {
+    value /= 1024;
+    index++;
+  }
+  return '${value.toStringAsFixed(index == 0 ? 0 : 1)} ${units[index]}';
 }

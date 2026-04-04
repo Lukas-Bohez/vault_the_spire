@@ -2,11 +2,115 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:vault_the_spire/platform/desktop_window.dart';
+import 'package:vault_the_spire/screens/about_screen.dart';
+import 'package:vault_the_spire/screens/browser_screen.dart';
+import 'package:vault_the_spire/screens/guide_screen.dart';
+import 'package:vault_the_spire/screens/torrents_screen.dart';
 import 'package:vault_the_spire/services/settings_service.dart';
 
-class AppShell extends StatelessWidget {
+class AppShell extends StatefulWidget {
   final Widget child;
   const AppShell({super.key, required this.child});
+
+  @override
+  State<AppShell> createState() => _AppShellState();
+}
+
+class _AppShellState extends State<AppShell> {
+  int _mobileIndex = 0;
+  bool _didInitMobileIndex = false;
+
+  int _mobileIndexForPath(String path) {
+    switch (path) {
+      case '/guide':
+        return 1;
+      case '/browser':
+        return 2;
+      case '/about':
+        return 3;
+      case '/torrents':
+      default:
+        return 0;
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_didInitMobileIndex) return;
+    final location = GoRouterState.of(context).uri.path;
+    _mobileIndex = _mobileIndexForPath(location);
+    _didInitMobileIndex = true;
+  }
+
+  Widget _buildDesktop(
+    BuildContext context,
+    List<_NavItem> navItems,
+    String location,
+  ) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: SettingsService.persistentSidebarListenable,
+      builder: (context, persistentSidebar, _) {
+        if (persistentSidebar) {
+          final sidebarWidth = MediaQuery.of(context).size.width > 1400
+              ? 240.0
+              : 200.0;
+          return Scaffold(
+            body: Row(
+              children: [
+                SizedBox(
+                  width: sidebarWidth,
+                  child: _Sidebar(items: navItems, currentPath: location),
+                ),
+                const VerticalDivider(width: 1),
+                Expanded(child: widget.child),
+              ],
+            ),
+          );
+        }
+
+        return Scaffold(
+          body: widget.child,
+          floatingActionButtonLocation: FloatingActionButtonLocation.startFloat,
+          floatingActionButton: FloatingActionButton.small(
+            tooltip: 'Open navigation',
+            onPressed: () {
+              showModalBottomSheet<void>(
+                context: context,
+                builder: (sheetContext) {
+                  return SafeArea(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (final item in navItems)
+                          ListTile(
+                            leading: Icon(item.icon),
+                            title: Text(item.label),
+                            onTap: () {
+                              Navigator.of(sheetContext).pop();
+                              context.go(item.route);
+                            },
+                          ),
+                        ListTile(
+                          leading: const Icon(Icons.fullscreen),
+                          title: const Text('Toggle Fullscreen'),
+                          onTap: () async {
+                            Navigator.of(sheetContext).pop();
+                            await toggleDesktopFullScreen();
+                          },
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              );
+            },
+            child: const Icon(Icons.menu),
+          ),
+        );
+      },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -83,92 +187,45 @@ class AppShell extends StatelessWidget {
           ];
 
     if (isDesktop) {
-      return ValueListenableBuilder<bool>(
-        valueListenable: SettingsService.persistentSidebarListenable,
-        builder: (context, persistentSidebar, _) {
-          if (persistentSidebar) {
-            final sidebarWidth = MediaQuery.of(context).size.width > 1400
-                ? 240.0
-                : 200.0;
-            return Scaffold(
-              body: Row(
-                children: [
-                  SizedBox(
-                    width: sidebarWidth,
-                    child: _Sidebar(items: navItems, currentPath: location),
-                  ),
-                  const VerticalDivider(width: 1),
-                  Expanded(child: child),
-                ],
-              ),
-            );
-          }
-
-          return Scaffold(
-            body: child,
-            floatingActionButtonLocation:
-                FloatingActionButtonLocation.startFloat,
-            floatingActionButton: FloatingActionButton.small(
-              tooltip: 'Open navigation',
-              onPressed: () {
-                showModalBottomSheet<void>(
-                  context: context,
-                  builder: (sheetContext) {
-                    return SafeArea(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          for (final item in navItems)
-                            ListTile(
-                              leading: Icon(item.icon),
-                              title: Text(item.label),
-                              onTap: () {
-                                Navigator.of(sheetContext).pop();
-                                context.go(item.route);
-                              },
-                            ),
-                          ListTile(
-                            leading: const Icon(Icons.fullscreen),
-                            title: const Text('Toggle Fullscreen'),
-                            onTap: () async {
-                              Navigator.of(sheetContext).pop();
-                              await toggleDesktopFullScreen();
-                            },
-                          ),
-                        ],
-                      ),
-                    );
-                  },
-                );
-              },
-              child: const Icon(Icons.menu),
-            ),
-          );
-        },
-      );
+      return _buildDesktop(context, navItems, location);
     }
 
+    final mobileScreens = const [
+      TorrentsScreen(),
+      GuideScreen(),
+      BrowserScreen(),
+      AboutScreen(),
+    ];
+
     return Scaffold(
-      body: child,
+      body: IndexedStack(index: _mobileIndex, children: mobileScreens),
       bottomNavigationBar: NavigationBar(
-        selectedIndex: _indexForPath(location, navItems),
-        onDestinationSelected: (i) => context.go(navItems[i].route),
-        destinations: navItems
-            .map(
-              (item) => NavigationDestination(
-                icon: Icon(item.icon),
-                selectedIcon: Icon(item.activeIcon),
-                label: item.label,
-              ),
-            )
-            .toList(),
+        selectedIndex: _mobileIndex,
+        onDestinationSelected: (i) => setState(() => _mobileIndex = i),
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.download_outlined),
+            selectedIcon: Icon(Icons.download),
+            label: 'Torrents',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.menu_book_outlined),
+            selectedIcon: Icon(Icons.menu_book),
+            label: 'Guide',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.language_outlined),
+            selectedIcon: Icon(Icons.language),
+            label: 'Browser',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.settings_outlined),
+            selectedIcon: Icon(Icons.settings),
+            label: 'Settings',
+          ),
+        ],
       ),
     );
-  }
-
-  int _indexForPath(String path, List<_NavItem> items) {
-    final idx = items.indexWhere((i) => i.route == path);
-    return idx < 0 ? 0 : idx;
   }
 }
 
@@ -262,7 +319,7 @@ class _Sidebar extends StatelessWidget {
                   borderRadius: BorderRadius.circular(12),
                   color: isActive ? cs.primaryContainer : Colors.transparent,
                   border: Border.all(
-                    color: isActive ? cs.primary.withOpacity(0.2) : Colors.transparent,
+                    color: isActive ? cs.primary.withValues(alpha: 0.2) : Colors.transparent,
                   ),
                 ),
                 child: ListTile(
