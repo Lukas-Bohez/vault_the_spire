@@ -8,6 +8,7 @@ import 'package:dtorrent_common/dtorrent_common.dart';
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart' as dt;
 import 'package:dtorrent_task_v2/src/piece/piece.dart' as dt_piece;
 import 'package:flutter/foundation.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 
 import 'package:vault_the_spire/models/torrent.dart';
@@ -1538,7 +1539,12 @@ class TorrentEngineService {
   Future<void> _deleteBtStateFiles(String directoryPath) async {
     final dir = Directory(directoryPath);
     if (!await dir.exists()) return;
+    var seen = 0;
     await for (final entity in dir.list(recursive: true, followLinks: false)) {
+      seen++;
+      if (seen % 200 == 0) {
+        await Future<void>.delayed(Duration.zero);
+      }
       if (entity is! File) continue;
       final lowerPath = entity.path.toLowerCase();
       if (!lowerPath.endsWith('.bt.state')) continue;
@@ -1550,51 +1556,153 @@ class TorrentEngineService {
     }
   }
 
+  String _sanitizePathSegment(String value) {
+    return value
+        .trim()
+        .replaceAll(RegExp(r'[<>:"/\\|?*]'), '_')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+  }
+
+  bool _isPathInside(String candidatePath, String baseDir) {
+    final base = p.normalize(p.absolute(baseDir));
+    final candidate = p.normalize(p.absolute(candidatePath));
+    return candidate == base ||
+        candidate.startsWith('$base${Platform.pathSeparator}');
+  }
+
+  Future<bool> _deletePathIfExists(String targetPath) async {
+    final type = await FileSystemEntity.type(targetPath, followLinks: false);
+    if (type == FileSystemEntityType.notFound) return false;
+    try {
+      if (type == FileSystemEntityType.directory) {
+        await Directory(targetPath).delete(recursive: true);
+      } else {
+        await File(targetPath).delete();
+      }
+      return true;
+    } catch (e) {
+      debugPrint('forceRedownload: delete failed for $targetPath: $e');
+      return false;
+    }
+  }
+
+  Future<dt.TorrentModel?> _loadCachedModelForRedownload(
+    TorrentModel torrent,
+  ) async {
+    try {
+      final cacheKey = torrent.id.trim().toLowerCase();
+      if (cacheKey.isEmpty) return null;
+      final cachedMetadata = await dt.MetadataDownloader.loadFromCache(cacheKey);
+      if (cachedMetadata == null) return null;
+      final decoded = decode(cachedMetadata);
+      return _parseTorrentModelFromRawBencode(decoded);
+    } catch (e) {
+      debugPrint('forceRedownload: metadata cache unavailable: $e');
+      return null;
+    }
+  }
+
+  Future<void> _deleteTorrentContentForRedownload(
+    TorrentModel torrent,
+    String saveDir,
+  ) async {
+    var deletedAnything = false;
+    final cachedModel = await _loadCachedModelForRedownload(torrent);
+
+    if (cachedModel != null && cachedModel.files.isNotEmpty) {
+      var ops = 0;
+      final roots = <String>{};
+      for (final file in cachedModel.files) {
+        final relative = file.path.replaceAll('/', Platform.pathSeparator);
+        final target = p.normalize(p.join(saveDir, relative));
+        if (!_isPathInside(target, saveDir)) continue;
+
+        final didDelete = await _deletePathIfExists(target);
+        deletedAnything = deletedAnything || didDelete;
+
+        final root = file.path.split('/').first;
+        if (root.isNotEmpty) roots.add(root);
+
+        ops++;
+        if (ops % 20 == 0) {
+          await Future<void>.delayed(Duration.zero);
+        }
+      }
+
+      for (final root in roots) {
+        final targetDir = p.normalize(p.join(saveDir, root));
+        if (!_isPathInside(targetDir, saveDir)) continue;
+        final type = await FileSystemEntity.type(targetDir, followLinks: false);
+        if (type == FileSystemEntityType.directory) {
+          try {
+            final isEmpty = await Directory(targetDir).list().isEmpty;
+            if (isEmpty) {
+              await Directory(targetDir).delete();
+            }
+          } catch (_) {
+            // Best effort cleanup only.
+          }
+        }
+      }
+    }
+
+    if (deletedAnything) return;
+
+    // Fallback when cached metadata is unavailable: remove common root targets.
+    final safeName = _sanitizePathSegment(torrent.name);
+    if (safeName.isEmpty) return;
+
+    final fallbackTargets = <String>{
+      p.join(saveDir, safeName),
+      p.join(saveDir, '$safeName.mkv'),
+      p.join(saveDir, '$safeName.exe'),
+      p.join(saveDir, '$safeName.mp4'),
+    };
+
+    for (final target in fallbackTargets) {
+      if (!_isPathInside(target, saveDir)) continue;
+      await _deletePathIfExists(target);
+    }
+  }
+
   Future<void> forceRedownload(String torrentId) async {
     await stopTorrent(torrentId);
-    await Future.delayed(const Duration(milliseconds: 300));
+    await Future.delayed(const Duration(milliseconds: 200));
 
     final torrent = await TorrentService.instance.getTorrentById(torrentId);
     if (torrent == null) throw StateError('Torrent not found: $torrentId');
 
     final filePath = torrent.filePath?.trim() ?? '';
     final configuredDir = SettingsService.instance.downloadDestination.trim();
+    final preferredPath = filePath.isNotEmpty && !_isTorrentFilePath(filePath)
+        ? filePath
+        : (configuredDir.isNotEmpty ? configuredDir : null);
+    final saveDir = await _resolveWritableDownloadDir(preferredPath);
 
-    if (filePath.isNotEmpty && !_isTorrentFilePath(filePath)) {
-      await _deleteBtStateFiles(filePath);
-    }
-    if (configuredDir.isNotEmpty && configuredDir != filePath) {
+    // Reset visible state immediately so UI drops to 0% without waiting for disk cleanup.
+    await TorrentService.instance.updateTorrent(
+      torrent.copyWith(
+        status: 'downloading',
+        bytesDown: 0,
+        bytesUp: 0,
+        completedAt: null,
+        seeders: 0,
+        leechers: 0,
+        filePath: saveDir,
+      ),
+    );
+    TorrentService.instance.invalidateDiskSnapshot(torrentId);
+    unawaited(TorrentService.instance.refreshTorrentStates());
+
+    await _deleteBtStateFiles(saveDir);
+    if (configuredDir.isNotEmpty && configuredDir != saveDir) {
       await _deleteBtStateFiles(configuredDir);
     }
 
-    final contentDir =
-        filePath.isNotEmpty && !_isTorrentFilePath(filePath) ? filePath : null;
-    if (contentDir != null) {
-      final sameAsGlobal =
-          configuredDir.isNotEmpty &&
-          Directory(contentDir).absolute.path == Directory(configuredDir).absolute.path;
-      if (!sameAsGlobal) {
-        try {
-          final dir = Directory(contentDir);
-          if (await dir.exists()) {
-            await for (final entity in dir.list(recursive: false)) {
-              final lowerPath = entity.path.toLowerCase();
-              if (lowerPath.endsWith('.torrent')) continue;
-              await entity.delete(recursive: true);
-            }
-          }
-        } catch (e) {
-          debugPrint('forceRedownload cleanup error (non-fatal): $e');
-        }
-      }
-    }
+    await _deleteTorrentContentForRedownload(torrent, saveDir);
 
-    await TorrentService.instance.updateProgress(torrentId, 0, 0);
-    await TorrentService.instance.updateTorrentStatus(torrentId, 'downloading');
-    TorrentService.instance.invalidateDiskSnapshot(torrentId);
-
-    final destination = contentDir ?? (configuredDir.isNotEmpty ? configuredDir : null);
-    await startTorrent(torrentId, destinationPath: destination);
+    await startTorrent(torrentId, destinationPath: saveDir);
   }
 
   void _cleanup(String torrentId) {
