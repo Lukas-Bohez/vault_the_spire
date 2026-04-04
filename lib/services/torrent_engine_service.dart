@@ -1589,6 +1589,43 @@ class TorrentEngineService {
     }
   }
 
+  bool _isFileInUseError(Object error) {
+    if (error is PathAccessException) {
+      final code = error.osError?.errorCode;
+      return code == 32 || code == 33;
+    }
+    return false;
+  }
+
+  Future<bool> _deletePathWithRetry(
+    String targetPath, {
+    int attempts = 4,
+    Duration delay = const Duration(milliseconds: 250),
+  }) async {
+    final type = await FileSystemEntity.type(targetPath, followLinks: false);
+    if (type == FileSystemEntityType.notFound) return true;
+
+    for (var i = 1; i <= attempts; i++) {
+      try {
+        if (type == FileSystemEntityType.directory) {
+          await Directory(targetPath).delete(recursive: true);
+        } else {
+          await File(targetPath).delete();
+        }
+        return true;
+      } catch (e) {
+        final isLocked = _isFileInUseError(e);
+        debugPrint('forceRedownload: delete attempt $i/$attempts failed for $targetPath: $e');
+        if (!isLocked || i == attempts) {
+          return false;
+        }
+        await Future<void>.delayed(delay);
+      }
+    }
+
+    return false;
+  }
+
   Future<dt.TorrentModel?> _loadCachedModelForRedownload(
     TorrentModel torrent,
   ) async {
@@ -1627,12 +1664,13 @@ class TorrentEngineService {
         .toSet();
   }
 
-  Future<void> _deleteTorrentContentForRedownload(
+  Future<Set<String>> _deleteTorrentContentForRedownload(
     TorrentModel torrent,
     String saveDir,
     Set<String> relativePaths,
   ) async {
     var deletedAnything = false;
+    final lockedPaths = <String>{};
     if (relativePaths.isNotEmpty) {
       var ops = 0;
       final roots = <String>{};
@@ -1641,7 +1679,10 @@ class TorrentEngineService {
         final target = p.normalize(p.join(saveDir, relative));
         if (!_isPathInside(target, saveDir)) continue;
 
-        final didDelete = await _deletePathIfExists(target);
+        final didDelete = await _deletePathWithRetry(target);
+        if (!didDelete && await FileSystemEntity.type(target) != FileSystemEntityType.notFound) {
+          lockedPaths.add(target);
+        }
         deletedAnything = deletedAnything || didDelete;
 
         final root = relPath.split('/').first;
@@ -1670,11 +1711,11 @@ class TorrentEngineService {
       }
     }
 
-    if (deletedAnything) return;
+    if (deletedAnything) return lockedPaths;
 
     // Fallback when cached metadata is unavailable: remove common root targets.
     final safeName = _sanitizePathSegment(torrent.name);
-    if (safeName.isEmpty) return;
+    if (safeName.isEmpty) return lockedPaths;
 
     final fallbackTargets = <String>{
       p.join(saveDir, safeName),
@@ -1685,8 +1726,13 @@ class TorrentEngineService {
 
     for (final target in fallbackTargets) {
       if (!_isPathInside(target, saveDir)) continue;
-      await _deletePathIfExists(target);
+      final didDelete = await _deletePathWithRetry(target);
+      if (!didDelete && await FileSystemEntity.type(target) != FileSystemEntityType.notFound) {
+        lockedPaths.add(target);
+      }
     }
+
+    return lockedPaths;
   }
 
   Future<void> forceRedownload(String torrentId) async {
@@ -1743,11 +1789,19 @@ class TorrentEngineService {
       }
     }
 
-    await _deleteTorrentContentForRedownload(
+    final lockedPaths = await _deleteTorrentContentForRedownload(
       torrent,
       saveDir,
       relativePaths,
     );
+
+    if (lockedPaths.isNotEmpty) {
+      await TorrentService.instance.updateTorrentStatus(torrentId, 'paused');
+      final sample = lockedPaths.take(3).join(', ');
+      throw StateError(
+        'Redownload blocked: one or more files are in use. Close Explorer/video player and try again. Files: $sample',
+      );
+    }
 
     await startTorrent(torrentId, destinationPath: saveDir);
   }
