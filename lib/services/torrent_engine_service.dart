@@ -1549,20 +1549,26 @@ class TorrentEngineService {
     }
   }
 
-  Future<void> _deleteBtStateFiles(String directoryPath) async {
+  Future<void> _deleteBtStateFiles(String directoryPath, String torrentId) async {
     final dir = Directory(directoryPath);
     if (!await dir.exists()) return;
-    var seen = 0;
-    await for (final entity in dir.list(recursive: true, followLinks: false)) {
-      seen++;
-      if (seen % 100 == 0) {
-        await Future<void>.delayed(Duration.zero);
-      }
+    final hash = torrentId.trim().toLowerCase();
+    if (hash.isEmpty) return;
+
+    final candidates = <FileSystemEntity>[];
+    await for (final entity in dir.list(recursive: false, followLinks: false)) {
       if (entity is! File) continue;
-      final lowerPath = entity.path.toLowerCase();
-      final isState = lowerPath.endsWith('.bt.state');
-      final isBackup = lowerPath.contains('.bt.state.backup.');
-      if (!isState && !isBackup) continue;
+      final name = p.basename(entity.path).toLowerCase();
+      final isState = name == '$hash.bt.state';
+      final isBackup =
+          name.startsWith('$hash.bt.state.backup.') ||
+          name.startsWith('$hash.bt.state.bak');
+      if (isState || isBackup) {
+        candidates.add(entity);
+      }
+    }
+
+    for (final entity in candidates) {
       try {
         await entity.delete();
       } catch (_) {
@@ -1577,6 +1583,22 @@ class TorrentEngineService {
         .replaceAll(RegExp(r'[<>:"/\\|?*]'), '_')
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
+  }
+
+  Future<String> _createIsolatedRedownloadDir(
+    String baseDir,
+    String torrentName,
+  ) async {
+    final safeName = _sanitizePathSegment(torrentName);
+    final suffix = DateTime.now().millisecondsSinceEpoch;
+    final folderName = safeName.isEmpty
+        ? 'redownload_$suffix'
+        : '${safeName}_redownload_$suffix';
+    final dir = Directory(p.join(baseDir, folderName));
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+    return dir.path;
   }
 
   bool _isPathInside(String candidatePath, String baseDir) {
@@ -1758,9 +1780,11 @@ class TorrentEngineService {
 
     final filePath = torrent.filePath?.trim() ?? '';
     final configuredDir = SettingsService.instance.downloadDestination.trim();
-    final preferredPath = filePath.isNotEmpty && !_isTorrentFilePath(filePath)
+    final preferredPath = configuredDir.isNotEmpty
+      ? configuredDir
+      : (filePath.isNotEmpty && !_isTorrentFilePath(filePath)
         ? filePath
-        : (configuredDir.isNotEmpty ? configuredDir : null);
+        : null);
     final saveDir = await _resolveWritableDownloadDir(preferredPath);
 
     // Reset visible state immediately so UI drops to 0% without waiting for disk cleanup.
@@ -1778,9 +1802,9 @@ class TorrentEngineService {
     TorrentService.instance.invalidateDiskSnapshot(torrentId);
     unawaited(TorrentService.instance.refreshTorrentStates());
 
-    await _deleteBtStateFiles(saveDir);
+    await _deleteBtStateFiles(saveDir, torrentId);
     if (configuredDir.isNotEmpty && configuredDir != saveDir) {
-      await _deleteBtStateFiles(configuredDir);
+      await _deleteBtStateFiles(configuredDir, torrentId);
     }
 
     final relativePaths = <String>{};
@@ -1809,13 +1833,31 @@ class TorrentEngineService {
     );
 
     if (lockedPaths.isNotEmpty) {
-      await TorrentService.instance.updateTorrentStatus(torrentId, 'error_file_in_use');
       final sample = lockedPaths.take(3).join(', ');
-      throw StateError(
-        'Redownload blocked: one or more files are in use by another process. '
-        'Close Explorer Preview Pane, media players, and antivirus file viewers, then try again. '
-        'Files: $sample',
+      debugPrint(
+        'forceRedownload: files are locked, switching to isolated redownload dir. Files: $sample',
       );
+
+      final isolatedDir = await _createIsolatedRedownloadDir(
+        saveDir,
+        torrent.name,
+      );
+      await TorrentService.instance.updateTorrent(
+        torrent.copyWith(
+          status: 'downloading',
+          bytesDown: 0,
+          bytesUp: 0,
+          completedAt: null,
+          seeders: 0,
+          leechers: 0,
+          filePath: isolatedDir,
+        ),
+      );
+      TorrentService.instance.invalidateDiskSnapshot(torrentId);
+      unawaited(TorrentService.instance.refreshTorrentStates());
+
+      await startTorrent(torrentId, destinationPath: isolatedDir);
+      return;
     }
 
     await startTorrent(torrentId, destinationPath: saveDir);
