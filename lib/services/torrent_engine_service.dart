@@ -1540,9 +1540,9 @@ class TorrentEngineService {
     final dir = Directory(directoryPath);
     if (!await dir.exists()) return;
     var seen = 0;
-    await for (final entity in dir.list(recursive: true, followLinks: false)) {
+    await for (final entity in dir.list(recursive: false, followLinks: false)) {
       seen++;
-      if (seen % 200 == 0) {
+      if (seen % 100 == 0) {
         await Future<void>.delayed(Duration.zero);
       }
       if (entity is! File) continue;
@@ -1603,25 +1603,46 @@ class TorrentEngineService {
     }
   }
 
+  Future<dt.TorrentModel?> _loadModelFromTorrentFileForRedownload(
+    TorrentModel torrent,
+  ) async {
+    try {
+      final path = torrent.filePath?.trim() ?? '';
+      if (torrent.type != 'torrent_file' || !_isTorrentFilePath(path)) {
+        return null;
+      }
+      return dt.TorrentModel.parse(path);
+    } catch (e) {
+      debugPrint('forceRedownload: torrent file parse failed: $e');
+      return null;
+    }
+  }
+
+  Set<String> _relativeFilePathsFromModel(dt.TorrentModel model) {
+    return model.files
+        .map((f) => f.path.replaceAll('\\', '/').trim())
+        .where((s) => s.isNotEmpty)
+        .toSet();
+  }
+
   Future<void> _deleteTorrentContentForRedownload(
     TorrentModel torrent,
     String saveDir,
+    Set<String> relativePaths,
   ) async {
     var deletedAnything = false;
-    final cachedModel = await _loadCachedModelForRedownload(torrent);
-
-    if (cachedModel != null && cachedModel.files.isNotEmpty) {
+    if (relativePaths.isNotEmpty) {
       var ops = 0;
       final roots = <String>{};
-      for (final file in cachedModel.files) {
-        final relative = file.path.replaceAll('/', Platform.pathSeparator);
+      for (final relPath in relativePaths) {
+        final relative = relPath.replaceAll('/', Platform.pathSeparator);
         final target = p.normalize(p.join(saveDir, relative));
         if (!_isPathInside(target, saveDir)) continue;
 
         final didDelete = await _deletePathIfExists(target);
         deletedAnything = deletedAnything || didDelete;
 
-        final root = file.path.split('/').first;
+        final root = relPath.split('/').first;
         if (root.isNotEmpty) roots.add(root);
 
         ops++;
@@ -1667,6 +1688,7 @@ class TorrentEngineService {
   }
 
   Future<void> forceRedownload(String torrentId) async {
+    final runningModel = _tasks[torrentId]?.metaInfo;
     await stopTorrent(torrentId);
     await Future.delayed(const Duration(milliseconds: 200));
 
@@ -1700,7 +1722,30 @@ class TorrentEngineService {
       await _deleteBtStateFiles(configuredDir);
     }
 
-    await _deleteTorrentContentForRedownload(torrent, saveDir);
+    final relativePaths = <String>{};
+    if (runningModel != null) {
+      relativePaths.addAll(_relativeFilePathsFromModel(runningModel));
+    }
+
+    if (relativePaths.isEmpty) {
+      final fileModel = await _loadModelFromTorrentFileForRedownload(torrent);
+      if (fileModel != null) {
+        relativePaths.addAll(_relativeFilePathsFromModel(fileModel));
+      }
+    }
+
+    if (relativePaths.isEmpty) {
+      final cachedModel = await _loadCachedModelForRedownload(torrent);
+      if (cachedModel != null) {
+        relativePaths.addAll(_relativeFilePathsFromModel(cachedModel));
+      }
+    }
+
+    await _deleteTorrentContentForRedownload(
+      torrent,
+      saveDir,
+      relativePaths,
+    );
 
     await startTorrent(torrentId, destinationPath: saveDir);
   }
