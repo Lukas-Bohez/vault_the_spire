@@ -777,6 +777,7 @@ class TorrentEngineService {
     } catch (_) {}
 
     final startup = await task.start();
+    _forceAllFilesNormalPriority(task);
     // After starting the task, attempt recovery using the task's piece list
     try {
       final savePath = saveDir;
@@ -1032,6 +1033,7 @@ class TorrentEngineService {
     // Start task in background without blocking UI
     try {
       final startup = await task.start();
+      _forceAllFilesNormalPriority(task);
       final startupUploaded = startup['uploaded'] as int?;
       if (startupUploaded != null && startupUploaded >= 0) {
         _uploadedBytesByTorrent[torrent.id] = startupUploaded;
@@ -1917,6 +1919,19 @@ class TorrentEngineService {
     if (path == null) return false;
     final normalized = path.trim().toLowerCase();
     return normalized.isNotEmpty && normalized.endsWith('.torrent');
+  }
+
+  void _forceAllFilesNormalPriority(dt.TorrentTask task) {
+    try {
+      final files = task.metaInfo.files;
+      if (files.isEmpty) return;
+      final priorities = <int, dt.FilePriority>{
+        for (var i = 0; i < files.length; i++) i: dt.FilePriority.normal,
+      };
+      task.setFilePriorities(priorities);
+    } catch (e) {
+      debugPrint('Could not normalize file priorities (non-fatal): $e');
+    }
   }
 
   String? _storedDownloadDirForResume(TorrentModel torrent) {
