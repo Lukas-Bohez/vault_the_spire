@@ -17,7 +17,7 @@ plugins {
 
 android {
     namespace = "com.torrentspire.ai"
-    compileSdk = 36  // enforce latest SDK required by plugins (path_provider_android/sqflite_android)
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -33,7 +33,7 @@ android {
     defaultConfig {
         applicationId = "com.torrentspire.ai"
         minSdk = flutter.minSdkVersion
-        targetSdk = 36 // keep in sync with compileSdk for current plugin requirements
+        targetSdk = 35
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
