@@ -78,8 +78,12 @@ Future<void> main() async {
     return true; // handled
   };
   ErrorWidget.builder = (FlutterErrorDetails details) {
+    final errorScheme = ColorScheme.fromSeed(
+      seedColor: const Color(0xFFB00020),
+      brightness: Brightness.light,
+    );
     return Material(
-      color: Colors.red.shade100,
+      color: errorScheme.errorContainer,
       child: Center(
         child: SingleChildScrollView(
           child: Padding(
@@ -88,7 +92,7 @@ Future<void> main() async {
               'Flutter Error:\n\n'
               '${details.exceptionAsString()}\n\n'
               '${details.stack?.toString().split('\n').take(8).join('\n') ?? ''}',
-              style: const TextStyle(color: Colors.red, fontSize: 16),
+              style: TextStyle(color: errorScheme.onErrorContainer, fontSize: 16),
             ),
           ),
         ),
@@ -234,7 +238,7 @@ class _MainAppState extends State<MainApp> {
         elevation: 0,
         scrolledUnderElevation: 0,
         backgroundColor: scheme.surface,
-        surfaceTintColor: Colors.transparent,
+        surfaceTintColor: scheme.surfaceTint,
         titleTextStyle: TextStyle(
           color: scheme.onSurface,
           fontSize: 20,

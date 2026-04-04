@@ -17,6 +17,7 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
   Future<void> _redownload(TorrentModel torrent) async {
     try {
       TorrentEngineService.instance.stopTorrent(torrent.id);
+      await TorrentService.instance.purgeTorrentArtifacts(torrent.id);
       await TorrentService.instance.removeTorrent(torrent.id);
 
       if (torrent.type == 'magnet_link' &&

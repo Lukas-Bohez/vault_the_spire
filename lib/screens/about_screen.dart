@@ -628,7 +628,9 @@ class _AboutScreenState extends State<AboutScreen>
                           Text(
                             _modelStatus,
                             style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: _modelStatus.contains('Failed') ? Colors.red : Colors.grey,
+                              color: _modelStatus.contains('Failed')
+                                  ? Theme.of(context).colorScheme.error
+                                  : Theme.of(context).colorScheme.onSurfaceVariant,
                             ),
                           ),
                         ],

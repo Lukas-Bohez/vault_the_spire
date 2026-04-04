@@ -35,6 +35,20 @@ class _BrowserScreenState extends State<BrowserScreen>
   @override
   bool get wantKeepAlive => true;
 
+  static const Set<String> _blockedHostFragments = <String>{
+    'doubleclick.net',
+    'googlesyndication.com',
+    'google-analytics.com',
+    'googletagmanager.com',
+    'adservice.google.',
+    'adsystem.com',
+    'analytics.',
+    'tracker.',
+    'tracking.',
+    'facebook.net',
+    'connect.facebook.net',
+  };
+
   static bool _windowsWebViewEnvironmentInitialized = false;
 
   final TextEditingController _addressController = TextEditingController();
@@ -106,6 +120,9 @@ class _BrowserScreenState extends State<BrowserScreen>
             setState(() {
               _progress = progress / 100.0;
               _isLoading = progress < 100;
+              if (progress >= 100) {
+                _progress = 1.0;
+              }
             });
           },
           onPageStarted: (url) {
@@ -123,13 +140,16 @@ class _BrowserScreenState extends State<BrowserScreen>
             if (!mounted) return;
             setState(() {
               _isLoading = false;
-              _progress = 1.0;
+              _progress = 0.0;
               _showHomeScreen = false;
             });
             _recordVisit(url);
             _refreshNavigationState();
           },
           onNavigationRequest: (request) {
+            if (_shouldBlockUrl(request.url)) {
+              return NavigationDecision.prevent;
+            }
             if (_isTorrentOrMagnetUrl(request.url)) {
               _handleTorrentOrMagnetUrl(request.url);
               return NavigationDecision.prevent;
@@ -223,9 +243,11 @@ class _BrowserScreenState extends State<BrowserScreen>
       controller.onLoadError.listen((error) {
         _stopLoadingGuard();
         _captureCrashDump('WebView2 LoadError ${error.name}', null);
+        if (!mounted) return;
         setState(() {
           _lastLoadError = '${error.name}: ${error.toString()}';
           _windowsIsLoading = false;
+          _progress = 0.0;
         });
       });
 
@@ -324,6 +346,14 @@ class _BrowserScreenState extends State<BrowserScreen>
 
   bool _isTorrentOrMagnetUrl(String url) =>
       TorrentService.isTorrentOrMagnetUrl(url);
+
+  bool _shouldBlockUrl(String url) {
+    if (_isTorrentOrMagnetUrl(url)) return false;
+    final uri = Uri.tryParse(url);
+    final host = uri?.host.toLowerCase() ?? '';
+    if (host.isEmpty) return false;
+    return _blockedHostFragments.any(host.contains);
+  }
 
   Future<String> _ensureString(dynamic value) async {
     if (value == null) return '';
@@ -572,6 +602,7 @@ class _BrowserScreenState extends State<BrowserScreen>
   // ── Top bar shown in BOTH tab and standalone modes ───────────────────────
 
   Widget _buildTopBar(ThemeData theme) {
+    final cs = theme.colorScheme;
     final currentUrl = _addressController.text.trim();
     final isFav = _isFavourite(currentUrl);
     final canBack = Platform.isWindows ? _windowsCanGoBack : _canGoBack;
@@ -655,7 +686,7 @@ class _BrowserScreenState extends State<BrowserScreen>
               icon: Icon(
                 isFav ? Icons.star : Icons.star_border,
                 size: 20,
-                color: isFav ? Colors.amber : null,
+                color: isFav ? cs.tertiary : null,
               ),
               onPressed: () => _toggleFavourite(currentUrl),
               tooltip: isFav ? 'Remove favourite' : 'Add favourite',
@@ -806,7 +837,6 @@ class _BrowserScreenState extends State<BrowserScreen>
                 child: Text(
                   'No favourites yet. Star a page to add it.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.grey),
                 ),
               )
             else
@@ -818,7 +848,7 @@ class _BrowserScreenState extends State<BrowserScreen>
                     avatar: const Icon(
                       Icons.star,
                       size: 14,
-                      color: Colors.amber,
+                      color: null,
                     ),
                     label: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 180),
@@ -878,17 +908,18 @@ class _BrowserScreenState extends State<BrowserScreen>
 
   Widget _buildWebViewBody() {
     if (_webViewError != null) {
+      final cs = Theme.of(context).colorScheme;
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.web_asset_off, size: 48, color: Colors.grey),
+            Icon(Icons.web_asset_off, size: 48, color: cs.outline),
             const SizedBox(height: 16),
             const Text('Browser unavailable on this device'),
             const SizedBox(height: 8),
             Text(
               _webViewError!,
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
+              style: TextStyle(fontSize: 12, color: cs.outline),
               textAlign: TextAlign.center,
             ),
           ],
@@ -918,7 +949,7 @@ class _BrowserScreenState extends State<BrowserScreen>
           children: [
             Text(
               'Load error: $_lastLoadError',
-              style: const TextStyle(color: Colors.red),
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
             const SizedBox(height: 12),
             ElevatedButton(
@@ -936,16 +967,26 @@ class _BrowserScreenState extends State<BrowserScreen>
     super.build(context); // required by AutomaticKeepAliveClientMixin
     final theme = Theme.of(context);
     final isLoading = Platform.isWindows ? _windowsIsLoading : _isLoading;
-    final showLoadingBar = !_showHomeScreen && _lastLoadError == null && isLoading;
+    final showLoadingBar =
+        !_showHomeScreen && _lastLoadError == null && isLoading && _progress < 0.995;
 
     final column = Column(
       children: [
         _buildTopBar(theme),
-        if (showLoadingBar)
-          LinearProgressIndicator(
-            value: Platform.isWindows ? null : _progress,
-            minHeight: 2,
-          ),
+        AnimatedSwitcher(
+          duration: const Duration(milliseconds: 180),
+          child: showLoadingBar
+              ? AnimatedOpacity(
+                  key: const ValueKey('browser_loading_bar'),
+                  opacity: 1,
+                  duration: const Duration(milliseconds: 180),
+                  child: LinearProgressIndicator(
+                    value: Platform.isWindows ? null : _progress,
+                    minHeight: 2,
+                  ),
+                )
+              : const SizedBox.shrink(key: ValueKey('browser_loading_bar_hidden')),
+        ),
         Expanded(
           child: _showHomeScreen
               ? _buildHomeScreen(theme)

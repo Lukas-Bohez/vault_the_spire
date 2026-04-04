@@ -105,6 +105,7 @@ class _TorrentsScreenState extends State<TorrentsScreen>
     final torrent = torrentState.model;
     try {
       TorrentEngineService.instance.stopTorrent(torrent.id);
+      await TorrentService.instance.purgeTorrentArtifacts(torrent.id);
       await TorrentService.instance.removeTorrent(torrent.id);
       if (torrent.type == 'magnet_link' &&
           torrent.magnetLink != null &&
