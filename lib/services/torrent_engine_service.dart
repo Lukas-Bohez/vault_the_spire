@@ -6,6 +6,7 @@ import 'package:b_encode_decode/b_encode_decode.dart';
 import 'package:bittorrent_dht/bittorrent_dht.dart';
 import 'package:dtorrent_common/dtorrent_common.dart';
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart' as dt;
+import 'package:dtorrent_task_v2/src/piece/piece.dart' as dt_piece;
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
@@ -278,14 +279,14 @@ class TorrentEngineService {
             return;
           }
 
-          // Announce to all trackers
-          for (final trackerUri in trackers) {
-            try {
-              await _announceUrlWithRetry(task, trackerUri, infoHash);
-            } catch (e) {
-              _log(torrentId, 'Tracker announce failed for $trackerUri: $e');
-            }
-          }
+          // Announce to all trackers in parallel, ignore individual failures
+          await Future.wait(
+            trackers.map((trackerUri) =>
+              _announceUrlWithRetry(task, trackerUri, infoHash).catchError((e) {
+                _log(torrentId, 'Tracker announce failed for $trackerUri: $e');
+              }),
+            ),
+          );
         } catch (e) {
           debugPrint('[Trackers] _announceTrackers error: $e');
         }
@@ -548,6 +549,80 @@ class TorrentEngineService {
     await _refreshConnection(torrentId, task);
   }
 
+  /// Verifies all downloaded pieces against their SHA-1 hashes.
+  /// Marks corrupted pieces for re-download without deleting good data.
+  Future<Map<String, dynamic>> recheckTorrent(String torrentId) async {
+    final torrent = await TorrentService.instance.getTorrentById(torrentId);
+    if (torrent == null) throw StateError('Torrent not found: $torrentId');
+
+    final savePath = (torrent.filePath?.trim().isNotEmpty == true)
+        ? torrent.filePath!.trim()
+        : SettingsService.instance.downloadDestination.trim();
+    if (savePath.isEmpty) throw StateError('No save path for torrent $torrentId');
+
+    final task = _tasks[torrentId];
+    final wasRunning = task != null;
+    if (wasRunning) stopTorrent(torrentId);
+
+    await TorrentService.instance.updateTorrentStatus(torrentId, 'rechecking');
+
+    try {
+      dt.TorrentModel? dtModel;
+      if (task != null) {
+        dtModel = (task as dynamic).metaInfo as dt.TorrentModel?;
+      }
+      if (dtModel == null) {
+        // Try to parse local .torrent file if available
+        if (torrent.type == 'torrent_file' && torrent.filePath != null && _isTorrentFilePath(torrent.filePath)) {
+          dtModel = await dt.TorrentModel.parse(torrent.filePath!);
+        }
+      }
+      if (dtModel == null) throw StateError('No torrent metadata available to recheck');
+
+      // Build pieces list either from running task or construct from model
+      List<dt_piece.Piece> pieces = [];
+      if (task != null) {
+        pieces = (task as dynamic).pieceManager?.pieces?.values?.toList() ?? [];
+      } else {
+        // Construct minimal Piece objects from model piece hashes
+        final metaPieces = dtModel.pieces ?? [];
+        var offset = 0;
+        for (var i = 0; i < metaPieces.length; i++) {
+          final byteLength = (i == metaPieces.length - 1)
+              ? dtModel.lastPieceLength
+              : dtModel.pieceLength;
+          final hashBytes = metaPieces[i];
+          final hashString = hashBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+          pieces.add(dt_piece.Piece(hashString, i, byteLength, offset));
+          offset += byteLength;
+        }
+      }
+
+      final recovery = dt.StateRecovery(dtModel, savePath, pieces);
+      await recovery.backupStateFile();
+
+      final validator = dt.FileValidator(dtModel, pieces, savePath);
+      final result = await validator.validateAll();
+
+      if (result.isValid) {
+        await TorrentService.instance.updateTorrentStatus(torrentId, 'seeding');
+      } else {
+        await TorrentService.instance.updateTorrentStatus(torrentId, 'downloading');
+      }
+
+      if (wasRunning) await startTorrent(torrentId, destinationPath: savePath);
+
+      return {
+        'validPieces': result.totalBytes - result.invalidPieces.length, // approximate
+        'invalidPieces': result.invalidPieces.length,
+        'isValid': result.isValid,
+      };
+    } catch (e) {
+      await TorrentService.instance.updateTorrentStatus(torrentId, 'error_recheck_failed');
+      rethrow;
+    }
+  }
+
   Future<void> startTorrent(String torrentId, {String? destinationPath}) async {
     // If already running, do nothing
     if (isRunning(torrentId)) return;
@@ -679,7 +754,36 @@ class TorrentEngineService {
     _attachDhtListeners(torrent.id, task);
 
     // Task configuration (port/NAT) already applied in _configureTask.
+    // Backup existing state file before starting the task and attempt recovery
+    try {
+      final savePath = saveDir;
+      if (savePath.isNotEmpty) {
+        try {
+          final preRecovery = dt.StateRecovery(dtModel, savePath, []);
+          final backupOk = await preRecovery.backupStateFile();
+          if (!backupOk) {
+            debugPrint('State file backup failed (non-fatal) for ${torrent.id}');
+          }
+        } catch (e) {
+          debugPrint('State backup step failed (non-fatal): $e');
+        }
+      }
+    } catch (_) {}
+
     final startup = await task.start();
+    // After starting the task, attempt recovery using the task's piece list
+    try {
+      final savePath = saveDir;
+      if (savePath.isNotEmpty) {
+        try {
+          final pieces = (task as dynamic).pieceManager?.pieces?.values?.toList() ?? [];
+          final recovery = dt.StateRecovery(dtModel, savePath, pieces);
+          await recovery.recoverStateFile();
+        } catch (e) {
+          debugPrint('State recovery failed (non-fatal): $e');
+        }
+      }
+    } catch (_) {}
     final startupUploaded = startup['uploaded'] as int?;
     if (startupUploaded != null && startupUploaded >= 0) {
       _uploadedBytesByTorrent[torrent.id] = startupUploaded;
@@ -699,22 +803,11 @@ class TorrentEngineService {
       _logProgressThrottled(torrent.id, task);
     });
 
-    // Use all announce URLs and fallback public trackers
+    // Allow the DHT a short moment to bootstrap before firing many tracker requests
+    await Future.delayed(const Duration(seconds: 2));
+
+    // Use all announce URLs and fallback public trackers in parallel
     final seenUrls = <String>{};
-    for (final url in dtModel.announces) {
-      if (seenUrls.add(url.toString())) {
-        try {
-          await _announceUrlWithRetry(
-            task,
-            Uri.parse(url.toString()),
-            dtModel.infoHashBuffer,
-          );
-        } catch (e) {
-          debugPrint('Tracker announce error: $url $e');
-        }
-      }
-    }
-    // Fallback public trackers
     const fallbackTrackers = [
       'udp://tracker.openbittorrent.com:80/announce',
       'udp://tracker.opentrackr.org:1337/announce',
@@ -727,19 +820,21 @@ class TorrentEngineService {
       'https://tracker.opentrackr.org:443/announce',
       'https://opentracker.i2p.rocks:443/announce',
     ];
-    for (final url in fallbackTrackers) {
-      if (seenUrls.add(url)) {
-        try {
-          await _announceUrlWithRetry(
-            task,
-            Uri.parse(url),
-            dtModel.infoHashBuffer,
-          );
-        } catch (e) {
-          debugPrint('Fallback tracker error: $url $e');
-        }
-      }
+
+    final announceUrls = <Uri>[];
+    for (final u in dtModel.announces) {
+      final s = u.toString();
+      if (seenUrls.add(s)) announceUrls.add(Uri.parse(s));
     }
+    for (final s in fallbackTrackers) {
+      if (seenUrls.add(s)) announceUrls.add(Uri.parse(s));
+    }
+
+    await Future.wait(
+      announceUrls.map((uri) => _announceUrlWithRetry(task, uri, dtModel.infoHashBuffer).catchError((e) {
+        debugPrint('Tracker announce failed for $uri: $e');
+      })),
+    );
 
     // DHT bootstrap
     try {
@@ -820,10 +915,10 @@ class TorrentEngineService {
 
           downloader.startDownload();
 
-          // First attempt: 3 minutes timeout, retry attempt: 90 seconds
-          final timeout = attempt == 1 
-            ? const Duration(minutes: 3)
-            : const Duration(seconds: 90);
+          // First attempt: 10 minutes timeout, retry attempt: 3 minutes
+          final timeout = attempt == 1
+            ? const Duration(minutes: 10)
+            : const Duration(minutes: 3);
             
           dtModel = await completer.future.timeout(
             timeout,
@@ -1216,10 +1311,30 @@ class TorrentEngineService {
   }
 
   void _startPollTimer(String torrentId, dt.TorrentTask task) {
-    _pollTimers[torrentId] = Timer.periodic(const Duration(seconds: 2), (_) {
-      unawaited(_refreshUploadedSnapshot(torrentId, task));
-      _emitStats(torrentId, task);
-    });
+    _pollTimers[torrentId]?.cancel();
+
+    void schedulePoll() {
+      try {
+        final dlSpeed = (task.currentDownloadSpeed);
+        final isActive = dlSpeed > 0;
+        final interval = isActive ? const Duration(seconds: 2) : const Duration(seconds: 10);
+
+        _pollTimers[torrentId] = Timer(interval, () async {
+          unawaited(_refreshUploadedSnapshot(torrentId, task));
+          _emitStats(torrentId, task);
+          // Reschedule adaptively
+          schedulePoll();
+        });
+      } catch (e) {
+        // If task introspection fails, fallback to a safe periodic poll
+        _pollTimers[torrentId] = Timer.periodic(const Duration(seconds: 10), (_) {
+          unawaited(_refreshUploadedSnapshot(torrentId, task));
+          _emitStats(torrentId, task);
+        });
+      }
+    }
+
+    schedulePoll();
   }
 
   void _emitStats(String torrentId, dt.TorrentTask task) {

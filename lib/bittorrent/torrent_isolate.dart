@@ -1,4 +1,6 @@
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
+import 'package:crypto/crypto.dart';
 
 // Helper functions to shift heavy operations in the bittorrent engine off of the main UI isolate.
 // This is an initial infrastructure layer; additional workload can be moved into this isolate
@@ -19,8 +21,8 @@ Future<List<int>> hashPieceIsolate(Uint8List pieceData) async {
 
 List<int> _hashPiece(Uint8List pieceData) {
   // Operation for example heavy CPU-bound operation on torrent piece.
-  // In real implementation, perform sha1 / verification here.
-  return pieceData;
+  // Calculate SHA-1 of the piece and return the bytes.
+  return sha1.convert(pieceData).bytes;
 }
 
 // TODO: move DHT routing (find_node / peer discovery) into compute() or dedicated Isolate path.

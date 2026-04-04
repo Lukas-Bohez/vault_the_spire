@@ -356,43 +356,74 @@ class TorrentService {
       return snap;
     }
 
-    var bytesOnDisk = 0;
+    // Offload the expensive filesystem walk to a background isolate
     try {
-      final entityType = await FileSystemEntity.type(outputPath);
-      if (entityType == FileSystemEntityType.directory) {
-        await for (final entity in Directory(outputPath).list(
-          recursive: true,
-          followLinks: false,
-        )) {
-          if (entity is! File) continue;
-          final lp = entity.path.toLowerCase();
-          if (lp.endsWith('.bt.state') || lp.endsWith('.torrent')) {
-            continue;
-          }
-          final stat = await entity.stat();
-          bytesOnDisk += stat.size;
-        }
-      } else if (entityType == FileSystemEntityType.file) {
-        final file = File(outputPath);
-        final lp = file.path.toLowerCase();
-        if (!lp.endsWith('.bt.state') && !lp.endsWith('.torrent')) {
-          final stat = await file.stat();
-          bytesOnDisk = stat.size;
+      final params = {
+        'outputPath': outputPath,
+        'totalSize': totalSize,
+        'fallbackBytes': torrent.bytesDown,
+      };
+      final result = await compute(_scanDiskIsolate, params);
+      final bytesOnDisk = result['bytesOnDisk'] as int? ?? (cached?.bytesOnDisk ?? torrent.bytesDown);
+      final isComplete = result['isComplete'] as bool? ?? (totalSize > 0 && bytesOnDisk >= totalSize);
+      final checkedAtMs = result['checkedAt'] as int? ?? DateTime.now().millisecondsSinceEpoch;
+      final snap = _DiskReconcileSnapshot(
+        bytesOnDisk: bytesOnDisk,
+        isComplete: isComplete,
+        checkedAt: DateTime.fromMillisecondsSinceEpoch(checkedAtMs),
+      );
+      _diskSnapshots[torrent.id] = snap;
+      return snap;
+    } catch (_) {
+      final snap = _DiskReconcileSnapshot(
+        bytesOnDisk: cached?.bytesOnDisk ?? torrent.bytesDown,
+        isComplete: false,
+        checkedAt: DateTime.now(),
+      );
+      _diskSnapshots[torrent.id] = snap;
+      return snap;
+    }
+  }
+
+// Top-level isolate entrypoint for scanning disk; returns a plain map.
+Map<String, dynamic> _scanDiskIsolate(Map<String, dynamic> params) {
+  final String outputPath = params['outputPath'] as String? ?? '';
+  final int totalSize = params['totalSize'] as int? ?? 0;
+  final int fallbackBytes = params['fallbackBytes'] as int? ?? 0;
+
+  var bytesOnDisk = 0;
+  try {
+    final type = FileSystemEntity.typeSync(outputPath);
+    if (type == FileSystemEntityType.directory) {
+      for (final entity in Directory(outputPath).listSync(recursive: true, followLinks: false)) {
+        if (entity is! File) continue;
+        final lp = entity.path.toLowerCase();
+        if (lp.endsWith('.bt.state') || lp.endsWith('.torrent')) continue;
+        try {
+          bytesOnDisk += entity.statSync().size;
+        } catch (_) {}
+      }
+    } else if (type == FileSystemEntityType.file) {
+      final lp = outputPath.toLowerCase();
+      if (!lp.endsWith('.bt.state') && !lp.endsWith('.torrent')) {
+        try {
+          bytesOnDisk = File(outputPath).statSync().size;
+        } catch (_) {
+          bytesOnDisk = fallbackBytes;
         }
       }
-    } catch (_) {
-      // Keep last known bytes if a scan fails.
-      bytesOnDisk = cached?.bytesOnDisk ?? torrent.bytesDown;
     }
-
-    final snap = _DiskReconcileSnapshot(
-      bytesOnDisk: bytesOnDisk,
-      isComplete: totalSize > 0 && bytesOnDisk >= totalSize,
-      checkedAt: DateTime.now(),
-    );
-    _diskSnapshots[torrent.id] = snap;
-    return snap;
+  } catch (_) {
+    bytesOnDisk = fallbackBytes;
   }
+
+  final isComplete = totalSize > 0 && bytesOnDisk >= totalSize;
+  return {
+    'bytesOnDisk': bytesOnDisk,
+    'isComplete': isComplete,
+    'checkedAt': DateTime.now().millisecondsSinceEpoch,
+  };
+}
 
   String _deriveState(String? persistedState, String? runtimeState, bool complete) {
     if (complete) return 'seeding';

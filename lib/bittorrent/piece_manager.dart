@@ -8,11 +8,13 @@ class PieceManager {
   final int pieceLength;
   final int totalPieces;
   final Directory baseDir;
+  final List<List<int>> pieceHashes;
 
   PieceManager({
     required this.infoHash,
     required this.pieceLength,
     required this.totalPieces,
+    this.pieceHashes = const [],
     required Directory appDirectory,
   }) : baseDir = Directory(
          path.join(appDirectory.path, 'torrent_pieces', infoHash),
@@ -50,8 +52,16 @@ class PieceManager {
   }
 
   Future<bool> savePiece(int index, Uint8List data) async {
+    // Verify hash BEFORE writing to disk when hashes are available
+    if (index >= 0 && index < pieceHashes.length) {
+      final actual = sha1.convert(data).bytes;
+      final expected = pieceHashes[index];
+      if (actual.length != expected.length) return false;
+      for (var i = 0; i < actual.length; i++) {
+        if (actual[i] != expected[i]) return false;
+      }
+    }
     await writePiece(index, data);
-    // In a real implementation, verify hash here
     return true;
   }
 
