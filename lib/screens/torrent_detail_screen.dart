@@ -51,9 +51,13 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
       Navigator.of(context).pop();
     } catch (e) {
       if (!mounted) return;
+      final raw = e.toString().toLowerCase();
+      final msg = raw.contains('files are in use') || raw.contains('error_file_in_use')
+          ? 'Redownload blocked: close File Explorer preview/media players using the file, then retry.'
+          : 'Redownload failed: $e';
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Redownload failed: $e')));
+      ).showSnackBar(SnackBar(content: Text(msg)));
     }
   }
 

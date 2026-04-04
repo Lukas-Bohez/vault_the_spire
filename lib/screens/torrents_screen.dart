@@ -111,9 +111,13 @@ class _TorrentsScreenState extends State<TorrentsScreen>
       ).showSnackBar(const SnackBar(content: Text('Redownload restarted.')));
     } catch (e) {
       if (!mounted) return;
+      final raw = e.toString().toLowerCase();
+      final msg = raw.contains('files are in use') || raw.contains('error_file_in_use')
+          ? 'Redownload blocked: close File Explorer preview/media players using the file, then retry.'
+          : 'Unable to redownload torrent: $e';
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Unable to redownload torrent: $e')));
+      ).showSnackBar(SnackBar(content: Text(msg)));
     }
     await TorrentService.instance.refreshTorrentStates();
   }

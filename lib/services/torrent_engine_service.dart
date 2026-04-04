@@ -1809,10 +1809,12 @@ class TorrentEngineService {
     );
 
     if (lockedPaths.isNotEmpty) {
-      await TorrentService.instance.updateTorrentStatus(torrentId, 'paused');
+      await TorrentService.instance.updateTorrentStatus(torrentId, 'error_file_in_use');
       final sample = lockedPaths.take(3).join(', ');
       throw StateError(
-        'Redownload blocked: one or more files are in use. Close Explorer/video player and try again. Files: $sample',
+        'Redownload blocked: one or more files are in use by another process. '
+        'Close Explorer Preview Pane, media players, and antivirus file viewers, then try again. '
+        'Files: $sample',
       );
     }
 

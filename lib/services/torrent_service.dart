@@ -493,6 +493,7 @@ class TorrentService {
     if (state.contains('seed')) return 'Seeding';
     if (state.contains('download')) return 'Downloading';
     if (state.contains('pause')) return 'Paused';
+    if (state.contains('error_file_in_use')) return 'File In Use';
     if (state.contains('pending_metadata')) return 'Pending Metadata';
     if (state.contains('queue')) return 'Queued';
     if (state.contains('error')) return 'Error';
@@ -500,6 +501,9 @@ class TorrentService {
   }
 
   String _fallbackStatusMessage(String state, double progress, int peers) {
+    if (state.contains('error_file_in_use')) {
+      return 'Redownload blocked: close programs using the file and retry.';
+    }
     if (state.contains('pending_metadata')) {
       return 'Waiting for peers to provide metadata...';
     }
