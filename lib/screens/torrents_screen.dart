@@ -69,7 +69,7 @@ class _TorrentsScreenState extends State<TorrentsScreen>
     final torrent = torrentState.model;
     try {
       if (torrentState.isActive) {
-        TorrentEngineService.instance.stopTorrent(torrent.id);
+        await TorrentEngineService.instance.stopTorrent(torrent.id);
         await TorrentService.instance.updateTorrentStatus(torrent.id, 'paused');
       } else {
         await TorrentEngineService.instance.startTorrent(torrent.id);
@@ -86,7 +86,7 @@ class _TorrentsScreenState extends State<TorrentsScreen>
   Future<void> _deleteTorrent(TorrentViewState torrentState) async {
     final torrent = torrentState.model;
     try {
-      TorrentEngineService.instance.stopTorrent(torrent.id);
+      await TorrentEngineService.instance.stopTorrent(torrent.id);
       await TorrentService.instance.removeTorrent(torrent.id);
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -104,26 +104,11 @@ class _TorrentsScreenState extends State<TorrentsScreen>
   Future<void> _redownloadTorrent(TorrentViewState torrentState) async {
     final torrent = torrentState.model;
     try {
-      TorrentEngineService.instance.stopTorrent(torrent.id);
-      await TorrentService.instance.purgeTorrentArtifacts(torrent.id);
-      await TorrentService.instance.removeTorrent(torrent.id);
-      if (torrent.type == 'magnet_link' &&
-          torrent.magnetLink != null &&
-          torrent.magnetLink!.isNotEmpty) {
-        await TorrentService.instance.addTorrentFromMagnetLink(
-          torrent.magnetLink!,
-        );
-      } else if (torrent.filePath != null && torrent.filePath!.isNotEmpty) {
-        await TorrentService.instance.addTorrentFromTorrentFile(
-          torrent.filePath!,
-        );
-      } else {
-        throw StateError('No source available to redownload this torrent');
-      }
+      await TorrentEngineService.instance.forceRedownload(torrent.id);
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Torrent re-added.')));
+      ).showSnackBar(const SnackBar(content: Text('Redownload restarted.')));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(

@@ -61,7 +61,7 @@ class _BrowserScreenState extends State<BrowserScreen>
 
 
   WebViewController? _webViewController;
-  bool _isLoading = true;
+  bool _isLoading = false;
   double _progress = 0.0;
   bool _canGoBack = false;
   bool _canGoForward = false;
@@ -69,7 +69,7 @@ class _BrowserScreenState extends State<BrowserScreen>
   webview_windows.WebviewController? _windowsWebViewController;
   bool _windowsCanGoBack = false;
   bool _windowsCanGoForward = false;
-  bool _windowsIsLoading = true;
+  bool _windowsIsLoading = false;
   String? _lastLoadError;
   String? _webViewError;
 
@@ -145,6 +145,19 @@ class _BrowserScreenState extends State<BrowserScreen>
             });
             _recordVisit(url);
             _refreshNavigationState();
+
+            final isDark = Theme.of(context).brightness == Brightness.dark;
+            if (isDark) {
+              await _webViewController?.runJavaScript('''
+                if (!document.getElementById('_vts_dark')) {
+                  var m = document.createElement('meta');
+                  m.id = '_vts_dark';
+                  m.name = 'color-scheme';
+                  m.content = 'dark';
+                  document.head.appendChild(m);
+                }
+              ''');
+            }
           },
           onNavigationRequest: (request) {
             if (_shouldBlockUrl(request.url)) {
@@ -499,7 +512,7 @@ class _BrowserScreenState extends State<BrowserScreen>
 
   void _startLoadingGuard() {
     _loadingGuardTimer?.cancel();
-    _loadingGuardTimer = Timer(const Duration(seconds: 20), () {
+    _loadingGuardTimer = Timer(const Duration(seconds: 12), () {
       if (!mounted) return;
       setState(() {
         _isLoading = false;
@@ -532,6 +545,21 @@ class _BrowserScreenState extends State<BrowserScreen>
     if (uri != null && await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     }
+  }
+
+  Future<void> _zoomBy(double delta) async {
+    if (Platform.isWindows) return;
+    await _webViewController?.runJavaScript(
+      'document.body.style.zoom = Math.max(0.5, (parseFloat(document.body.style.zoom || 1) + ($delta))).toString();',
+    );
+  }
+
+  Future<void> _copyCurrentUrl() async {
+    await Clipboard.setData(ClipboardData(text: _addressController.text));
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('URL copied to clipboard')));
   }
 
   void _startMemoryMonitor() {
@@ -651,7 +679,7 @@ class _BrowserScreenState extends State<BrowserScreen>
                   if (Platform.isWindows) {
                     await _windowsWebViewController?.stop();
                   } else {
-                    await _webViewController?.runJavaScript('window.stop();');
+                    await _webViewController?.loadRequest(Uri.parse('about:blank'));
                   }
                   _stopLoadingGuard();
                   if (!mounted) return;
@@ -695,6 +723,49 @@ class _BrowserScreenState extends State<BrowserScreen>
               icon: const Icon(Icons.open_in_new, size: 20),
               onPressed: _openExternally,
               tooltip: 'Open in system browser',
+            ),
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert, size: 20),
+              tooltip: 'Browser actions',
+              onSelected: (value) async {
+                switch (value) {
+                  case 'zoom_in':
+                    await _zoomBy(0.1);
+                    break;
+                  case 'zoom_out':
+                    await _zoomBy(-0.1);
+                    break;
+                  case 'copy_url':
+                    await _copyCurrentUrl();
+                    break;
+                }
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem<String>(
+                  value: 'zoom_in',
+                  child: ListTile(
+                    dense: true,
+                    leading: Icon(Icons.text_increase),
+                    title: Text('Zoom in'),
+                  ),
+                ),
+                PopupMenuItem<String>(
+                  value: 'zoom_out',
+                  child: ListTile(
+                    dense: true,
+                    leading: Icon(Icons.text_decrease),
+                    title: Text('Zoom out'),
+                  ),
+                ),
+                PopupMenuItem<String>(
+                  value: 'copy_url',
+                  child: ListTile(
+                    dense: true,
+                    leading: Icon(Icons.share),
+                    title: Text('Copy page URL'),
+                  ),
+                ),
+              ],
             ),
           ];
 
@@ -750,6 +821,7 @@ class _BrowserScreenState extends State<BrowserScreen>
               ),
               navButtons[4],
               navButtons[5],
+              navButtons[6],
             ],
           );
         },

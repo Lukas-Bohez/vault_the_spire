@@ -771,7 +771,10 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
                       _splitRatio = _splitRatio.clamp(0.3, 0.75);
                     });
                   },
-                  child: Container(width: 8, color: Colors.black12),
+                  child: Container(
+                    width: 8,
+                    color: Theme.of(context).colorScheme.outlineVariant,
+                  ),
                 ),
               ),
               Expanded(child: chatPane),
@@ -1214,8 +1217,8 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
                 ),
                 child: Text(
                   _trustSignal,
-                  style: const TextStyle(
-                    color: Colors.black,
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSecondary,
                     fontWeight: FontWeight.bold,
                   ),
                 ),

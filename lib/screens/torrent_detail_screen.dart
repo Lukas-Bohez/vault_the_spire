@@ -16,28 +16,12 @@ class TorrentDetailScreen extends StatefulWidget {
 class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
   Future<void> _redownload(TorrentModel torrent) async {
     try {
-      TorrentEngineService.instance.stopTorrent(torrent.id);
-      await TorrentService.instance.purgeTorrentArtifacts(torrent.id);
-      await TorrentService.instance.removeTorrent(torrent.id);
-
-      if (torrent.type == 'magnet_link' &&
-          torrent.magnetLink != null &&
-          torrent.magnetLink!.isNotEmpty) {
-        await TorrentService.instance.addTorrentFromMagnetLink(
-          torrent.magnetLink!,
-        );
-      } else if (torrent.filePath != null && torrent.filePath!.isNotEmpty) {
-        await TorrentService.instance.addTorrentFromTorrentFile(
-          torrent.filePath!,
-        );
-      } else {
-        throw StateError('No source available for redownload');
-      }
+      await TorrentEngineService.instance.forceRedownload(torrent.id);
 
       if (!mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Torrent re-added.')));
+      ).showSnackBar(const SnackBar(content: Text('Redownload restarted.')));
       Navigator.of(context).pop();
     } catch (e) {
       if (!mounted) return;

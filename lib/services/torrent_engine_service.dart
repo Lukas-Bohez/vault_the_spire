@@ -563,7 +563,7 @@ class TorrentEngineService {
 
     final task = _tasks[torrentId];
     final wasRunning = task != null;
-    if (wasRunning) stopTorrent(torrentId);
+    if (wasRunning) await stopTorrent(torrentId);
 
     await TorrentService.instance.updateTorrentStatus(torrentId, 'rechecking');
 
@@ -1449,7 +1449,6 @@ class TorrentEngineService {
       ),
     );
 
-    TorrentService.instance.updateProgress(torrentId, downloaded, uploaded);
   }
 
   String _formatByteCount(int bytes) {
@@ -1497,7 +1496,7 @@ class TorrentEngineService {
         torrentId,
         'No progress after repeated recovery attempts. Performing hard restart.',
       );
-      stopTorrent(torrentId);
+      await stopTorrent(torrentId);
       await Future.delayed(const Duration(seconds: 1));
       final configured = SettingsService.instance.downloadDestination.trim();
       await startTorrent(
@@ -1510,6 +1509,74 @@ class TorrentEngineService {
     } finally {
       _hardRecoveryInFlight.remove(torrentId);
     }
+  }
+
+  Future<void> _deleteBtStateFiles(String directoryPath) async {
+    final dir = Directory(directoryPath);
+    if (!await dir.exists()) return;
+    await for (final entity in dir.list(recursive: true, followLinks: false)) {
+      if (entity is! File) continue;
+      final lowerPath = entity.path.toLowerCase();
+      if (!lowerPath.endsWith('.bt.state')) continue;
+      try {
+        await entity.delete();
+      } catch (_) {
+        // Best-effort cleanup only.
+      }
+    }
+  }
+
+  Future<void> forceRedownload(String torrentId) async {
+    await stopTorrent(torrentId);
+    await Future.delayed(const Duration(milliseconds: 300));
+
+    final torrent = await TorrentService.instance.getTorrentById(torrentId);
+    if (torrent == null) throw StateError('Torrent not found: $torrentId');
+
+    final filePath = torrent.filePath?.trim() ?? '';
+    final configuredDir = SettingsService.instance.downloadDestination.trim();
+
+    if (filePath.isNotEmpty && !_isTorrentFilePath(filePath)) {
+      await _deleteBtStateFiles(filePath);
+    }
+    if (configuredDir.isNotEmpty && configuredDir != filePath) {
+      await _deleteBtStateFiles(configuredDir);
+    }
+
+    final contentDir =
+        filePath.isNotEmpty && !_isTorrentFilePath(filePath) ? filePath : null;
+    if (contentDir != null) {
+      final sameAsGlobal =
+          configuredDir.isNotEmpty &&
+          Directory(contentDir).absolute.path == Directory(configuredDir).absolute.path;
+      if (!sameAsGlobal) {
+        try {
+          final dir = Directory(contentDir);
+          if (await dir.exists()) {
+            await for (final entity in dir.list(recursive: false)) {
+              final lowerPath = entity.path.toLowerCase();
+              if (lowerPath.endsWith('.torrent')) continue;
+              await entity.delete(recursive: true);
+            }
+          }
+        } catch (e) {
+          debugPrint('forceRedownload cleanup error (non-fatal): $e');
+        }
+      }
+    }
+
+    await TorrentService.instance.updateTorrent(
+      torrent.copyWith(
+        status: 'downloading',
+        bytesDown: 0,
+        bytesUp: 0,
+        completedAt: null,
+      ),
+    );
+    TorrentService.instance.invalidateDiskSnapshot(torrentId);
+
+    final destination = contentDir ?? (configuredDir.isNotEmpty ? configuredDir : null);
+    await startTorrent(torrentId, destinationPath: destination);
   }
 
   void _cleanup(String torrentId) {
@@ -1528,10 +1595,10 @@ class TorrentEngineService {
     _tasks.remove(torrentId);
   }
 
-  void stopTorrent(String torrentId) {
+  Future<void> stopTorrent(String torrentId) async {
     _tasks[torrentId]?.stop();
     _cleanup(torrentId);
-    TorrentService.instance.updateTorrentStatus(torrentId, 'paused');
+    await TorrentService.instance.updateTorrentStatus(torrentId, 'paused');
   }
 
   void pauseTorrent(String torrentId) {
@@ -1687,7 +1754,7 @@ class TorrentEngineService {
 
   void stopAll() {
     for (final id in _tasks.keys.toList()) {
-      stopTorrent(id);
+      unawaited(stopTorrent(id));
     }
   }
 

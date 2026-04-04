@@ -41,9 +41,11 @@ class _TorrentDragDropState extends State<TorrentDragDrop> {
             height: 120,
             margin: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: _dragging ? Colors.blue.shade100 : Colors.grey.shade200,
+              color: _dragging
+                  ? Theme.of(context).colorScheme.primaryContainer
+                  : Theme.of(context).colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.blue),
+              border: Border.all(color: Theme.of(context).colorScheme.primary),
             ),
             child: const Center(child: Text('Drag & drop .torrent files here')),
           ),

@@ -9,6 +9,7 @@ class HomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final identity = IdentityService.instance.identity;
     final fingerprint = identity?.publicKeyBase64 ?? 'N/A';
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
         title: const Text('TorrentSpire AI'),
@@ -31,7 +32,7 @@ class HomeScreen extends StatelessWidget {
             const SizedBox(height: 2),
             const Text(
               'What goes into the Vault, stays in the Vault.',
-              style: TextStyle(fontSize: 16, color: Colors.grey),
+              style: TextStyle(fontSize: 16),
             ),
             const SizedBox(height: 18),
             LayoutBuilder(
@@ -92,8 +93,8 @@ class HomeScreen extends StatelessWidget {
                     Container(
                       width: 12,
                       height: 12,
-                      decoration: const BoxDecoration(
-                        color: Colors.green,
+                      decoration: BoxDecoration(
+                        color: cs.tertiary,
                         shape: BoxShape.circle,
                       ),
                     ),
@@ -106,10 +107,7 @@ class HomeScreen extends StatelessWidget {
                     Expanded(
                       child: Text(
                         'Fingerprint: ${fingerprint.length > 16 ? fingerprint.substring(0, 16) : fingerprint}',
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: Colors.grey,
-                        ),
+                        style: const TextStyle(fontSize: 13),
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
@@ -168,7 +166,7 @@ class _QuickActionCard extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 subtitle,
-                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                style: const TextStyle(fontSize: 12),
               ),
             ],
           ),

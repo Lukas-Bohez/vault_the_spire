@@ -704,36 +704,39 @@ class _AboutScreenState extends State<AboutScreen>
                     setState(() {});
                   },
                 ),
-                SwitchListTile(
-                  title: const Text('Use persistent sidebar'),
-                  contentPadding: EdgeInsets.zero,
-                  value: _settings.usePersistentSidebar,
-                  onChanged: (v) async {
-                    await _settings.setUsePersistentSidebar(v);
-                    if (!mounted) return;
-                    setState(() {});
-                  },
-                ),
-                SwitchListTile(
-                  title: const Text('Use compact torrent rows'),
-                  contentPadding: EdgeInsets.zero,
-                  value: _settings.compactTorrentRows,
-                  onChanged: (v) async {
-                    await _settings.setCompactTorrentRows(v);
-                    if (!mounted) return;
-                    setState(() {});
-                  },
-                ),
-                SwitchListTile(
-                  title: const Text('Confirm before exiting app'),
-                  contentPadding: EdgeInsets.zero,
-                  value: _settings.confirmOnExit,
-                  onChanged: (v) async {
-                    await _settings.setConfirmOnExit(v);
-                    if (!mounted) return;
-                    setState(() {});
-                  },
-                ),
+                if (!_androidTorrentOnly)
+                  SwitchListTile(
+                    title: const Text('Use persistent sidebar'),
+                    contentPadding: EdgeInsets.zero,
+                    value: _settings.usePersistentSidebar,
+                    onChanged: (v) async {
+                      await _settings.setUsePersistentSidebar(v);
+                      if (!mounted) return;
+                      setState(() {});
+                    },
+                  ),
+                if (!_androidTorrentOnly)
+                  SwitchListTile(
+                    title: const Text('Use compact torrent rows'),
+                    contentPadding: EdgeInsets.zero,
+                    value: _settings.compactTorrentRows,
+                    onChanged: (v) async {
+                      await _settings.setCompactTorrentRows(v);
+                      if (!mounted) return;
+                      setState(() {});
+                    },
+                  ),
+                if (!_androidTorrentOnly)
+                  SwitchListTile(
+                    title: const Text('Confirm before exiting app'),
+                    contentPadding: EdgeInsets.zero,
+                    value: _settings.confirmOnExit,
+                    onChanged: (v) async {
+                      await _settings.setConfirmOnExit(v);
+                      if (!mounted) return;
+                      setState(() {});
+                    },
+                  ),
                 if (Platform.isWindows || Platform.isLinux || Platform.isMacOS)
                   Align(
                     alignment: Alignment.centerLeft,
@@ -796,7 +799,7 @@ class _AboutScreenState extends State<AboutScreen>
                   contentPadding: EdgeInsets.zero,
                   leading: Icon(Icons.calendar_month),
                   title: Text('App version'),
-                  subtitle: Text('3.0.0+0'),
+                  subtitle: Text('4.0.0'),
                 ),
                 ListTile(
                   contentPadding: EdgeInsets.zero,

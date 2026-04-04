@@ -130,7 +130,7 @@ class _DMScreenState extends State<DMScreen> {
                               m.text,
                               style: TextStyle(
                                 color: mentionsCurrent
-                                    ? Colors.orangeAccent
+                                    ? Theme.of(context).colorScheme.secondary
                                     : Theme.of(context).colorScheme.onSurface,
                               ),
                             ),
@@ -302,7 +302,9 @@ class _DMScreenState extends State<DMScreen> {
                               vertical: 4,
                               horizontal: 8,
                             ),
-                            color: Colors.grey.shade200,
+                            color: Theme.of(context)
+                                .colorScheme
+                                .surfaceContainerHighest,
                             child: Text(
                               'Replying to ${_replyTarget!.author} • tap to cancel',
                             ),

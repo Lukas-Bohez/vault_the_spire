@@ -467,7 +467,9 @@ class _AiChatScreenState extends State<AiChatScreen> {
         Text(
           _ollamaInstalled ? 'Ollama CLI detected' : 'Ollama CLI not detected',
           style: TextStyle(
-            color: _ollamaInstalled ? Colors.green : Colors.orange,
+            color: _ollamaInstalled
+                ? Theme.of(context).colorScheme.tertiary
+                : Theme.of(context).colorScheme.secondary,
             fontWeight: FontWeight.w600,
           ),
         ),

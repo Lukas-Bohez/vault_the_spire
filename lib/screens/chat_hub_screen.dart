@@ -129,27 +129,28 @@ class _ChatHubScreenState extends State<ChatHubScreen> {
                 return const Center(child: CircularProgressIndicator());
               }
               if (snapshot.hasError) {
+                final cs = Theme.of(context).colorScheme;
                 return Center(
                   child: Container(
-                    color: Colors.red.shade100,
+                    color: cs.errorContainer,
                     padding: const EdgeInsets.all(16),
                     child: SingleChildScrollView(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Icon(Icons.error, color: Colors.red, size: 48),
+                          Icon(Icons.error, color: cs.error, size: 48),
                           const SizedBox(height: 12),
                           Text(
                             'Error loading chats:',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontWeight: FontWeight.bold,
-                              color: Colors.red,
+                              color: cs.error,
                             ),
                           ),
                           const SizedBox(height: 8),
                           Text(
                             '${snapshot.error}',
-                            style: const TextStyle(color: Colors.red),
+                            style: TextStyle(color: cs.error),
                           ),
                           if (snapshot.stackTrace != null)
                             Padding(
@@ -160,9 +161,9 @@ class _ChatHubScreenState extends State<ChatHubScreen> {
                                     .split('\n')
                                     .take(6)
                                     .join('\n'),
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 12,
-                                  color: Colors.red,
+                                  color: cs.error,
                                 ),
                               ),
                             ),
