@@ -15,6 +15,13 @@ class NotificationService {
   Future<void> init() async {
     if (_initialized) return;
 
+    // Windows desktop notification backend is not configured in this app build.
+    // Keep notifications non-fatal by treating init as a no-op on Windows.
+    if (Platform.isWindows) {
+      _initialized = true;
+      return;
+    }
+
     const androidSettings = AndroidInitializationSettings(
       '@mipmap/ic_launcher',
     );
@@ -32,20 +39,28 @@ class NotificationService {
       // include windows: const WindowsInitializationSettings(appName: 'VaultTheSpire'),
     );
 
-    await _plugin.initialize(
-      initSettings,
-      onDidReceiveNotificationResponse: (response) async {
-        if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-          await windowManager.show();
-          await windowManager.focus();
-        }
-      },
-    );
+    try {
+      await _plugin.initialize(
+        initSettings,
+        onDidReceiveNotificationResponse: (response) async {
+          if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+            await windowManager.show();
+            await windowManager.focus();
+          }
+        },
+      );
+    } catch (_) {
+      // Notification backend failures are non-fatal for torrent operations.
+    }
 
     _initialized = true;
   }
 
   Future<void> showDownloadComplete(String name) async {
+    if (Platform.isWindows) {
+      return;
+    }
+
     await init();
 
     const androidDetails = AndroidNotificationDetails(
@@ -64,12 +79,16 @@ class NotificationService {
       linux: linuxDetails,
     );
 
-    await _plugin.show(
-      name.hashCode & 0x7fffffff,
-      'Download Complete',
-      'Torrent "$name" has completed downloading.',
-      details,
-      payload: name,
-    );
+    try {
+      await _plugin.show(
+        name.hashCode & 0x7fffffff,
+        'Download Complete',
+        'Torrent "$name" has completed downloading.',
+        details,
+        payload: name,
+      );
+    } catch (_) {
+      // Keep torrent lifecycle independent from notification backend health.
+    }
   }
 }

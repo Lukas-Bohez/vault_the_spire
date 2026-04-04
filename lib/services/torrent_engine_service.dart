@@ -1273,14 +1273,18 @@ class TorrentEngineService {
       })
       ..on<dt.TaskCompleted>((_) async {
         _emitStats(torrentId, task);
-        final hasOutput = await _verifyOutputExists(torrentId);
+        final hasOutput = await _verifyOutputExists(torrentId, task);
         await TorrentService.instance.updateTorrentStatus(
           torrentId,
           hasOutput ? 'seeding' : 'error_missing_output',
         );
         final torrent = await TorrentService.instance.getTorrentById(torrentId);
         if (torrent != null && hasOutput) {
-          await NotificationService.instance.showDownloadComplete(torrent.name);
+          try {
+            await NotificationService.instance.showDownloadComplete(torrent.name);
+          } catch (e) {
+            debugPrint('Notification suppressed (non-fatal): $e');
+          }
         }
       })
       ..on<dt.TaskStopped>((_) {
@@ -1288,32 +1292,41 @@ class TorrentEngineService {
       });
   }
 
-  Future<bool> _verifyOutputExists(String torrentId) async {
+  Future<bool> _verifyOutputExists(String torrentId, dt.TorrentTask task) async {
     final torrent = await TorrentService.instance.getTorrentById(torrentId);
     final outputPath = torrent?.filePath;
     if (outputPath == null || outputPath.trim().isEmpty) {
       return false;
     }
 
-    final dir = Directory(outputPath);
-    if (!await dir.exists()) {
+    final saveDir = outputPath.trim();
+    final expectedFiles = task.metaInfo.files;
+    if (expectedFiles.isEmpty) {
       return false;
     }
 
-    await for (final entity in dir.list(recursive: true, followLinks: false)) {
-      if (entity is File) {
-        final lowerPath = entity.path.toLowerCase();
-        if (lowerPath.endsWith('.bt.state') ||
-            lowerPath.endsWith('.torrent')) {
-          continue;
-        }
-        final stat = await entity.stat();
-        if (stat.size > 0) {
-          return true;
-        }
+    var expectedBytes = 0;
+    var existingBytes = 0;
+    for (final file in expectedFiles) {
+      expectedBytes += file.length;
+      final relativePath = file.path.replaceAll('/', Platform.pathSeparator);
+      final fullPath = p.join(saveDir, relativePath);
+      final diskType = await FileSystemEntity.type(fullPath, followLinks: false);
+      if (diskType != FileSystemEntityType.file) {
+        continue;
+      }
+      try {
+        existingBytes += await File(fullPath).length();
+      } catch (_) {
+        // Ignore unreadable files in output validation.
       }
     }
-    return false;
+
+    if (expectedBytes <= 0) {
+      return false;
+    }
+
+    return existingBytes >= (expectedBytes * 0.98).round();
   }
 
   void _startPollTimer(String torrentId, dt.TorrentTask task) {

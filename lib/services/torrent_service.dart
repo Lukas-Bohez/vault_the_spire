@@ -296,6 +296,7 @@ class TorrentService {
         _retryPendingMetadataIfDue(torrent);
         final diskSnapshot = _diskSnapshots[torrent.id];
         final runtime = _runtimeByTorrentId[torrent.id];
+        final persistedState = torrent.status?.toLowerCase() ?? '';
         final diskBytes = diskSnapshot?.bytesOnDisk ?? torrent.bytesDown;
         final diskComplete = diskSnapshot?.isComplete ?? false;
         final hasDiskSnapshot = diskSnapshot != null;
@@ -307,6 +308,16 @@ class TorrentService {
         ].reduce(math.max);
 
         final totalSize = torrent.totalSize ?? 0;
+        final runtimeFarAheadOfDisk = hasDiskSnapshot &&
+          runtime != null &&
+          runtime.state.toLowerCase().contains('download') &&
+          runtime.downloaded > diskBytes + (64 * 1024 * 1024) &&
+          (totalSize <= 0 || diskBytes < (totalSize * 0.10).round());
+        if (runtimeFarAheadOfDisk ||
+          (persistedState.contains('downloading') && hasDiskSnapshot && diskBytes == 0)) {
+          downloaded = math.max(torrent.bytesDown, diskBytes);
+        }
+
         final runtimeState = runtime?.state.toLowerCase() ?? '';
         final runtimeLooksComplete = runtime != null &&
             (runtimeState.contains('seed') ||
@@ -620,12 +631,15 @@ class TorrentService {
   }
 
   void invalidateDiskSnapshot(String id) {
+    _runtimeByTorrentId.remove(id);
+    _latestStatesByTorrentId.remove(id);
     _diskSnapshots[id] = _DiskReconcileSnapshot(
       bytesOnDisk: 0,
       isComplete: false,
       checkedAt: DateTime.now(),
     );
     _snapshotPending = true;
+    unawaited(_takeSnapshot(force: true));
     unawaited(_reconcileDiskState(force: true));
   }
 
