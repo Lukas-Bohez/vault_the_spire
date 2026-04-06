@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
@@ -53,7 +55,11 @@ class _CreateTorrentScreenState extends State<CreateTorrentScreen> {
   }
 
   Future<void> _addFiles() async {
-    final result = await FilePicker.platform.pickFiles(allowMultiple: true);
+    final result = await FilePicker.platform.pickFiles(
+      allowMultiple: true,
+      type: Platform.isAndroid ? FileType.custom : FileType.any,
+      allowedExtensions: Platform.isAndroid ? const <String>[] : null,
+    );
     if (result == null) return;
     setState(() {
       for (final file in result.files) {
@@ -160,7 +166,8 @@ class _CreateTorrentScreenState extends State<CreateTorrentScreen> {
       );
 
       if (!mounted) return;
-      final addToDownloads = await showDialog<bool>(
+      final addToDownloads =
+          await showDialog<bool>(
             context: context,
             builder: (context) {
               return AlertDialog(
@@ -184,7 +191,9 @@ class _CreateTorrentScreenState extends State<CreateTorrentScreen> {
           false;
 
       if (addToDownloads) {
-        await TorrentService.instance.addTorrentFromTorrentFile(result.torrentPath);
+        await TorrentService.instance.addTorrentFromTorrentFile(
+          result.torrentPath,
+        );
       }
 
       if (!mounted) return;
@@ -193,9 +202,9 @@ class _CreateTorrentScreenState extends State<CreateTorrentScreen> {
       );
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to create torrent: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to create torrent: $e')));
     } finally {
       if (!mounted) return;
       setState(() {
@@ -213,7 +222,10 @@ class _CreateTorrentScreenState extends State<CreateTorrentScreen> {
           padding: const EdgeInsets.all(16),
           child: ListView(
             children: [
-              const Text('Source', style: TextStyle(fontWeight: FontWeight.bold)),
+              const Text(
+                'Source',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
@@ -242,8 +254,8 @@ class _CreateTorrentScreenState extends State<CreateTorrentScreen> {
                     onPressed: _isCreating
                         ? null
                         : () => setState(() {
-                              _files.remove(f);
-                            }),
+                            _files.remove(f);
+                          }),
                   ),
                 ),
               ),
@@ -258,8 +270,8 @@ class _CreateTorrentScreenState extends State<CreateTorrentScreen> {
                     onPressed: _isCreating
                         ? null
                         : () => setState(() {
-                              _folders.remove(d);
-                            }),
+                            _folders.remove(d);
+                          }),
                   ),
                 ),
               ),
@@ -303,7 +315,9 @@ class _CreateTorrentScreenState extends State<CreateTorrentScreen> {
                       ),
                     )
                     .toList(),
-                onChanged: _isCreating ? null : (value) => setState(() => _pieceSize = value),
+                onChanged: _isCreating
+                    ? null
+                    : (value) => setState(() => _pieceSize = value),
               ),
               const SizedBox(height: 12),
               TextField(
@@ -315,9 +329,13 @@ class _CreateTorrentScreenState extends State<CreateTorrentScreen> {
               ),
               SwitchListTile(
                 value: _isPrivate,
-                onChanged: _isCreating ? null : (value) => setState(() => _isPrivate = value),
+                onChanged: _isCreating
+                    ? null
+                    : (value) => setState(() => _isPrivate = value),
                 title: const Text('Private Torrent'),
-                subtitle: const Text('Disables DHT and PEX for private trackers'),
+                subtitle: const Text(
+                  'Disables DHT and PEX for private trackers',
+                ),
               ),
               const SizedBox(height: 8),
               ListTile(
@@ -330,7 +348,9 @@ class _CreateTorrentScreenState extends State<CreateTorrentScreen> {
               ),
               if (_isCreating) ...[
                 const SizedBox(height: 8),
-                LinearProgressIndicator(value: _progress == 0 ? null : _progress),
+                LinearProgressIndicator(
+                  value: _progress == 0 ? null : _progress,
+                ),
                 const SizedBox(height: 6),
                 Text(_progressText),
               ],
