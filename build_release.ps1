@@ -77,4 +77,4 @@ Get-ChildItem $releaseDir | ForEach-Object {
     Write-Host ("  {0,-55} {1,6} MB" -f $_.Name, $size)
 }
 Write-Host ""
-Write-Host "Drag the files from $releaseDir into your '1 Upload' folder." -ForegroundColor Yellow
+Write-Host ("Drag the files from {0} into your 1 Upload folder." -f $releaseDir) -ForegroundColor Yellow

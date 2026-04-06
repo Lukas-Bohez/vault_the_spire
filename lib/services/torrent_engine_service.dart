@@ -93,6 +93,8 @@ class TorrentEngineService {
   final Map<String, List<Uri>> _torrentTrackers = {};
   final Map<String, List<String>> _connectionLogs = {};
   final Map<String, DateTime> _lastProgressLogTimes = {};
+  final Map<String, double> _lastReportedProgressByTorrent = {};
+  final Map<String, DateTime> _lastProgressChangeAtByTorrent = {};
   final Map<String, int> _uploadedBytesByTorrent = {};
   final Map<String, DateTime> _lastUploadedSampleByTorrent = {};
   final Map<String, int> _scrapedSeedersByTorrent = {};
@@ -176,6 +178,14 @@ class TorrentEngineService {
         DateTime.fromMillisecondsSinceEpoch(0);
     if (now.difference(last).inSeconds >= 5) {
       _lastProgressLogTimes[torrentId] = now;
+    }
+  }
+
+  void _recordProgressSample(String torrentId, double progress) {
+    final previous = _lastReportedProgressByTorrent[torrentId];
+    _lastReportedProgressByTorrent[torrentId] = progress;
+    if (previous == null || (progress - previous).abs() >= 0.001) {
+      _lastProgressChangeAtByTorrent[torrentId] = DateTime.now();
     }
   }
 
@@ -549,6 +559,45 @@ class TorrentEngineService {
           } else {
             _zeroProgressCounters[torrentId] = 0;
             _stallRecoveryCycles[torrentId] = 0;
+          }
+        }
+
+        final currentProgress = task.progress;
+        if (!_isTaskComplete(task) && currentProgress >= 0.95) {
+          final lastChange =
+              _lastProgressChangeAtByTorrent[torrentId] ??
+              DateTime.fromMillisecondsSinceEpoch(0);
+          final stalledFor = DateTime.now().difference(lastChange);
+          if (stalledFor >= const Duration(seconds: 90)) {
+            _stallRecoveryCycles[torrentId] =
+                (_stallRecoveryCycles[torrentId] ?? 0) + 1;
+            _log(
+              torrentId,
+              'Near-complete stall detected at ${(currentProgress * 100).toStringAsFixed(1)}% '
+              '(stall cycle ${_stallRecoveryCycles[torrentId]}).',
+            );
+
+            if ((_stallRecoveryCycles[torrentId] ?? 0) == 1) {
+              TorrentService.instance.invalidateDiskSnapshot(torrentId);
+              unawaited(TorrentService.instance.refreshTorrentStates());
+              await _refreshConnection(torrentId, task);
+              try {
+                task.requestPeersFromDHT();
+              } catch (_) {
+                // Best-effort only.
+              }
+            } else if ((_stallRecoveryCycles[torrentId] ?? 0) == 2) {
+              await _refreshConnection(torrentId, task);
+              try {
+                task.requestPeersFromDHT();
+              } catch (_) {
+                // Best-effort only.
+              }
+            } else if ((_stallRecoveryCycles[torrentId] ?? 0) >= 3) {
+              _stallRecoveryCycles[torrentId] = 0;
+              await _hardRestartTorrent(torrentId);
+              return;
+            }
           }
         }
       } catch (e, st) {
@@ -1451,6 +1500,7 @@ class TorrentEngineService {
     if (scrapedLeechers > leechers) leechers = scrapedLeechers;
 
     final progress = task.progress;
+    _recordProgressSample(torrentId, progress);
     final totalLength = task.metaInfo.length ?? task.metaInfo.totalSize;
     var isAllComplete = false;
     try {
@@ -1480,10 +1530,23 @@ class TorrentEngineService {
 
     final seededRatio = totalLength > 0 ? (uploaded / totalLength) : 0.0;
     final seededPct = (seededRatio * 100).clamp(0.0, double.infinity);
+    final stalledNearCompletion =
+        progress >= 0.95 &&
+        ((_lastProgressChangeAtByTorrent[torrentId] == null)
+            ? false
+            : DateTime.now()
+                          .difference(
+                            _lastProgressChangeAtByTorrent[torrentId]!,
+                          )
+                          .inSeconds >=
+                      90 &&
+                  state != 'seeding');
     final msg = state == 'seeding'
         ? 'Seeding • ${(seededPct).toStringAsFixed(1)}% shared back (${_formatByteCount(uploaded)}/${_formatByteCount(totalLength)}) • $peers peer${peers == 1 ? '' : 's'} connected'
         : peers == 0
         ? 'Searching for peers...'
+        : stalledNearCompletion
+        ? 'Stalled near completion • ${(progress * 100).toStringAsFixed(1)}% • $peers peer${peers == 1 ? '' : 's'}'
         : downloaded == 0
         ? 'Connected to $peers peer${peers == 1 ? '' : 's'}, waiting for pieces...'
         : '${(progress * 100).toStringAsFixed(1)}% — $peers peer${peers == 1 ? '' : 's'}';
@@ -1962,6 +2025,8 @@ class TorrentEngineService {
     _hardRecoveryInFlight.remove(torrentId);
     _scrapedSeedersByTorrent.remove(torrentId);
     _scrapedLeechersByTorrent.remove(torrentId);
+    _lastReportedProgressByTorrent.remove(torrentId);
+    _lastProgressChangeAtByTorrent.remove(torrentId);
     _tasks.remove(torrentId);
   }
 

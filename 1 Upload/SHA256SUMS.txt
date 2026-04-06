@@ -1,5 +1,2 @@
-aabe460c01881ed9d58b9e2954b5e7f733b0766cbb9a107f28de77bdce07f636 *1 Upload\app-armeabi-v7a-release.apk
-0c8cc8eb3c254f8ea786d7d5ffbad2b7e5ae5fe1b5cedfd3e7a00097c77c8499 *1 Upload\app-arm64-v8a-release.apk
-c79f5237111f308713aa458acfb5fd7b84704959582b758d6bf8f0a55bb9d61e *1 Upload\app-x86_64-release.apk
-1d2eb346c3f1ec867c0816c9b9ff0781103c2be74670a61a227ef7e181260e3d *1 Upload\app-release.aab
-6137398a06ff1925e9aa1ac63cabfd85fe00205e9c9d0361cf6db111cd7ee023 *1 Upload\vault_the_spire_4.1.0_windows_x64.zip
+﻿DC28E7A97882A05CD227B4B09D1C72CF0255ADA67CAEBE7455361A7ED68048EA  app-release.aab
+83FE8C635481E5AAA635A5CB4B302B26052AA3B0711AD11D191E2122AC1E52D4  vault_the_spire_4.1.0_windows_x64.zip
