@@ -1,3 +1,5 @@
-c2edfa68dba693d6e2e90f9474f83292a4a4e3a35635397c721193f27eefab87  torrent_spire_ai-v3.0.1+2-release.aab
-9276d80c6c7c0ce1f6a6148270e8a2afb3e676acedc11dcaa8b25cb7eccdae5d  torrent_spire_ai-v3.0.1+2-release.apk
-d0dcf558a7c9a1da7711fdf42b29c69f6751f218c87557b0bad9fed78684e369  torrent_spire_ai-windows-v3.0.1+2-release.zip
+4cb48dc6223de38bb8b985ca4985630514e00241fe1eccf69082bc253bc6f9a9 *1 Upload\app-armeabi-v7a-release.apk
+599ab71b2c4ab2a6ee58950d4bab9248bd9758d02eea10b9797acefe5a489ea8 *1 Upload\app-arm64-v8a-release.apk
+eb23cf84c86e08db3cf56af0db494f071b3a8cdbd804197b79b2c3e6202f4227 *1 Upload\app-x86_64-release.apk
+9d4caca11244f259a7ee2386f6f0915f0c293969d454bec313429378101519b2 *1 Upload\app-release.aab
+d215f3221ebba49bbf2d65eeb3d1be35e1185cbed664d4afe51099b5fa49fb5b *1 Upload\vault_the_spire_4.1.0_windows_x64.zip

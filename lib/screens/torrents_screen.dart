@@ -11,6 +11,38 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:vault_the_spire/services/torrent_engine_service.dart';
 import 'package:vault_the_spire/services/torrent_service.dart';
 
+// ── Sort modes ────────────────────────────────────────────────────────────────
+
+enum _SortMode { dateAdded, nameAZ, nameZA, sizeAsc, sizeDesc, progress, status }
+
+extension _SortLabel on _SortMode {
+  String get label {
+    switch (this) {
+      case _SortMode.dateAdded: return 'Date added';
+      case _SortMode.nameAZ:    return 'Name A → Z';
+      case _SortMode.nameZA:    return 'Name Z → A';
+      case _SortMode.sizeAsc:   return 'Size smallest';
+      case _SortMode.sizeDesc:  return 'Size largest';
+      case _SortMode.progress:  return 'Progress';
+      case _SortMode.status:    return 'Status';
+    }
+  }
+
+  IconData get icon {
+    switch (this) {
+      case _SortMode.dateAdded: return Icons.calendar_today_outlined;
+      case _SortMode.nameAZ:    return Icons.sort_by_alpha;
+      case _SortMode.nameZA:    return Icons.sort_by_alpha;
+      case _SortMode.sizeAsc:   return Icons.data_usage_outlined;
+      case _SortMode.sizeDesc:  return Icons.data_usage;
+      case _SortMode.progress:  return Icons.download_outlined;
+      case _SortMode.status:    return Icons.circle_outlined;
+    }
+  }
+}
+
+// ── Screen ────────────────────────────────────────────────────────────────────
+
 class TorrentsScreen extends StatefulWidget {
   const TorrentsScreen({super.key});
 
@@ -20,140 +52,207 @@ class TorrentsScreen extends StatefulWidget {
 
 class _TorrentsScreenState extends State<TorrentsScreen>
     with AutomaticKeepAliveClientMixin {
+
   @override
   bool get wantKeepAlive => true;
 
-  Color _statusColor(BuildContext context, String state) {
-    final cs = Theme.of(context).colorScheme;
-    final normalized = state.toLowerCase();
-    if (normalized.contains('seed')) return cs.tertiary;
-    if (normalized.contains('download')) return cs.primary;
-    if (normalized.contains('error')) return cs.error;
-    if (normalized.contains('paused')) return cs.outline;
-    return cs.outlineVariant;
-  }
+  final TextEditingController _searchController = TextEditingController();
+  String _searchQuery = '';
+  bool _showSearch = false;
+  _SortMode _sortMode = _SortMode.dateAdded;
 
-  IconData _statusIcon(String state) {
-    final normalized = state.toLowerCase();
-    if (normalized.contains('seed')) return Icons.upload_rounded;
-    if (normalized.contains('download')) return Icons.download_rounded;
-    if (normalized.contains('paused')) return Icons.pause_circle_outline;
-    if (normalized.contains('error')) return Icons.error_outline;
-    if (normalized.contains('pending')) return Icons.hourglass_empty;
-    return Icons.circle_outlined;
-  }
-
-  String _formatBytes(int bytes) {
-    if (bytes <= 0) return '0 B';
-    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-    var value = bytes.toDouble();
-    var unitIndex = 0;
-    while (value >= 1024 && unitIndex < units.length - 1) {
-      value /= 1024;
-      unitIndex++;
+  _SortMode _sortModeFromSettings(int value) {
+    if (value < 0 || value >= _SortMode.values.length) {
+      return _SortMode.dateAdded;
     }
-    return '${value.toStringAsFixed(unitIndex == 0 ? 0 : 1)} ${units[unitIndex]}';
+    return _SortMode.values[value];
+  }
+
+  Future<void> _loadSortMode() async {
+    await SettingsService.instance.load();
+    if (!mounted) return;
+    setState(() {
+      _sortMode = _sortModeFromSettings(SettingsService.instance.torrentSortMode);
+    });
+  }
+
+  Future<void> _setSortMode(_SortMode mode) async {
+    setState(() => _sortMode = mode);
+    await SettingsService.instance.setTorrentSortMode(mode.index);
   }
 
   @override
   void initState() {
     super.initState();
+    unawaited(_loadSortMode());
     unawaited(TorrentService.instance.refreshTorrentStates());
   }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  // ── Helpers ──────────────────────────────────────────────────────────────
+
+  String _fmtSize(int bytes) {
+    if (bytes <= 0) return '';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(0)} KB';
+    if (bytes < 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    }
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
+  }
+
+  String _fmtSpeed(double bps) {
+    if (bps < 1024) return '${bps.round()} B/s';
+    if (bps < 1024 * 1024) return '${(bps / 1024).toStringAsFixed(1)} KB/s';
+    return '${(bps / (1024 * 1024)).toStringAsFixed(1)} MB/s';
+  }
+
+  Color _stateColor(BuildContext ctx, String state) {
+    final cs = Theme.of(ctx).colorScheme;
+    if (state.contains('seed'))     return cs.tertiary;
+    if (state.contains('download')) return cs.primary;
+    if (state.contains('error') || state.contains('stall')) return cs.error;
+    if (state.contains('pause'))    return cs.outline;
+    return cs.outlineVariant;
+  }
+
+  List<TorrentViewState> _sorted(List<TorrentViewState> all) {
+    var list = all.toList();
+
+    // Search filter
+    if (_searchQuery.isNotEmpty) {
+      final q = _searchQuery.toLowerCase();
+      list = list.where((t) => t.name.toLowerCase().contains(q)).toList();
+    }
+
+    // Sort
+    list.sort((a, b) {
+      switch (_sortMode) {
+        case _SortMode.dateAdded:
+          return (b.model.addedAt ?? 0).compareTo(a.model.addedAt ?? 0);
+        case _SortMode.nameAZ:
+          return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+        case _SortMode.nameZA:
+          return b.name.toLowerCase().compareTo(a.name.toLowerCase());
+        case _SortMode.sizeAsc:
+          return (a.model.totalSize ?? 0).compareTo(b.model.totalSize ?? 0);
+        case _SortMode.sizeDesc:
+          return (b.model.totalSize ?? 0).compareTo(a.model.totalSize ?? 0);
+        case _SortMode.progress:
+          return b.progress.compareTo(a.progress);
+        case _SortMode.status:
+          return a.statusLabel.compareTo(b.statusLabel);
+      }
+    });
+
+    return list;
+  }
+
+  // ── Actions ───────────────────────────────────────────────────────────────
 
   Future<void> _refresh() async {
     await TorrentService.instance.refreshTorrentStates();
   }
 
-  Future<void> _toggleTorrent(TorrentViewState torrentState) async {
-    final torrent = torrentState.model;
+  Future<void> _toggleTorrent(TorrentViewState ts) async {
     try {
-      if (torrentState.isActive) {
-        await TorrentEngineService.instance.stopTorrent(torrent.id);
-        await TorrentService.instance.updateTorrentStatus(torrent.id, 'paused');
+      if (ts.isActive) {
+        await TorrentEngineService.instance.stopTorrent(ts.model.id);
+        await TorrentService.instance.updateTorrentStatus(ts.model.id, 'paused');
       } else {
-        await TorrentEngineService.instance.startTorrent(torrent.id);
+        await TorrentEngineService.instance.startTorrent(ts.model.id);
       }
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Unable to toggle torrent: $e')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Unable to toggle: $e')));
     }
     await TorrentService.instance.refreshTorrentStates();
   }
 
-  Future<void> _deleteTorrent(TorrentViewState torrentState) async {
-    final torrent = torrentState.model;
-    try {
-      await TorrentEngineService.instance.stopTorrent(torrent.id);
-      await TorrentService.instance.removeTorrent(torrent.id);
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Torrent removed.')));
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Unable to delete torrent: $e')));
-    }
-    await TorrentService.instance.refreshTorrentStates();
-  }
-
-  Future<void> _redownloadTorrent(TorrentViewState torrentState) async {
-    final torrent = torrentState.model;
-    try {
-      await TorrentEngineService.instance.forceRedownload(torrent.id);
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Redownload restarted.')));
-    } catch (e) {
-      if (!mounted) return;
-      final raw = e.toString().toLowerCase();
-      final msg = raw.contains('files are in use') || raw.contains('error_file_in_use')
-          ? 'Redownload blocked: close File Explorer preview/media players using the file, then retry.'
-          : 'Unable to redownload torrent: $e';
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(msg)));
-    }
-    await TorrentService.instance.refreshTorrentStates();
-  }
-
-  Future<void> _recheckTorrent(TorrentViewState torrentState) async {
-    try {
-      final result = await TorrentEngineService.instance.recheckTorrent(
-        torrentState.id,
-      );
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            result['isValid'] == true
-                ? 'Recheck complete: all pieces valid.'
-                : 'Recheck complete: ${result['invalidPieces']} piece(s) need re-download.',
-          ),
+  Future<void> _redownloadTorrent(TorrentViewState ts) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Redownload from scratch?'),
+        content: Text(
+          '"${ts.model.name}" will be deleted and re-downloaded from 0%. '
+          'The .torrent source file is preserved.',
         ),
-      );
-    } catch (e) {
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Redownload'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await TorrentEngineService.instance.forceRedownload(ts.model.id);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Recheck failed: $e')),
-      );
+        SnackBar(content: Text('"${ts.name}" restarted from scratch.')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Redownload failed: $e')));
+    }
+    await TorrentService.instance.refreshTorrentStates();
+  }
+
+  Future<void> _deleteTorrent(TorrentViewState ts) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Remove torrent?'),
+        content: Text('"${ts.name}" will be removed from the list. '
+            'Downloaded files are NOT deleted.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+              foregroundColor: Theme.of(ctx).colorScheme.onError,
+            ),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await TorrentEngineService.instance.stopTorrent(ts.model.id);
+      await TorrentService.instance.removeTorrent(ts.model.id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Torrent removed.')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Remove failed: $e')));
     }
   }
 
   Future<void> _openTorrentFolder(TorrentModel torrent) async {
     final String pathToOpen;
     if (torrent.filePath != null && torrent.filePath!.isNotEmpty) {
-      final lowerPath = torrent.filePath!.toLowerCase();
-      if (lowerPath.endsWith('.torrent')) {
-        pathToOpen = SettingsService.instance.downloadDestination;
-      } else {
-        pathToOpen = torrent.filePath!;
-      }
+      final lp = torrent.filePath!.toLowerCase();
+      pathToOpen = lp.endsWith('.torrent')
+          ? SettingsService.instance.downloadDestination
+          : torrent.filePath!;
     } else {
       pathToOpen = SettingsService.instance.downloadDestination;
     }
@@ -161,13 +260,11 @@ class _TorrentsScreenState extends State<TorrentsScreen>
     if (pathToOpen.isEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No path available to open.')),
-      );
+        const SnackBar(content: Text('No download folder configured.')));
       return;
     }
 
-    String directoryPath;
-
+    final String directoryPath;
     if (Directory(pathToOpen).existsSync()) {
       directoryPath = pathToOpen;
     } else if (File(pathToOpen).existsSync()) {
@@ -175,11 +272,11 @@ class _TorrentsScreenState extends State<TorrentsScreen>
     } else {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Specified path does not exist.')),
-      );
+        const SnackBar(content: Text('Folder does not exist.')));
       return;
     }
 
+    // Android: file:// URIs throw FileUriExposedException — show path instead
     if (Platform.isAndroid) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -195,9 +292,8 @@ class _TorrentsScreenState extends State<TorrentsScreen>
     final uri = Uri.file(directoryPath);
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Failed to open folder.')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Failed to open folder.')));
     }
   }
 
@@ -210,32 +306,31 @@ class _TorrentsScreenState extends State<TorrentsScreen>
       }
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Torrent path added via drag & drop.')),
-      );
+        const SnackBar(content: Text('Torrent added via drag & drop.')));
       await _refresh();
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to import dropped path: $e')),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Import failed: $e')));
     }
   }
 
   Future<void> _showAddMagnetDialog() async {
-    final controller = TextEditingController();
+    final ctrl = TextEditingController();
     final result = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Add torrent'),
         content: TextField(
-          controller: controller,
+          controller: ctrl,
           autofocus: true,
-          decoration: const InputDecoration(
-            hintText: 'Paste magnet link here',
-            prefixIcon: Icon(Icons.link),
-          ),
           minLines: 1,
-          maxLines: 4,
+          maxLines: 5,
+          decoration: const InputDecoration(
+            hintText: 'Paste magnet link (magnet:?xt=...)',
+            prefixIcon: Icon(Icons.link),
+            border: OutlineInputBorder(),
+          ),
         ),
         actions: [
           TextButton(
@@ -243,40 +338,155 @@ class _TorrentsScreenState extends State<TorrentsScreen>
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
+            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
             child: const Text('Add'),
           ),
         ],
       ),
     );
-
+    ctrl.dispose();
     if (result == null || result.isEmpty || !mounted) return;
-
     try {
       await TorrentService.instance.addTorrentFromMagnetLink(result);
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Torrent added!')));
-      await _refresh();
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Torrent added!')));
+    } on TorrentAlreadyExistsException {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This torrent is already in your list.')));
     } catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed: $e')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Failed to add: $e')));
     }
   }
+
+  // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     super.build(context);
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Torrents'),
-        actions: [
+      appBar: _buildAppBar(),
+      floatingActionButton: Platform.isAndroid
+          ? FloatingActionButton.extended(
+              onPressed: _showAddMagnetDialog,
+              icon: const Icon(Icons.add_link),
+              label: const Text('Add magnet'),
+            )
+          : null,
+      body: TorrentDragDrop(
+        onTorrentFile: _handleDropPath,
+        onPath: _handleDropPath,
+        child: RefreshIndicator(
+          onRefresh: _refresh,
+          child: StreamBuilder<List<TorrentViewState>>(
+            stream: TorrentService.instance.torrentStatesStream,
+            builder: (context, snapshot) {
+              if (!snapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final all = snapshot.data!;
+              final torrents = _sorted(all);
+
+              // Empty: no torrents at all
+              if (all.isEmpty) {
+                return _buildEmptyState();
+              }
+
+              // Empty: search returned nothing
+              if (torrents.isEmpty) {
+                return _buildNoSearchResults();
+              }
+
+              return ListView.builder(
+                cacheExtent: 200,
+                padding: EdgeInsets.only(
+                  bottom: Platform.isAndroid ? 96 : 12,
+                ),
+                itemCount: torrents.length,
+                itemBuilder: (context, index) =>
+                    _buildTorrentCard(context, torrents[index]),
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  AppBar _buildAppBar() {
+    return AppBar(
+      title: _showSearch
+          ? TextField(
+              controller: _searchController,
+              autofocus: true,
+              decoration: InputDecoration(
+                hintText: 'Search torrents…',
+                border: InputBorder.none,
+                hintStyle: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              style: Theme.of(context).textTheme.titleMedium,
+              onChanged: (v) => setState(() => _searchQuery = v.trim()),
+            )
+          : const Text('Torrents'),
+      actions: [
+        // Search toggle
+        IconButton(
+          icon: Icon(_showSearch ? Icons.close : Icons.search),
+          tooltip: _showSearch ? 'Cancel search' : 'Search torrents',
+          onPressed: () => setState(() {
+            _showSearch = !_showSearch;
+            if (!_showSearch) {
+              _searchQuery = '';
+              _searchController.clear();
+            }
+          }),
+        ),
+        // Sort popup
+        PopupMenuButton<_SortMode>(
+          icon: const Icon(Icons.sort),
+          tooltip: 'Sort by',
+          onSelected: _setSortMode,
+          itemBuilder: (ctx) => _SortMode.values
+              .map((m) => PopupMenuItem<_SortMode>(
+                    value: m,
+                    child: Row(children: [
+                      Icon(m.icon,
+                          size: 16,
+                          color: _sortMode == m
+                              ? Theme.of(ctx).colorScheme.primary
+                              : null),
+                      const SizedBox(width: 10),
+                      Text(
+                        m.label,
+                        style: TextStyle(
+                          fontWeight: _sortMode == m
+                              ? FontWeight.w700
+                              : FontWeight.normal,
+                          color: _sortMode == m
+                              ? Theme.of(ctx).colorScheme.primary
+                              : null,
+                        ),
+                      ),
+                      if (_sortMode == m) ...[
+                        const Spacer(),
+                        Icon(Icons.check,
+                            size: 14,
+                            color: Theme.of(ctx).colorScheme.primary),
+                      ],
+                    ]),
+                  ))
+              .toList(),
+        ),
+        // Open download folder (desktop only)
+        if (!Platform.isAndroid)
           IconButton(
             icon: const Icon(Icons.folder_open),
-            tooltip: 'Go to download folder',
+            tooltip: 'Open download folder',
             onPressed: () async {
               final pseudo = TorrentModel(
                 id: '',
@@ -287,360 +497,273 @@ class _TorrentsScreenState extends State<TorrentsScreen>
               await _openTorrentFolder(pseudo);
             },
           ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            tooltip: 'Refresh',
-            onPressed: _refresh,
+        IconButton(
+          icon: const Icon(Icons.refresh),
+          tooltip: 'Refresh',
+          onPressed: _refresh,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(32),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.download_for_offline_outlined,
+                size: 72,
+                color: Theme.of(context).colorScheme.outlineVariant),
+            const SizedBox(height: 16),
+            Text('No torrents yet',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color:
+                        Theme.of(context).colorScheme.onSurfaceVariant)),
+            const SizedBox(height: 8),
+            Text(
+              Platform.isAndroid
+                  ? 'Tap + to paste a magnet link'
+                  : 'Drag and drop a .torrent file\nor paste a magnet link',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color:
+                      Theme.of(context).colorScheme.onSurfaceVariant),
+            ),
+            if (Platform.isAndroid) ...[
+              const SizedBox(height: 24),
+              FilledButton.icon(
+                onPressed: _showAddMagnetDialog,
+                icon: const Icon(Icons.add_link),
+                label: const Text('Add magnet link'),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNoSearchResults() {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.search_off,
+              size: 56,
+              color: Theme.of(context).colorScheme.outlineVariant),
+          const SizedBox(height: 12),
+          Text('No results for "$_searchQuery"',
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                  color:
+                      Theme.of(context).colorScheme.onSurfaceVariant)),
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: () => setState(() {
+              _searchQuery = '';
+              _searchController.clear();
+              _showSearch = false;
+            }),
+            child: const Text('Clear search'),
           ),
         ],
       ),
-      body: TorrentDragDrop(
-        onTorrentFile: _handleDropPath,
-        onPath: _handleDropPath,
-        child: RefreshIndicator(
-          onRefresh: _refresh,
-          child: StreamBuilder<List<TorrentViewState>>(
-            stream: TorrentService.instance.torrentStatesStream,
-            builder: (context, snapshot) {
-              if (!snapshot.hasData) {
-                return ListView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  children: const [
-                    SizedBox(height: 120),
-                    Center(child: CircularProgressIndicator()),
-                    SizedBox(height: 12),
-                    Center(child: Text('Loading torrents...')),
-                  ],
-                );
-              }
+    );
+  }
 
-              final torrents = snapshot.data!;
-              if (torrents.isEmpty) {
-                return ListView(
-                  physics: const AlwaysScrollableScrollPhysics(),
+  Widget _buildTorrentCard(BuildContext context, TorrentViewState ts) {
+    final torrent = ts.model;
+    final progress = ts.progress.clamp(0.0, 1.0);
+    final stateColor = _stateColor(context, ts.state);
+    final cs = Theme.of(context).colorScheme;
+
+    void copyMagnetLink() {
+      final magnet = torrent.magnetLink;
+      if (magnet != null && magnet.isNotEmpty) {
+        Clipboard.setData(ClipboardData(text: magnet));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Magnet link copied')));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No magnet link available')));
+      }
+    }
+
+    return Card(
+      key: ValueKey(ts.id),
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(
+              builder: (_) => TorrentDetailScreen(torrent: torrent)),
+        ),
+        onLongPress: copyMagnetLink,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(14, 10, 4, 10),
+          child: Row(
+            children: [
+              // Main content
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const SizedBox(height: 100),
-                    Center(
-                      child: Padding(
-                        padding: const EdgeInsets.all(32),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.download_for_offline_outlined,
-                              size: 72,
-                              color: Theme.of(context).colorScheme.outlineVariant,
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'No torrents yet',
-                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Tap + to add a magnet link\nor browse and pick a torrent',
-                              textAlign: TextAlign.center,
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: Theme.of(context).colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                            const SizedBox(height: 24),
-                            FilledButton.icon(
-                              onPressed: _showAddMagnetDialog,
-                              icon: const Icon(Icons.add),
-                              label: const Text('Add magnet link'),
-                            ),
-                          ],
-                        ),
+                    // Name
+                    Text(
+                      torrent.name,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w600, fontSize: 14),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 2,
+                    ),
+                    const SizedBox(height: 7),
+                    // Progress bar
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(3),
+                      child: LinearProgressIndicator(
+                        value: progress,
+                        minHeight: 5,
+                        backgroundColor:
+                            cs.surfaceContainerHighest,
+                        valueColor:
+                            AlwaysStoppedAnimation(stateColor),
                       ),
+                    ),
+                    const SizedBox(height: 5),
+                    // Status row
+                    Row(
+                      children: [
+                        // Status badge
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: stateColor.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            ts.statusLabel,
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: stateColor,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        // Progress %
+                        Text(
+                          '${(progress * 100).toStringAsFixed(1)}%',
+                          style: const TextStyle(
+                              fontSize: 11, fontWeight: FontWeight.w600),
+                        ),
+                        // Size
+                        if (torrent.totalSize != null &&
+                            torrent.totalSize! > 0) ...[
+                          Text(
+                            ' / ${_fmtSize(torrent.totalSize!)}',
+                            style: TextStyle(
+                                fontSize: 10,
+                                color: cs.onSurfaceVariant),
+                          ),
+                        ],
+                        const Spacer(),
+                        // Download speed
+                        if (ts.downloadSpeed > 512) ...[
+                          Icon(Icons.arrow_downward,
+                              size: 10, color: cs.primary),
+                          Text(_fmtSpeed(ts.downloadSpeed),
+                              style: TextStyle(
+                                  fontSize: 10, color: cs.primary)),
+                        ],
+                        // Upload speed
+                        if (ts.uploadSpeed > 512) ...[
+                          const SizedBox(width: 4),
+                          Icon(Icons.arrow_upward,
+                              size: 10, color: cs.tertiary),
+                          Text(_fmtSpeed(ts.uploadSpeed),
+                              style: TextStyle(
+                                  fontSize: 10, color: cs.tertiary)),
+                        ],
+                        // Peers
+                        if (ts.peers > 0) ...[
+                          const SizedBox(width: 4),
+                          Icon(Icons.people_outline,
+                              size: 10, color: cs.onSurfaceVariant),
+                          Text('${ts.peers}',
+                              style: TextStyle(
+                                  fontSize: 10,
+                                  color: cs.onSurfaceVariant)),
+                        ],
+                      ],
                     ),
                   ],
-                );
-              }
-
-              return ListView.builder(
-                itemCount: torrents.length,
-                cacheExtent: 200,
-                itemBuilder: (context, index) {
-                  final torrentState = torrents[index];
-                  final torrent = torrentState.model;
-                  final progress = torrentState.progress.clamp(0.0, 1.0);
-                  final stateColor = _statusColor(context, torrentState.state);
-
-                  void copyMagnetLink() {
-                    final magnet = torrent.magnetLink;
-                    if (magnet != null && magnet.isNotEmpty) {
-                      Clipboard.setData(ClipboardData(text: magnet));
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Magnet link copied to clipboard'),
-                        ),
-                      );
-                    } else {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('No magnet link available for this torrent'),
-                        ),
-                      );
-                    }
+                ),
+              ),
+              // Action menu
+              PopupMenuButton<String>(
+                icon: const Icon(Icons.more_vert, size: 20),
+                tooltip: 'More',
+                onSelected: (v) {
+                  switch (v) {
+                    case 'toggle':   _toggleTorrent(ts); break;
+                    case 'folder':   _openTorrentFolder(torrent); break;
+                    case 'copy':     copyMagnetLink(); break;
+                    case 'redownload': _redownloadTorrent(ts); break;
+                    case 'delete':   _deleteTorrent(ts); break;
                   }
-
-                  return RepaintBoundary(
-                    child: Card(
-                      key: ValueKey(torrentState.id),
-                      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(18),
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => TorrentDetailScreen(torrent: torrent),
-                          ),
-                        ),
-                        onLongPress: copyMagnetLink,
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Icon(
-                                    _statusIcon(torrentState.state),
-                                    color: stateColor,
-                                    size: 18,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      torrent.name,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w600,
-                                        fontSize: 14,
-                                      ),
-                                      overflow: TextOverflow.ellipsis,
-                                      maxLines: 2,
-                                    ),
-                                  ),
-                                  PopupMenuButton<String>(
-                                    icon: const Icon(Icons.more_vert, size: 20),
-                                    onSelected: (v) {
-                                      switch (v) {
-                                        case 'toggle':
-                                          _toggleTorrent(torrentState);
-                                          break;
-                                        case 'folder':
-                                          _openTorrentFolder(torrent);
-                                          break;
-                                        case 'copy':
-                                          copyMagnetLink();
-                                          break;
-                                        case 'recheck':
-                                          _recheckTorrent(torrentState);
-                                          break;
-                                        case 'redownload':
-                                          _redownloadTorrent(torrentState);
-                                          break;
-                                        case 'delete':
-                                          _deleteTorrent(torrentState);
-                                          break;
-                                      }
-                                    },
-                                    itemBuilder: (_) => [
-                                      PopupMenuItem(
-                                        value: 'toggle',
-                                        child: ListTile(
-                                          dense: true,
-                                          leading: Icon(
-                                            torrentState.isActive
-                                                ? Icons.pause
-                                                : Icons.play_arrow,
-                                          ),
-                                          title: Text(
-                                            torrentState.isActive ? 'Pause' : 'Resume',
-                                          ),
-                                        ),
-                                      ),
-                                      const PopupMenuItem(
-                                        value: 'folder',
-                                        child: ListTile(
-                                          dense: true,
-                                          leading: Icon(Icons.folder_open),
-                                          title: Text('Show location'),
-                                        ),
-                                      ),
-                                      const PopupMenuItem(
-                                        value: 'copy',
-                                        child: ListTile(
-                                          dense: true,
-                                          leading: Icon(Icons.link),
-                                          title: Text('Copy magnet'),
-                                        ),
-                                      ),
-                                      const PopupMenuItem(
-                                        value: 'recheck',
-                                        child: ListTile(
-                                          dense: true,
-                                          leading: Icon(Icons.fact_check_outlined),
-                                          title: Text('Recheck files'),
-                                        ),
-                                      ),
-                                      const PopupMenuItem(
-                                        value: 'redownload',
-                                        child: ListTile(
-                                          dense: true,
-                                          leading: Icon(Icons.replay),
-                                          title: Text('Redownload'),
-                                        ),
-                                      ),
-                                      const PopupMenuDivider(),
-                                      const PopupMenuItem(
-                                        value: 'delete',
-                                        child: ListTile(
-                                          dense: true,
-                                          leading: Icon(Icons.delete_outline),
-                                          title: Text('Remove'),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 8),
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: ClipRRect(
-                                      borderRadius: BorderRadius.circular(4),
-                                      child: LinearProgressIndicator(
-                                        value: progress,
-                                        minHeight: 6,
-                                        backgroundColor: Theme.of(context)
-                                            .colorScheme
-                                            .surfaceContainerHighest,
-                                        valueColor: AlwaysStoppedAnimation(stateColor),
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  SizedBox(
-                                    width: 44,
-                                    child: Text(
-                                      '${(progress * 100).toStringAsFixed(1)}%',
-                                      style: const TextStyle(
-                                        fontSize: 11,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                      textAlign: TextAlign.right,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 6),
-                              Row(
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 6,
-                                      vertical: 2,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: stateColor.withValues(alpha: 0.12),
-                                      borderRadius: BorderRadius.circular(6),
-                                    ),
-                                    child: Text(
-                                      torrentState.statusLabel,
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        fontWeight: FontWeight.w700,
-                                        color: stateColor,
-                                        letterSpacing: 0.3,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Icon(
-                                    Icons.people_outline,
-                                    size: 12,
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .onSurfaceVariant,
-                                  ),
-                                  const SizedBox(width: 2),
-                                  Text(
-                                    '${torrentState.peers}',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .onSurfaceVariant,
-                                    ),
-                                  ),
-                                  const Spacer(),
-                                  if (torrentState.isSeeding &&
-                                      torrentState.uploadSpeed > 0) ...[
-                                    Icon(
-                                      Icons.arrow_upward,
-                                      size: 11,
-                                      color: Theme.of(context).colorScheme.tertiary,
-                                    ),
-                                    const SizedBox(width: 2),
-                                    Text(
-                                      '${_formatBytes(torrentState.uploadSpeed.round())}/s',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: Theme.of(context).colorScheme.tertiary,
-                                      ),
-                                    ),
-                                  ] else if (torrentState.downloadSpeed > 0) ...[
-                                    Icon(
-                                      Icons.arrow_downward,
-                                      size: 11,
-                                      color: Theme.of(context).colorScheme.primary,
-                                    ),
-                                    const SizedBox(width: 2),
-                                    Text(
-                                      '${_formatBytes(torrentState.downloadSpeed.round())}/s',
-                                      style: TextStyle(
-                                        fontSize: 11,
-                                        color: Theme.of(context).colorScheme.primary,
-                                      ),
-                                    ),
-                                  ],
-                                  if (torrent.totalSize != null && torrent.totalSize! > 0) ...[
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      '${_formatBytes((progress * torrent.totalSize!).round())} / ${_formatBytes(torrent.totalSize!)}',
-                                      style: TextStyle(
-                                        fontSize: 10,
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .onSurfaceVariant,
-                                      ),
-                                    ),
-                                  ],
-                                ],
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
                 },
-              );
-            },
+                itemBuilder: (_) => [
+                  PopupMenuItem(
+                    value: 'toggle',
+                    child: ListTile(
+                      dense: true,
+                      leading: Icon(ts.isActive
+                          ? Icons.pause_circle_outline
+                          : Icons.play_circle_outline),
+                      title: Text(ts.isActive ? 'Pause' : 'Resume'),
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'folder',
+                    child: ListTile(
+                      dense: true,
+                      leading: Icon(Icons.folder_open),
+                      title: Text('Open folder'),
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'copy',
+                    child: ListTile(
+                      dense: true,
+                      leading: Icon(Icons.link),
+                      title: Text('Copy magnet link'),
+                    ),
+                  ),
+                  const PopupMenuItem(
+                    value: 'redownload',
+                    child: ListTile(
+                      dense: true,
+                      leading: Icon(Icons.replay),
+                      title: Text('Redownload from scratch'),
+                    ),
+                  ),
+                  const PopupMenuDivider(),
+                  const PopupMenuItem(
+                    value: 'delete',
+                    child: ListTile(
+                      dense: true,
+                      leading: Icon(Icons.delete_outline),
+                      title: Text('Remove'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
         ),
       ),
-      floatingActionButton: Platform.isAndroid
-          ? FloatingActionButton.extended(
-              onPressed: _showAddMagnetDialog,
-              icon: const Icon(Icons.add),
-              label: const Text('Add torrent'),
-            )
-          : null,
     );
   }
 }
