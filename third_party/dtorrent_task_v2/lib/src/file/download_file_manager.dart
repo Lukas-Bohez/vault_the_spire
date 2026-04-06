@@ -120,7 +120,12 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
   int get piecesNumber => _stateFile.bitfield.piecesNum;
 
   Future<bool> updateBitfield(int index, [bool have = true]) async {
-    var updated = await _stateFile.updateBitfield(index, have);
+    bool updated;
+    try {
+      updated = await _stateFile.updateBitfield(index, have);
+    } on StateError {
+      return false;
+    }
     if (updated) events.emit(StateFileUpdated());
     return updated;
   }
@@ -130,7 +135,12 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
   // }
 
   Future<bool> updateUpload(int uploaded) async {
-    var updated = await _stateFile.updateUploaded(uploaded);
+    bool updated;
+    try {
+      updated = await _stateFile.updateUploaded(uploaded);
+    } on StateError {
+      return false;
+    }
     if (updated) events.emit(StateFileUpdated());
     return updated;
   }
@@ -164,11 +174,9 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
     }
     events.emit(StateFileUpdated());
     final totalLength = metainfo.length ?? metainfo.totalSize;
-    final pct = totalLength > 0
-      ? ((d / totalLength) * 10000).toInt() / 100
-      : 0.0;
-    var msg =
-      'downloaded：${d / (1024 * 1024)} mb , Progress $pct %';
+    final pct =
+        totalLength > 0 ? ((d / totalLength) * 10000).toInt() / 100 : 0.0;
+    var msg = 'downloaded：${d / (1024 * 1024)} mb , Progress $pct %';
     _log.finer(msg);
     return true;
   }

@@ -84,6 +84,7 @@ class _TorrentsScreenState extends State<TorrentsScreen>
   bool _showSearch = false;
   _SortMode _sortMode = _SortMode.dateAdded;
   bool _fabExpanded = false;
+  bool _pickerBusy = false;
 
   _SortMode _sortModeFromSettings(int value) {
     if (value < 0 || value >= _SortMode.values.length) {
@@ -328,6 +329,18 @@ class _TorrentsScreenState extends State<TorrentsScreen>
     }
 
     try {
+      if (Platform.isWindows) {
+        final result = await Process.run('explorer.exe', <String>[
+          directoryPath,
+        ]);
+        if (result.exitCode != 0 && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to open folder.')),
+          );
+        }
+        return;
+      }
+
       final uri = Uri.file(directoryPath);
       if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
         if (!mounted) return;
@@ -344,11 +357,13 @@ class _TorrentsScreenState extends State<TorrentsScreen>
   }
 
   Future<void> _pickTorrentFile() async {
+    if (_pickerBusy) return;
+    _pickerBusy = true;
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowMultiple: false,
-        allowedExtensions: const <String>[],
+        allowedExtensions: const <String>['torrent'],
       );
       final path = result?.files.single.path;
       if (path == null || path.isEmpty) {
@@ -365,6 +380,8 @@ class _TorrentsScreenState extends State<TorrentsScreen>
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Failed to add torrent file: $e')));
+    } finally {
+      _pickerBusy = false;
     }
   }
 
@@ -446,7 +463,8 @@ class _TorrentsScreenState extends State<TorrentsScreen>
   }
 
   Widget _buildFab() {
-    if (!Platform.isAndroid) {
+    final isMobile = Platform.isAndroid || Platform.isIOS;
+    if (!isMobile) {
       return const SizedBox.shrink();
     }
 
@@ -653,14 +671,16 @@ class _TorrentsScreenState extends State<TorrentsScreen>
             const SizedBox(height: 8),
             Text(
               Platform.isAndroid
-                  ? 'Tap + to paste a magnet link'
+                  ? 'Tap + to add or create torrents'
+                  : Platform.isIOS
+                  ? 'Tap + to add or create torrents'
                   : 'Drag and drop a .torrent file\nor paste a magnet link',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
-            if (Platform.isAndroid) ...[
+            if (Platform.isAndroid || Platform.isIOS) ...[
               const SizedBox(height: 24),
               FilledButton.icon(
                 onPressed: _showAddMagnetDialog,

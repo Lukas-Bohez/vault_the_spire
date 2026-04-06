@@ -78,11 +78,13 @@ class TorrentViewState {
 class _DiskReconcileSnapshot {
   final int bytesOnDisk;
   final bool isComplete;
+  final bool pathMissing;
   final DateTime checkedAt;
 
   const _DiskReconcileSnapshot({
     required this.bytesOnDisk,
     required this.isComplete,
+    required this.pathMissing,
     required this.checkedAt,
   });
 }
@@ -107,11 +109,13 @@ class _DiskScanResult {
   final String torrentId;
   final int bytesOnDisk;
   final bool isComplete;
+  final bool pathMissing;
 
   const _DiskScanResult({
     required this.torrentId,
     required this.bytesOnDisk,
     required this.isComplete,
+    required this.pathMissing,
   });
 }
 
@@ -121,10 +125,29 @@ _DiskScanResult _runDiskScanSync(_DiskScanInput input) {
       torrentId: input.torrentId,
       bytesOnDisk: input.fallbackBytes,
       isComplete: false,
+      pathMissing: false,
     );
   }
 
   var bytes = 0;
+  var pathMissing = false;
+
+  int sumFileBytesRecursively(Directory directory) {
+    var total = 0;
+    for (final entity in directory.listSync(
+      recursive: true,
+      followLinks: false,
+    )) {
+      if (entity is! File) continue;
+      final lowerPath = entity.path.toLowerCase();
+      if (lowerPath.endsWith('.bt.state') || lowerPath.endsWith('.torrent')) {
+        continue;
+      }
+      total += entity.statSync().size;
+    }
+    return total;
+  }
+
   try {
     final nameToken = input.torrentName.trim().toLowerCase();
     final lowerOutputPath = input.outputPath.toLowerCase();
@@ -133,37 +156,56 @@ _DiskScanResult _runDiskScanSync(_DiskScanInput input) {
         torrentId: input.torrentId,
         bytesOnDisk: 0,
         isComplete: false,
+        pathMissing: false,
       );
     }
 
     final type = FileSystemEntity.typeSync(input.outputPath);
-    if (type == FileSystemEntityType.directory) {
-      var matchedFiles = 0;
-      for (final entity in Directory(input.outputPath)
-          .listSync(recursive: true, followLinks: false)) {
-        if (entity is! File) continue;
-        final lowerPath = entity.path.toLowerCase();
-        if (lowerPath.endsWith('.bt.state') || lowerPath.endsWith('.torrent')) {
-          continue;
-        }
+    if (type == FileSystemEntityType.notFound) {
+      return _DiskScanResult(
+        torrentId: input.torrentId,
+        bytesOnDisk: 0,
+        isComplete: false,
+        pathMissing: true,
+      );
+    }
 
-        if (nameToken.isNotEmpty) {
-          final normalizedPath = lowerPath.replaceAll('\\', '/');
-          final fileName = normalizedPath.split('/').last;
-          final belongsToTorrent =
-              fileName.contains(nameToken) ||
-              normalizedPath.contains('/$nameToken/');
-          if (!belongsToTorrent) {
-            continue;
+    if (type == FileSystemEntityType.directory) {
+      final root = Directory(input.outputPath);
+
+      if (nameToken.isNotEmpty) {
+        final nameCandidate = input.torrentName.trim();
+        final directDir = Directory(p.join(root.path, nameCandidate));
+        final directFile = File(p.join(root.path, nameCandidate));
+
+        if (directDir.existsSync()) {
+          bytes = sumFileBytesRecursively(directDir);
+        } else if (directFile.existsSync()) {
+          final lowerPath = directFile.path.toLowerCase();
+          if (!lowerPath.endsWith('.bt.state') &&
+              !lowerPath.endsWith('.torrent')) {
+            bytes = directFile.statSync().size;
+          }
+        } else {
+          for (final entity in root.listSync(
+            recursive: false,
+            followLinks: false,
+          )) {
+            final base = p.basename(entity.path).toLowerCase();
+            if (!base.contains(nameToken)) continue;
+            if (entity is File) {
+              final lowerPath = entity.path.toLowerCase();
+              if (!lowerPath.endsWith('.bt.state') &&
+                  !lowerPath.endsWith('.torrent')) {
+                bytes += entity.statSync().size;
+              }
+            } else if (entity is Directory) {
+              bytes += sumFileBytesRecursively(entity);
+            }
           }
         }
-
-        bytes += entity.statSync().size;
-        matchedFiles++;
-      }
-
-      if (matchedFiles == 0) {
-        bytes = 0;
+      } else {
+        bytes = sumFileBytesRecursively(root);
       }
     } else if (type == FileSystemEntityType.file) {
       final lowerPath = input.outputPath.toLowerCase();
@@ -172,13 +214,15 @@ _DiskScanResult _runDiskScanSync(_DiskScanInput input) {
       }
     }
   } catch (_) {
-    bytes = input.fallbackBytes;
+    bytes = 0;
+    pathMissing = false;
   }
 
   return _DiskScanResult(
     torrentId: input.torrentId,
     bytesOnDisk: bytes,
     isComplete: input.totalSize > 0 && bytes >= input.totalSize,
+    pathMissing: pathMissing,
   );
 }
 
@@ -198,8 +242,7 @@ class TorrentService {
       <String, TorrentViewState>{};
   final Map<String, _DiskReconcileSnapshot> _diskSnapshots =
       <String, _DiskReconcileSnapshot>{};
-  final Map<String, DateTime> _pendingMetadataRetryAfter =
-      <String, DateTime>{};
+  final Map<String, DateTime> _pendingMetadataRetryAfter = <String, DateTime>{};
   final Set<String> _pendingMetadataRetryInFlight = <String>{};
   bool _stateSyncStarted = false;
   DateTime _lastSnapshotTime = DateTime.fromMillisecondsSinceEpoch(0);
@@ -299,6 +342,7 @@ class TorrentService {
         final persistedState = torrent.status?.toLowerCase() ?? '';
         final diskBytes = diskSnapshot?.bytesOnDisk ?? torrent.bytesDown;
         final diskComplete = diskSnapshot?.isComplete ?? false;
+        final pathMissing = diskSnapshot?.pathMissing ?? false;
         final hasDiskSnapshot = diskSnapshot != null;
 
         var downloaded = [
@@ -308,27 +352,43 @@ class TorrentService {
         ].reduce(math.max);
 
         final totalSize = torrent.totalSize ?? 0;
-        final runtimeFarAheadOfDisk = hasDiskSnapshot &&
-          runtime != null &&
-          runtime.state.toLowerCase().contains('download') &&
-          runtime.downloaded > diskBytes + (64 * 1024 * 1024) &&
-          (totalSize <= 0 || diskBytes < (totalSize * 0.10).round());
+        final runtimeFarAheadOfDisk =
+            hasDiskSnapshot &&
+            runtime != null &&
+            runtime.state.toLowerCase().contains('download') &&
+            runtime.downloaded > diskBytes + (64 * 1024 * 1024) &&
+            (totalSize <= 0 || diskBytes < (totalSize * 0.10).round());
         if (runtimeFarAheadOfDisk ||
-          (persistedState.contains('downloading') && hasDiskSnapshot && diskBytes == 0)) {
+            (persistedState.contains('downloading') &&
+                hasDiskSnapshot &&
+                diskBytes == 0)) {
           downloaded = math.max(torrent.bytesDown, diskBytes);
         }
 
+        final missingOnDisk =
+            hasDiskSnapshot &&
+            pathMissing &&
+            runtime == null &&
+            !persistedState.contains('pending_metadata');
+        if (missingOnDisk) {
+          downloaded = 0;
+        }
+
         final runtimeState = runtime?.state.toLowerCase() ?? '';
-        final runtimeLooksComplete = runtime != null &&
+        final runtimeLooksComplete =
+            runtime != null &&
             (runtimeState.contains('seed') ||
                 (totalSize > 0 && runtime.downloaded >= totalSize) ||
                 runtime.progress >= 0.999);
-        final diskContradictsCompletion = hasDiskSnapshot &&
+        final diskContradictsCompletion =
+            hasDiskSnapshot &&
             totalSize > 0 &&
             !diskComplete &&
             diskBytes < (totalSize * 0.98).round();
-        final runtimeComplete = runtimeLooksComplete && !diskContradictsCompletion;
-        final isComplete = diskComplete ||
+        final runtimeComplete =
+            runtimeLooksComplete && !diskContradictsCompletion;
+        final isComplete =
+            diskComplete ||
             runtimeComplete ||
             (totalSize > 0 && downloaded >= totalSize);
 
@@ -341,18 +401,21 @@ class TorrentService {
         }
 
         final uploaded = runtime?.uploaded ?? torrent.bytesUp;
-        final effectiveRuntimeState =
-            diskContradictsCompletion ? 'downloading' : runtime?.state;
+        final effectiveRuntimeState = diskContradictsCompletion
+            ? 'downloading'
+            : runtime?.state;
         final state = _deriveState(
           torrent.status,
           effectiveRuntimeState,
           isComplete,
+          missingOnDisk: missingOnDisk,
+          hasRuntime: runtime != null,
         );
         final progress = isComplete
             ? 1.0
             : totalSize > 0
-                ? (downloaded / totalSize).clamp(0.0, 1.0)
-                : (runtime?.progress ?? torrent.progress).clamp(0.0, 1.0);
+            ? (downloaded / totalSize).clamp(0.0, 1.0)
+            : (runtime?.progress ?? torrent.progress).clamp(0.0, 1.0);
 
         final isSeeding = state.contains('seed');
         final dlSpeed = isSeeding ? 0.0 : (runtime?.downloadSpeed ?? 0.0);
@@ -368,7 +431,8 @@ class TorrentService {
           progress: progress,
           state: state,
           statusLabel: _statusLabelForState(state),
-          statusMessage: runtime?.statusMessage ??
+          statusMessage:
+              runtime?.statusMessage ??
               _fallbackStatusMessage(state, progress, peers),
           connectionMessage: runtime?.connectionMessage ?? '',
           peers: peers,
@@ -415,7 +479,7 @@ class TorrentService {
 
     final bytesDelta = (view.downloaded - existing.bytesDown).abs();
     final shouldUpdate =
-      bytesDelta > 512 * 1024 ||
+        bytesDelta > 512 * 1024 ||
         (existing.status ?? '') != updatedStatus ||
         existing.seeders != view.seeders ||
         existing.leechers != view.leechers ||
@@ -441,7 +505,8 @@ class TorrentService {
       final cached = _diskSnapshots[torrent.id];
       if (!force &&
           cached != null &&
-          DateTime.now().difference(cached.checkedAt) < _diskReconcileInterval) {
+          DateTime.now().difference(cached.checkedAt) <
+              _diskReconcileInterval) {
         return;
       }
 
@@ -459,6 +524,7 @@ class TorrentService {
         _diskSnapshots[torrent.id] = _DiskReconcileSnapshot(
           bytesOnDisk: result.bytesOnDisk,
           isComplete: result.isComplete,
+          pathMissing: result.pathMissing,
           checkedAt: DateTime.now(),
         );
       } catch (_) {
@@ -470,7 +536,14 @@ class TorrentService {
     _snapshotPending = true;
   }
 
-  String _deriveState(String? persistedState, String? runtimeState, bool complete) {
+  String _deriveState(
+    String? persistedState,
+    String? runtimeState,
+    bool complete, {
+    bool missingOnDisk = false,
+    bool hasRuntime = false,
+  }) {
+    if (missingOnDisk && !hasRuntime) return 'error_missing_files';
     if (complete) return 'seeding';
     final runtime = runtimeState?.toLowerCase() ?? '';
     if (runtime.contains('error')) return runtime;
@@ -494,6 +567,7 @@ class TorrentService {
     if (state.contains('download')) return 'Downloading';
     if (state.contains('pause')) return 'Paused';
     if (state.contains('error_file_in_use')) return 'File In Use';
+    if (state.contains('error_missing_files')) return 'Missing Files';
     if (state.contains('pending_metadata')) return 'Pending Metadata';
     if (state.contains('queue')) return 'Queued';
     if (state.contains('error')) return 'Error';
@@ -503,6 +577,9 @@ class TorrentService {
   String _fallbackStatusMessage(String state, double progress, int peers) {
     if (state.contains('error_file_in_use')) {
       return 'Redownload blocked: close programs using the file and retry.';
+    }
+    if (state.contains('error_missing_files')) {
+      return 'Downloaded files are missing from disk. Recheck save path or redownload.';
     }
     if (state.contains('pending_metadata')) {
       return 'Waiting for peers to provide metadata...';
@@ -534,7 +611,9 @@ class TorrentService {
     final now = DateTime.now();
     final nextTry = _pendingMetadataRetryAfter[torrent.id];
     if (nextTry != null && now.isBefore(nextTry)) return;
-    _pendingMetadataRetryAfter[torrent.id] = now.add(const Duration(seconds: 90));
+    _pendingMetadataRetryAfter[torrent.id] = now.add(
+      const Duration(seconds: 90),
+    );
     _pendingMetadataRetryInFlight.add(torrent.id);
 
     unawaited(() async {
@@ -640,6 +719,7 @@ class TorrentService {
     _diskSnapshots[id] = _DiskReconcileSnapshot(
       bytesOnDisk: 0,
       isComplete: false,
+      pathMissing: false,
       checkedAt: DateTime.now(),
     );
     _snapshotPending = true;
@@ -663,8 +743,8 @@ class TorrentService {
     }
 
     await _deletePathWithRetry(candidatePath);
-    final parent = FileSystemEntity.typeSync(candidatePath) ==
-            FileSystemEntityType.file
+    final parent =
+        FileSystemEntity.typeSync(candidatePath) == FileSystemEntityType.file
         ? File(candidatePath).parent.path
         : candidatePath;
     final stateFile = File(p.join(parent, '.bt.state'));
@@ -705,7 +785,7 @@ class TorrentService {
       final status = torrent.status?.toLowerCase() ?? '';
       // Only resume downloading/seeding torrents, not error states
       return (status == 'downloading' || status == 'seeding') &&
-             !status.contains('error');
+          !status.contains('error');
     }).toList();
 
     const batchSize = 2;
@@ -1022,7 +1102,7 @@ class TorrentService {
       bytesDown: 0,
       bytesUp: 0,
       addedAt: DateTime.now().millisecondsSinceEpoch,
-      isSequential: false,
+      isSequential: true,
     );
 
     await TorrentsDao.instance.insertTorrent(torrent);
@@ -1077,7 +1157,7 @@ class TorrentService {
       bytesDown: 0,
       bytesUp: 0,
       addedAt: DateTime.now().millisecondsSinceEpoch,
-      isSequential: false,
+      isSequential: true,
     );
 
     await TorrentsDao.instance.insertTorrent(torrent);
@@ -1089,8 +1169,9 @@ class TorrentService {
         return MagnetAddOutcome.started;
       } on TimeoutException {
         await updateTorrentStatus(infoHash, 'pending_metadata');
-        _pendingMetadataRetryAfter[infoHash] =
-            DateTime.now().add(const Duration(seconds: 90));
+        _pendingMetadataRetryAfter[infoHash] = DateTime.now().add(
+          const Duration(seconds: 90),
+        );
         _queueStateRefresh(force: true);
         return MagnetAddOutcome.pendingMetadata;
       }

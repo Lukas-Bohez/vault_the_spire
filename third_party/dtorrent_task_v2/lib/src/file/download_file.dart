@@ -85,25 +85,62 @@ class DownloadFile {
   ///
   Future<bool> requestWrite(
       int position, List<int> block, int start, int end) async {
+    if (_closed) return false;
     _writeAccess ??= await _getRandomAccessFile(FileRequestType.write);
+    if (_closed) return false;
     var completer = Completer<bool>();
-    _streamController?.add(WriteRequest(
-      position: position,
-      start: start,
-      end: end,
-      block: block,
-      completer: completer,
-    ));
+    final queued = _enqueueRequest<bool>(
+      WriteRequest(
+        position: position,
+        start: start,
+        end: end,
+        block: block,
+        completer: completer,
+      ),
+      completer,
+      false,
+    );
+
+    if (!queued) return false;
 
     return completer.future;
   }
 
   Future<List<int>> requestRead(int position, int length) async {
+    if (_closed) return <int>[];
     _readAccess ??= await _getRandomAccessFile(FileRequestType.read);
+    if (_closed) return <int>[];
     var completer = Completer<List<int>>();
-    _streamController?.add(
-        ReadRequest(completer: completer, position: position, length: length));
+    final queued = _enqueueRequest<List<int>>(
+      ReadRequest(completer: completer, position: position, length: length),
+      completer,
+      <int>[],
+    );
+    if (!queued) return <int>[];
     return completer.future;
+  }
+
+  bool _enqueueRequest<T>(
+    FileRequest request,
+    Completer<T> completer,
+    T fallback,
+  ) {
+    if (_closed) {
+      if (!completer.isCompleted) completer.complete(fallback);
+      return false;
+    }
+    final controller = _streamController;
+    if (controller == null || controller.isClosed) {
+      if (!completer.isCompleted) completer.complete(fallback);
+      return false;
+    }
+    try {
+      controller.add(request);
+      return true;
+    } on StateError {
+      if (!completer.isCompleted) completer.complete(fallback);
+      return false;
+    }
   }
 
   Stream<List<int>>? createStream(int startByte, int endByte) {
@@ -219,7 +256,9 @@ class DownloadFile {
           request.block, request.start, request.end);
       request.completer.complete(true);
       // if there is a request pending push bytes to it
-      _bytesRequestController.add(null);
+      if (!_bytesRequestController.isClosed) {
+        _bytesRequestController.add(null);
+      }
       downloadedBytes += request.end - request.start;
     } catch (e) {
       _log.warning(
@@ -232,9 +271,16 @@ class DownloadFile {
 
   /// Request to write the buffer to disk.
   Future<bool> requestFlush() async {
+    if (_closed) return false;
     _writeAccess ??= await _getRandomAccessFile(FileRequestType.write);
+    if (_closed) return false;
     var completer = Completer<bool>();
-    _streamController?.add(FlushRequest(completer: completer));
+    final queued = _enqueueRequest<bool>(
+      FlushRequest(completer: completer),
+      completer,
+      false,
+    );
+    if (!queued) return false;
     return completer.future;
   }
 

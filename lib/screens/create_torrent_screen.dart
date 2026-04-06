@@ -27,6 +27,7 @@ class _CreateTorrentScreenState extends State<CreateTorrentScreen> {
   int? _pieceSize;
   bool _isPrivate = false;
   bool _isCreating = false;
+  bool _pickerBusy = false;
   double _progress = 0.0;
   String _progressText = '';
   String _outputPath = '';
@@ -55,40 +56,58 @@ class _CreateTorrentScreenState extends State<CreateTorrentScreen> {
   }
 
   Future<void> _addFiles() async {
-    final result = await FilePicker.platform.pickFiles(
-      allowMultiple: true,
-      type: Platform.isAndroid ? FileType.custom : FileType.any,
-      allowedExtensions: Platform.isAndroid ? const <String>[] : null,
-    );
-    if (result == null) return;
-    setState(() {
-      for (final file in result.files) {
-        final path = file.path;
-        if (path != null && !_files.contains(path)) {
-          _files.add(path);
+    if (_pickerBusy) return;
+    _pickerBusy = true;
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        allowMultiple: true,
+        type: Platform.isAndroid ? FileType.custom : FileType.any,
+        allowedExtensions: Platform.isAndroid ? const <String>[] : null,
+      );
+      if (result == null) return;
+      setState(() {
+        for (final file in result.files) {
+          final path = file.path;
+          if (path != null && !_files.contains(path)) {
+            _files.add(path);
+          }
         }
-      }
-      _prefillName();
-    });
+        _prefillName();
+      });
+    } finally {
+      _pickerBusy = false;
+    }
   }
 
   Future<void> _addFolder() async {
-    final path = await FilePicker.platform.getDirectoryPath();
-    if (path == null) return;
-    setState(() {
-      if (!_folders.contains(path)) {
-        _folders.add(path);
-      }
-      _prefillName();
-    });
+    if (_pickerBusy) return;
+    _pickerBusy = true;
+    try {
+      final path = await FilePicker.platform.getDirectoryPath();
+      if (path == null) return;
+      setState(() {
+        if (!_folders.contains(path)) {
+          _folders.add(path);
+        }
+        _prefillName();
+      });
+    } finally {
+      _pickerBusy = false;
+    }
   }
 
   Future<void> _changeOutputPath() async {
-    final path = await FilePicker.platform.getDirectoryPath();
-    if (path == null) return;
-    setState(() {
-      _outputPath = path;
-    });
+    if (_pickerBusy) return;
+    _pickerBusy = true;
+    try {
+      final path = await FilePicker.platform.getDirectoryPath();
+      if (path == null) return;
+      setState(() {
+        _outputPath = path;
+      });
+    } finally {
+      _pickerBusy = false;
+    }
   }
 
   void _prefillName() {

@@ -41,6 +41,7 @@ class _AboutScreenState extends State<AboutScreen>
   bool _downloadingRecommended = false;
   String _modelStatus = '';
   bool _savingNetwork = false;
+  bool _pickerBusy = false;
   ThemeMode _themeMode = ThemeMode.system;
 
   String? _androidDocumentsUriForPath(String directoryPath) {
@@ -89,13 +90,13 @@ class _AboutScreenState extends State<AboutScreen>
   void initState() {
     super.initState();
     _settings = SettingsService.instance;
-    _ollamaUrlController = TextEditingController(
-      text: _settings.aiOllamaUrl,
-    );
+    _ollamaUrlController = TextEditingController(text: _settings.aiOllamaUrl);
     _downloadDirController = TextEditingController(
       text: _settings.downloadDestination,
     );
-    _listenPortController = TextEditingController(text: '${_settings.listenPort}');
+    _listenPortController = TextEditingController(
+      text: '${_settings.listenPort}',
+    );
     _maxGlobalController = TextEditingController(
       text: '${_settings.maxConnectionsGlobal}',
     );
@@ -114,9 +115,7 @@ class _AboutScreenState extends State<AboutScreen>
     _selectedModel = _settings.aiDefaultModel;
     _themeMode = ThemeService.instance.themeMode;
     if (!_androidTorrentOnly) {
-      _aiService = AiCopilotService(
-        baseUrl: _settings.aiOllamaUrl,
-      );
+      _aiService = AiCopilotService(baseUrl: _settings.aiOllamaUrl);
       _fetchAvailableModels();
     }
   }
@@ -151,7 +150,8 @@ class _AboutScreenState extends State<AboutScreen>
           _modelStatus = 'No models detected from host.';
         } else {
           _modelStatus = 'Successfully fetched ${models.length} model(s)';
-          if (_selectedModel == null || !_availableModels.contains(_selectedModel)) {
+          if (_selectedModel == null ||
+              !_availableModels.contains(_selectedModel)) {
             _selectedModel = _availableModels.contains(kDefaultAiModel)
                 ? kDefaultAiModel
                 : _availableModels.first;
@@ -232,9 +232,9 @@ class _AboutScreenState extends State<AboutScreen>
     final pathToOpen = _downloadDirController.text.trim();
     if (pathToOpen.isEmpty) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No download folder set.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('No download folder set.')));
       return;
     }
 
@@ -258,19 +258,31 @@ class _AboutScreenState extends State<AboutScreen>
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Unable to open folder automatically. Files saved to: $directoryPath'),
+          content: Text(
+            'Unable to open folder automatically. Files saved to: $directoryPath',
+          ),
           duration: const Duration(seconds: 6),
         ),
       );
       return;
     }
 
+    if (Platform.isWindows) {
+      final result = await Process.run('explorer.exe', <String>[directoryPath]);
+      if (result.exitCode != 0 && mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('Failed to open folder.')));
+      }
+      return;
+    }
+
     final uri = Uri.file(directoryPath);
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Failed to open folder.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Failed to open folder.')));
     }
   }
 
@@ -315,9 +327,9 @@ class _AboutScreenState extends State<AboutScreen>
   Future<void> _saveDownloadDestination() async {
     await _settings.setDownloadDestination(_downloadDirController.text.trim());
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Download folder saved')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Download folder saved')));
   }
 
   Future<void> _setThemeMode(ThemeMode mode) async {
@@ -376,15 +388,24 @@ class _AboutScreenState extends State<AboutScreen>
                     if (Platform.isAndroid)
                       FilledButton.icon(
                         onPressed: () async {
-                          final result = await FilePicker.platform.getDirectoryPath();
-                          if (result != null) {
-                            _downloadDirController.text = result;
-                            await _settings.setDownloadDestination(result);
-                            if (!mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Download folder set: $result')),
-                            );
-                            setState(() {});
+                          if (_pickerBusy) return;
+                          _pickerBusy = true;
+                          try {
+                            final result = await FilePicker.platform
+                                .getDirectoryPath();
+                            if (result != null) {
+                              _downloadDirController.text = result;
+                              await _settings.setDownloadDestination(result);
+                              if (!mounted) return;
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Download folder set: $result'),
+                                ),
+                              );
+                              setState(() {});
+                            }
+                          } finally {
+                            _pickerBusy = false;
                           }
                         },
                         icon: const Icon(Icons.folder_open),
@@ -486,7 +507,8 @@ class _AboutScreenState extends State<AboutScreen>
                         controller: _downloadRateController,
                         keyboardType: TextInputType.number,
                         decoration: const InputDecoration(
-                          labelText: 'Download rate limit (KiB/s, 0 = unlimited)',
+                          labelText:
+                              'Download rate limit (KiB/s, 0 = unlimited)',
                           border: OutlineInputBorder(),
                         ),
                       ),
@@ -538,7 +560,9 @@ class _AboutScreenState extends State<AboutScreen>
                   alignment: Alignment.centerRight,
                   child: ElevatedButton(
                     onPressed: _savingNetwork ? null : _saveNetworkSettings,
-                    child: Text(_savingNetwork ? 'Saving...' : 'Save Connection Settings'),
+                    child: Text(
+                      _savingNetwork ? 'Saving...' : 'Save Connection Settings',
+                    ),
                   ),
                 ),
               ],
@@ -548,124 +572,129 @@ class _AboutScreenState extends State<AboutScreen>
               _sectionCard(
                 title: 'AI',
                 children: [
-                SwitchListTile(
-                  title: const Text('Enable AI Copilot'),
-                  contentPadding: EdgeInsets.zero,
-                  value: _settings.enableAiCopilot,
-                  onChanged: (v) async {
-                    await _settings.setEnableAiCopilot(v);
-                    if (!mounted) return;
-                    setState(() {});
-                  },
-                ),
-                SwitchListTile(
-                  title: const Text('Enable smart suggestions'),
-                  contentPadding: EdgeInsets.zero,
-                  value: _settings.enableSmartSuggestions,
-                  onChanged: (v) async {
-                    await _settings.setEnableSmartSuggestions(v);
-                    if (!mounted) return;
-                    setState(() {});
-                  },
-                ),
-                TextField(
-                  controller: _ollamaUrlController,
-                  onChanged: (_) => _onUrlChanged(),
-                  decoration: InputDecoration(
-                    labelText: 'Ollama Host URL',
-                    hintText: _settings.aiOllamaUrl,
-                    border: OutlineInputBorder(),
+                  SwitchListTile(
+                    title: const Text('Enable AI Copilot'),
+                    contentPadding: EdgeInsets.zero,
+                    value: _settings.enableAiCopilot,
+                    onChanged: (v) async {
+                      await _settings.setEnableAiCopilot(v);
+                      if (!mounted) return;
+                      setState(() {});
+                    },
                   ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            width: double.infinity,
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              border: Border.all(
-                                color: Theme.of(context).dividerColor,
+                  SwitchListTile(
+                    title: const Text('Enable smart suggestions'),
+                    contentPadding: EdgeInsets.zero,
+                    value: _settings.enableSmartSuggestions,
+                    onChanged: (v) async {
+                      await _settings.setEnableSmartSuggestions(v);
+                      if (!mounted) return;
+                      setState(() {});
+                    },
+                  ),
+                  TextField(
+                    controller: _ollamaUrlController,
+                    onChanged: (_) => _onUrlChanged(),
+                    decoration: InputDecoration(
+                      labelText: 'Ollama Host URL',
+                      hintText: _settings.aiOllamaUrl,
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Container(
+                              width: double.infinity,
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                border: Border.all(
+                                  color: Theme.of(context).dividerColor,
+                                ),
+                                borderRadius: BorderRadius.circular(10),
                               ),
-                              borderRadius: BorderRadius.circular(10),
+                              child: Text(
+                                'Recommended model: $kDefaultAiModel\n'
+                                'Detected local models: ${_availableModels.length}',
+                              ),
                             ),
-                            child: Text(
-                              'Recommended model: $kDefaultAiModel\n'
-                              'Detected local models: ${_availableModels.length}',
+                            const SizedBox(height: 8),
+                            DropdownButtonFormField<String>(
+                              value: _availableModels.contains(_selectedModel)
+                                  ? _selectedModel
+                                  : null,
+                              decoration: const InputDecoration(
+                                labelText: 'Model to use',
+                                border: OutlineInputBorder(),
+                              ),
+                              items: _availableModels
+                                  .map(
+                                    (m) => DropdownMenuItem<String>(
+                                      value: m,
+                                      child: Text(m),
+                                    ),
+                                  )
+                                  .toList(),
+                              onChanged: _availableModels.isEmpty
+                                  ? null
+                                  : (value) {
+                                      if (value == null) return;
+                                      setState(() {
+                                        _selectedModel = value;
+                                      });
+                                    },
                             ),
-                          ),
-                          const SizedBox(height: 8),
-                          DropdownButtonFormField<String>(
-                            value: _availableModels.contains(_selectedModel)
-                                ? _selectedModel
-                                : null,
-                            decoration: const InputDecoration(
-                              labelText: 'Model to use',
-                              border: OutlineInputBorder(),
-                            ),
-                            items: _availableModels
-                                .map(
-                                  (m) => DropdownMenuItem<String>(
-                                    value: m,
-                                    child: Text(m),
+                            const SizedBox(height: 4),
+                            Text(
+                              _modelStatus,
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(
+                                    color: _modelStatus.contains('Failed')
+                                        ? Theme.of(context).colorScheme.error
+                                        : Theme.of(
+                                            context,
+                                          ).colorScheme.onSurfaceVariant,
                                   ),
-                                )
-                                .toList(),
-                            onChanged: _availableModels.isEmpty
-                                ? null
-                                : (value) {
-                                    if (value == null) return;
-                                    setState(() {
-                                      _selectedModel = value;
-                                    });
-                                  },
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            _modelStatus,
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: _modelStatus.contains('Failed')
-                                  ? Theme.of(context).colorScheme.error
-                                  : Theme.of(context).colorScheme.onSurfaceVariant,
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      IconButton(
+                        onPressed: _loadingModels
+                            ? null
+                            : _fetchAvailableModels,
+                        icon: const Icon(Icons.refresh),
+                        tooltip: 'Refresh available models',
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: FilledButton.icon(
+                      onPressed: _downloadingRecommended
+                          ? null
+                          : _downloadRecommendedModel,
+                      icon: const Icon(Icons.download_for_offline_outlined),
+                      label: Text(
+                        _downloadingRecommended
+                            ? 'Downloading recommended model...'
+                            : 'Download Recommended Model',
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    IconButton(
-                      onPressed: _loadingModels ? null : _fetchAvailableModels,
-                      icon: const Icon(Icons.refresh),
-                      tooltip: 'Refresh available models',
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: FilledButton.icon(
-                    onPressed: _downloadingRecommended
-                        ? null
-                        : _downloadRecommendedModel,
-                    icon: const Icon(Icons.download_for_offline_outlined),
-                    label: Text(
-                      _downloadingRecommended
-                          ? 'Downloading recommended model...'
-                          : 'Download Recommended Model',
+                  ),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: ElevatedButton(
+                      onPressed: _saveAiSettings,
+                      child: const Text('Save AI Settings'),
                     ),
                   ),
-                ),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: ElevatedButton(
-                    onPressed: _saveAiSettings,
-                    child: const Text('Save AI Settings'),
-                  ),
-                ),
                 ],
               ),
             if (!_androidTorrentOnly) const SizedBox(height: 10),
@@ -687,7 +716,10 @@ class _AboutScreenState extends State<AboutScreen>
                       value: ThemeMode.light,
                       child: Text('Light'),
                     ),
-                    DropdownMenuItem(value: ThemeMode.dark, child: Text('Dark')),
+                    DropdownMenuItem(
+                      value: ThemeMode.dark,
+                      child: Text('Dark'),
+                    ),
                   ],
                   onChanged: (value) {
                     if (value == null) return;
@@ -788,7 +820,9 @@ class _AboutScreenState extends State<AboutScreen>
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: Icon(Icons.info_outline),
-                  title: Text(_androidTorrentOnly ? 'Vault The Spire' : 'TorrentSpire AI'),
+                  title: Text(
+                    _androidTorrentOnly ? 'Vault The Spire' : 'TorrentSpire AI',
+                  ),
                   subtitle: Text(
                     _androidTorrentOnly
                         ? 'Torrent manager for Android'
