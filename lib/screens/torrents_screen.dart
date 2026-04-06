@@ -462,6 +462,54 @@ class _TorrentsScreenState extends State<TorrentsScreen>
     }
   }
 
+  Future<void> _handleAddAction(String value) async {
+    switch (value) {
+      case 'magnet':
+        await _showAddMagnetDialog();
+        break;
+      case 'file':
+        await _pickTorrentFile();
+        break;
+      case 'create':
+        await _openCreateTorrent();
+        break;
+    }
+  }
+
+  PopupMenuButton<String> _buildAddMenuButton() {
+    return PopupMenuButton<String>(
+      icon: const Icon(Icons.add_circle_outline),
+      tooltip: 'Add or create torrent',
+      onSelected: (value) => unawaited(_handleAddAction(value)),
+      itemBuilder: (_) => const [
+        PopupMenuItem<String>(
+          value: 'magnet',
+          child: ListTile(
+            dense: true,
+            leading: Icon(Icons.add_link),
+            title: Text('Add magnet link'),
+          ),
+        ),
+        PopupMenuItem<String>(
+          value: 'file',
+          child: ListTile(
+            dense: true,
+            leading: Icon(Icons.file_open_outlined),
+            title: Text('Add .torrent file'),
+          ),
+        ),
+        PopupMenuItem<String>(
+          value: 'create',
+          child: ListTile(
+            dense: true,
+            leading: Icon(Icons.create_new_folder_outlined),
+            title: Text('Create torrent'),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildFab() {
     final isMobile = Platform.isAndroid || Platform.isIOS;
     if (!isMobile) {
@@ -569,6 +617,7 @@ class _TorrentsScreenState extends State<TorrentsScreen>
             )
           : const Text('Torrents'),
       actions: [
+        _buildAddMenuButton(),
         // Search toggle
         IconButton(
           icon: Icon(_showSearch ? Icons.close : Icons.search),
@@ -674,20 +723,35 @@ class _TorrentsScreenState extends State<TorrentsScreen>
                   ? 'Tap + to add or create torrents'
                   : Platform.isIOS
                   ? 'Tap + to add or create torrents'
-                  : 'Drag and drop a .torrent file\nor paste a magnet link',
+                  : 'Use + in the top bar to add or create torrents\nYou can also drag and drop files',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
-            if (Platform.isAndroid || Platform.isIOS) ...[
-              const SizedBox(height: 24),
-              FilledButton.icon(
-                onPressed: _showAddMagnetDialog,
-                icon: const Icon(Icons.add_link),
-                label: const Text('Add magnet link'),
-              ),
-            ],
+            const SizedBox(height: 24),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              alignment: WrapAlignment.center,
+              children: [
+                FilledButton.icon(
+                  onPressed: _showAddMagnetDialog,
+                  icon: const Icon(Icons.add_link),
+                  label: const Text('Add Magnet'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _pickTorrentFile,
+                  icon: const Icon(Icons.file_open_outlined),
+                  label: const Text('Add .torrent File'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _openCreateTorrent,
+                  icon: const Icon(Icons.create_new_folder_outlined),
+                  label: const Text('Create Torrent'),
+                ),
+              ],
+            ),
           ],
         ),
       ),
