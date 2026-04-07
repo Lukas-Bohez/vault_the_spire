@@ -864,6 +864,7 @@ class TorrentEngineService {
 
     final startup = await task.start();
     _forceAllFilesNormalPriority(task);
+    unawaited(_hideBtStateFilesOnWindows(saveDir, torrentId: torrent.id));
     // After starting the task, attempt recovery using the task's piece list
     try {
       final savePath = saveDir;
@@ -873,6 +874,9 @@ class TorrentEngineService {
               (task as dynamic).pieceManager?.pieces?.values?.toList() ?? [];
           final recovery = dt.StateRecovery(dtModel, savePath, pieces);
           await recovery.recoverStateFile();
+          unawaited(
+            _hideBtStateFilesOnWindows(savePath, torrentId: torrent.id),
+          );
         } catch (e) {
           debugPrint('State recovery failed (non-fatal): $e');
         }
@@ -1136,6 +1140,7 @@ class TorrentEngineService {
     try {
       final startup = await task.start();
       _forceAllFilesNormalPriority(task);
+      unawaited(_hideBtStateFilesOnWindows(saveDir, torrentId: torrent.id));
       final startupUploaded = startup['uploaded'] as int?;
       if (startupUploaded != null && startupUploaded >= 0) {
         _uploadedBytesByTorrent[torrent.id] = startupUploaded;
@@ -1714,6 +1719,42 @@ class TorrentEngineService {
         await entity.delete();
       } catch (_) {
         // Best-effort cleanup only.
+      }
+    }
+  }
+
+  Future<void> _hideBtStateFilesOnWindows(
+    String directoryPath, {
+    String? torrentId,
+  }) async {
+    if (!Platform.isWindows) return;
+
+    final dir = Directory(directoryPath);
+    if (!await dir.exists()) return;
+
+    final normalizedId = torrentId?.trim().toLowerCase();
+
+    await for (final entity in dir.list(recursive: false, followLinks: false)) {
+      if (entity is! File) continue;
+
+      final name = p.basename(entity.path).toLowerCase();
+      final isStateFile = name.endsWith('.bt.state');
+      final isStateBackup =
+          name.contains('.bt.state.backup.') || name.contains('.bt.state.bak');
+      if (!isStateFile && !isStateBackup) continue;
+
+      if (normalizedId != null && normalizedId.isNotEmpty) {
+        final belongsToTorrent =
+            name == '$normalizedId.bt.state' ||
+            name.startsWith('$normalizedId.bt.state.backup.') ||
+            name.startsWith('$normalizedId.bt.state.bak');
+        if (!belongsToTorrent) continue;
+      }
+
+      try {
+        await Process.run('attrib', ['+h', entity.path]);
+      } catch (_) {
+        // Best-effort visual cleanup only.
       }
     }
   }

@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:dtorrent_task_v2/src/torrent/torrent_model.dart';
 import 'package:logging/logging.dart';
+import 'package:path/path.dart' as p;
 import 'state_file_v2.dart';
 import 'file_validator.dart';
 import '../piece/piece.dart';
@@ -115,7 +116,7 @@ class StateRecovery {
   /// Backup existing state file before recovery
   Future<bool> backupStateFile() async {
     try {
-      final stateFilePath = '$savePath${metainfo.infoHash}.bt.state';
+      final stateFilePath = p.join(savePath, '${metainfo.infoHash}.bt.state');
       final stateFile = File(stateFilePath);
 
       if (!await stateFile.exists()) {

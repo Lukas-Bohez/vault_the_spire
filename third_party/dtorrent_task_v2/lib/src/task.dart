@@ -550,7 +550,12 @@ class _TorrentTask
     }
 
     _fileManager ??= await DownloadFileManager.createFileManager(
-        model, savePath, _stateFile!, _pieceManager!.pieces.values.toList());
+      model,
+      savePath,
+      _stateFile!,
+      _pieceManager!.pieces.values.toList(),
+      validateOnResume: true,
+    );
     _peersManager ??= PeersManager(_peerId, model, ipFilter: _ipFilter);
 
     // Initialize SuperSeeder if superseeding is enabled

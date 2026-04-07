@@ -140,7 +140,11 @@ _DiskScanResult _runDiskScanSync(_DiskScanInput input) {
     )) {
       if (entity is! File) continue;
       final lowerPath = entity.path.toLowerCase();
-      if (lowerPath.endsWith('.bt.state') || lowerPath.endsWith('.torrent')) {
+      final isStateFile = lowerPath.endsWith('.bt.state');
+      final isStateBackup =
+          lowerPath.contains('.bt.state.backup.') ||
+          lowerPath.contains('.bt.state.bak');
+      if (isStateFile || isStateBackup || lowerPath.endsWith('.torrent')) {
         continue;
       }
       total += entity.statSync().size;
@@ -182,8 +186,11 @@ _DiskScanResult _runDiskScanSync(_DiskScanInput input) {
           bytes = sumFileBytesRecursively(directDir);
         } else if (directFile.existsSync()) {
           final lowerPath = directFile.path.toLowerCase();
-          if (!lowerPath.endsWith('.bt.state') &&
-              !lowerPath.endsWith('.torrent')) {
+          final isStateFile = lowerPath.endsWith('.bt.state');
+          final isStateBackup =
+              lowerPath.contains('.bt.state.backup.') ||
+              lowerPath.contains('.bt.state.bak');
+          if (!isStateFile && !isStateBackup && !lowerPath.endsWith('.torrent')) {
             bytes = directFile.statSync().size;
           }
         } else {
@@ -195,8 +202,11 @@ _DiskScanResult _runDiskScanSync(_DiskScanInput input) {
             if (!base.contains(nameToken)) continue;
             if (entity is File) {
               final lowerPath = entity.path.toLowerCase();
-              if (!lowerPath.endsWith('.bt.state') &&
-                  !lowerPath.endsWith('.torrent')) {
+              final isStateFile = lowerPath.endsWith('.bt.state');
+              final isStateBackup =
+                  lowerPath.contains('.bt.state.backup.') ||
+                  lowerPath.contains('.bt.state.bak');
+              if (!isStateFile && !isStateBackup && !lowerPath.endsWith('.torrent')) {
                 bytes += entity.statSync().size;
               }
             } else if (entity is Directory) {
@@ -209,7 +219,11 @@ _DiskScanResult _runDiskScanSync(_DiskScanInput input) {
       }
     } else if (type == FileSystemEntityType.file) {
       final lowerPath = input.outputPath.toLowerCase();
-      if (!lowerPath.endsWith('.bt.state') && !lowerPath.endsWith('.torrent')) {
+      final isStateFile = lowerPath.endsWith('.bt.state');
+      final isStateBackup =
+          lowerPath.contains('.bt.state.backup.') ||
+          lowerPath.contains('.bt.state.bak');
+      if (!isStateFile && !isStateBackup && !lowerPath.endsWith('.torrent')) {
         bytes = File(input.outputPath).statSync().size;
       }
     }
