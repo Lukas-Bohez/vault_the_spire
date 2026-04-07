@@ -42,9 +42,9 @@ if ($apks.Count -eq 0) {
     $apks = Get-ChildItem "$projectRoot\build\app\outputs\apk\release" -Filter "*.apk"
 }
 
-Write-Host "  Packaging $($apks.Count) APK(s) → $apkZip"
+Write-Host "  Packaging $($apks.Count) APK(s) -> $apkZip"
 Compress-Archive -Path $apks.FullName -DestinationPath $apkZip -Force
-Write-Host "  ✓ APK zip: $apkZip" -ForegroundColor Green
+Write-Host "  APK zip: $apkZip" -ForegroundColor Green
 
 # ── 3. Android AAB (App Bundle for Play Store) ──────────────────────────────
 Write-Host "[3/4] Building Android AAB..." -ForegroundColor Green
@@ -54,7 +54,7 @@ if ($LASTEXITCODE -ne 0) { throw "AAB build failed" }
 $aabSrc  = "$projectRoot\build\app\outputs\bundle\release\app-release.aab"
 $aabDest = "$releaseDir\vault_the_spire_${version}_android.aab"
 Copy-Item $aabSrc $aabDest -Force
-Write-Host "  ✓ AAB: $aabDest" -ForegroundColor Green
+Write-Host "  AAB: $aabDest" -ForegroundColor Green
 
 # ── 4. Windows (x64 release) ────────────────────────────────────────────────
 Write-Host "[4/4] Building Windows x64..." -ForegroundColor Green
@@ -63,9 +63,9 @@ if ($LASTEXITCODE -ne 0) { throw "Windows build failed" }
 
 $winSrc  = "$projectRoot\build\windows\x64\runner\Release"
 $winZip  = "$releaseDir\vault_the_spire_${version}_windows_x64.zip"
-Write-Host "  Packaging Windows build → $winZip"
+Write-Host "  Packaging Windows build -> $winZip"
 Compress-Archive -Path "$winSrc\*" -DestinationPath $winZip -Force
-Write-Host "  ✓ Windows zip: $winZip" -ForegroundColor Green
+Write-Host "  Windows zip: $winZip" -ForegroundColor Green
 
 # ── Summary ──────────────────────────────────────────────────────────────────
 Write-Host ""
@@ -77,4 +77,4 @@ Get-ChildItem $releaseDir | ForEach-Object {
     Write-Host ("  {0,-55} {1,6} MB" -f $_.Name, $size)
 }
 Write-Host ""
-Write-Host ("Drag the files from {0} into your 1 Upload folder." -f $releaseDir) -ForegroundColor Yellow
+Write-Host ("Drag the files from " + $releaseDir + " into your 1 Upload folder.") -ForegroundColor Yellow

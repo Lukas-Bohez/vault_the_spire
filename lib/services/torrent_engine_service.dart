@@ -99,6 +99,7 @@ class TorrentEngineService {
   final Map<String, DateTime> _lastUploadedSampleByTorrent = {};
   final Map<String, int> _scrapedSeedersByTorrent = {};
   final Map<String, int> _scrapedLeechersByTorrent = {};
+  final Set<String> _forceRedownloadInFlight = <String>{};
   DateTime _lastPeerLogTime = DateTime.fromMillisecondsSinceEpoch(0);
   int _peerEventsSinceLastLog = 0;
   DateTime _lastDhtLogTime = DateTime.fromMillisecondsSinceEpoch(0);
@@ -1950,6 +1951,11 @@ class TorrentEngineService {
     }
 
     if (deletedAnything) return lockedPaths;
+    if (relativePaths.isNotEmpty) {
+      // We already attempted exact torrent paths. Avoid re-hitting fallback
+      // guesses (which can duplicate lock contention on the same file).
+      return lockedPaths;
+    }
 
     // Fallback when cached metadata is unavailable: remove common root targets.
     final safeName = _sanitizePathSegment(torrent.name);
@@ -1976,6 +1982,14 @@ class TorrentEngineService {
   }
 
   Future<void> forceRedownload(String torrentId) async {
+    if (_forceRedownloadInFlight.contains(torrentId)) {
+      debugPrint(
+        'forceRedownload: request ignored because another force-redownload is already running for $torrentId',
+      );
+      return;
+    }
+    _forceRedownloadInFlight.add(torrentId);
+    try {
     final runningModel = _tasks[torrentId]?.metaInfo;
     await stopTorrent(torrentId);
     await Future.delayed(const Duration(milliseconds: 200));
@@ -2066,6 +2080,9 @@ class TorrentEngineService {
     }
 
     await startTorrent(torrentId, destinationPath: saveDir);
+    } finally {
+      _forceRedownloadInFlight.remove(torrentId);
+    }
   }
 
   void _cleanup(String torrentId) {
