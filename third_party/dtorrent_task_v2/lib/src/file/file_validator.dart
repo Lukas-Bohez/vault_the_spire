@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:dtorrent_task_v2/src/torrent/torrent_model.dart';
 import 'package:logging/logging.dart';
+import 'package:path/path.dart' as p;
 import '../piece/piece.dart';
 
 var _log = Logger('FileValidator');
@@ -180,7 +181,7 @@ class FileValidator {
         final readEnd = pieceEnd < fileEnd ? pieceEnd - fileStart : file.length;
         final readLength = readEnd - readStart;
 
-        final filePath = '$savePath${file.path}';
+        final filePath = p.join(savePath, file.path);
         final fileObj = File(filePath);
         if (await fileObj.exists()) {
           final access = await fileObj.open(mode: FileMode.read);
@@ -226,7 +227,7 @@ class FileValidator {
   Future<bool> quickValidate() async {
     try {
       for (var file in metainfo.files) {
-        final filePath = '$savePath${file.path}';
+        final filePath = p.join(savePath, file.path);
         final fileObj = File(filePath);
 
         if (!await fileObj.exists()) {

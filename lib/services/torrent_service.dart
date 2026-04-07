@@ -401,13 +401,17 @@ class TorrentService {
             diskBytes < (totalSize * 0.98).round();
         final runtimeComplete =
             runtimeLooksComplete && !diskContradictsCompletion;
+        final completionByBytes =
+            totalSize > 0 &&
+            downloaded >= totalSize &&
+            (!hasDiskSnapshot ||
+                diskComplete ||
+                diskBytes >= (totalSize * 0.98).round());
         final isComplete =
-            diskComplete ||
-            runtimeComplete ||
-            (totalSize > 0 && downloaded >= totalSize);
+            !missingOnDisk && (diskComplete || runtimeComplete || completionByBytes);
 
         if (diskContradictsCompletion) {
-          downloaded = math.max(torrent.bytesDown, diskBytes);
+          downloaded = diskBytes;
         }
 
         if (isComplete && totalSize > 0) {

@@ -1816,8 +1816,8 @@ class TorrentEngineService {
 
   Future<bool> _deletePathWithRetry(
     String targetPath, {
-    int attempts = 4,
-    Duration delay = const Duration(milliseconds: 250),
+    int attempts = 2,
+    Duration delay = const Duration(milliseconds: 400),
   }) async {
     final type = await FileSystemEntity.type(targetPath, followLinks: false);
     if (type == FileSystemEntityType.notFound) return true;
@@ -1892,6 +1892,8 @@ class TorrentEngineService {
   ) async {
     var deletedAnything = false;
     final lockedPaths = <String>{};
+    var lockFailures = 0;
+    const maxLockFailuresBeforeAbort = 3;
     if (relativePaths.isNotEmpty) {
       var ops = 0;
       final roots = <String>{};
@@ -1900,11 +1902,24 @@ class TorrentEngineService {
         final target = p.normalize(p.join(saveDir, relative));
         if (!_isPathInside(target, saveDir)) continue;
 
+        final targetType = await FileSystemEntity.type(target, followLinks: false);
+        if (targetType == FileSystemEntityType.notFound) {
+          ops++;
+          continue;
+        }
+
         final didDelete = await _deletePathWithRetry(target);
         if (!didDelete &&
             await FileSystemEntity.type(target) !=
                 FileSystemEntityType.notFound) {
           lockedPaths.add(target);
+          lockFailures++;
+          if (lockFailures >= maxLockFailuresBeforeAbort) {
+            debugPrint(
+              'forceRedownload: aborting bulk delete early due to repeated file locks. Switching strategy.',
+            );
+            break;
+          }
         }
         deletedAnything = deletedAnything || didDelete;
 
@@ -2072,7 +2087,14 @@ class TorrentEngineService {
   }
 
   Future<void> stopTorrent(String torrentId) async {
-    _tasks[torrentId]?.stop();
+    final task = _tasks[torrentId];
+    if (task != null) {
+      try {
+        await task.stop();
+      } catch (e) {
+        debugPrint('stopTorrent: task stop failed (non-fatal): $e');
+      }
+    }
     _cleanup(torrentId);
     try {
       await TorrentService.instance.updateTorrentStatus(torrentId, 'paused');
