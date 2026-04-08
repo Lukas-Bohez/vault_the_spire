@@ -582,6 +582,7 @@ class TorrentService {
 
   String _statusLabelForState(String state) {
     if (state.contains('seed')) return 'Seeding';
+    if (state == 'checking') return 'Checking';
     if (state.contains('checking')) return 'Checking';
     if (state.contains('download')) return 'Downloading';
     if (state.contains('pause')) return 'Paused';

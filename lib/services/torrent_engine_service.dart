@@ -1728,7 +1728,8 @@ class TorrentEngineService {
   /// so this compiles cleanly on Android too. Fire-and-forget.
   void markFileHiddenOnWindows(String filePath) {
     if (!Platform.isWindows) return;
-    Process.run('attrib', ['+h', filePath]).catchError((_) {});
+    Process.run('attrib', ['+h', filePath])
+        .catchError((_) => ProcessResult(0, 1, '', ''));
   }
 
   /// Scan a directory and hide any .bt.state files found there.
