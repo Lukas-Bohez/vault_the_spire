@@ -262,11 +262,26 @@ class TorrentEngineService {
   /// so the AdvancedSequentialPieceSelector is actually activated.
   SequentialConfig _sequentialConfigFor(dt.TorrentModel dtModel) {
     const videoExts = <String>{
-      '.mkv', '.mp4', '.avi', '.mov', '.m4v',
-      '.ts', '.wmv', '.flv', '.webm', '.mpg', '.mpeg',
+      '.mkv',
+      '.mp4',
+      '.avi',
+      '.mov',
+      '.m4v',
+      '.ts',
+      '.wmv',
+      '.flv',
+      '.webm',
+      '.mpg',
+      '.mpeg',
     };
     const audioExts = <String>{
-      '.mp3', '.flac', '.aac', '.ogg', '.wav', '.m4a', '.opus',
+      '.mp3',
+      '.flac',
+      '.aac',
+      '.ogg',
+      '.wav',
+      '.m4a',
+      '.opus',
     };
 
     final paths = [
@@ -599,12 +614,19 @@ class TorrentEngineService {
         final currentProgress = task.progress;
 
         // Activate faster health checks once past 90%
-        if (currentProgress >= 0.90 && !_fastHealthCheckTimers.containsKey(torrentId)) {
+        if (currentProgress >= 0.90 &&
+            !_fastHealthCheckTimers.containsKey(torrentId)) {
           _fastHealthCheckTimers[torrentId] = Timer.periodic(
             const Duration(seconds: 15),
-            (_) => _recordProgressSample(torrentId, _tasks[torrentId]?.progress ?? currentProgress),
+            (_) => _recordProgressSample(
+              torrentId,
+              _tasks[torrentId]?.progress ?? currentProgress,
+            ),
           );
-          _log(torrentId, 'Near-complete: upgraded to 15s health-check cadence.');
+          _log(
+            torrentId,
+            'Near-complete: upgraded to 15s health-check cadence.',
+          );
         }
 
         if (!_isTaskComplete(task) && currentProgress >= 0.95) {
@@ -630,13 +652,16 @@ class TorrentEngineService {
               TorrentService.instance.invalidateDiskSnapshot(torrentId);
               unawaited(TorrentService.instance.refreshTorrentStates());
               await _refreshConnection(torrentId, task);
-              try { task.requestPeersFromDHT(); } catch (_) {}
+              try {
+                task.requestPeersFromDHT();
+              } catch (_) {}
               unawaited(_forceStateRecovery(torrentId, task));
-
             } else if (cycle == 2) {
               // Cycle 2: retry peer refresh + explicitly re-request missing pieces
               await _refreshConnection(torrentId, task);
-              try { task.requestPeersFromDHT(); } catch (_) {}
+              try {
+                task.requestPeersFromDHT();
+              } catch (_) {}
               try {
                 final dynamic t = task;
                 final pm = t.pieceManager;
@@ -646,17 +671,21 @@ class TorrentEngineService {
                     final isComplete =
                         (entry.value.isCompletelyDownloaded as bool?) ?? false;
                     if (!isComplete) {
-                      try { t.requestPiece(entry.key); } catch (_) {}
+                      try {
+                        t.requestPiece(entry.key);
+                      } catch (_) {}
                     }
                   }
                 }
               } catch (_) {}
               unawaited(_forceStateRecovery(torrentId, task));
-
             } else if (cycle >= 3) {
               // Cycle 3: hard restart as last resort
               _stallRecoveryCycles[torrentId] = 0;
-              _log(torrentId, 'Stall unresolved after 3 recovery cycles — hard restart.');
+              _log(
+                torrentId,
+                'Stall unresolved after 3 recovery cycles — hard restart.',
+              );
               await _hardRestartTorrent(torrentId);
               return;
             }
@@ -891,7 +920,7 @@ class TorrentEngineService {
     final task = dt.TorrentTask.newTask(
       dtModel,
       saveDir,
-      true,   // stream=true activates sequential piece selection
+      true, // stream=true activates sequential piece selection
       null,
       null,
       _sequentialConfigFor(dtModel),
@@ -1178,7 +1207,7 @@ class TorrentEngineService {
     final task = dt.TorrentTask.newTask(
       dtModel,
       saveDir,
-      true,   // stream=true activates sequential piece selection
+      true, // stream=true activates sequential piece selection
       magnet.webSeeds.isNotEmpty ? magnet.webSeeds : null,
       magnet.acceptableSources.isNotEmpty ? magnet.acceptableSources : null,
       _sequentialConfigFor(dtModel),
@@ -1517,21 +1546,25 @@ class TorrentEngineService {
 
   void _startPollTimer(String torrentId, dt.TorrentTask task) {
     _pollTimers[torrentId]?.cancel();
-    _schedulePoll(torrentId, task);
-  }
-
-  void _schedulePoll(String torrentId, dt.TorrentTask task) {
-    if (!_tasks.containsKey(torrentId)) return;
-    final dlSpeed = task.currentDownloadSpeed;
-    final isDownloading = dlSpeed > 0;
-    final duration = isDownloading
-        ? const Duration(seconds: 2)
-        : const Duration(seconds: 8);
-    _pollTimers[torrentId] = Timer(duration, () {
+    _pollTimers[torrentId] = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (!_tasks.containsKey(torrentId)) {
+        _pollTimers.remove(torrentId)?.cancel();
+        return;
+      }
       unawaited(_refreshUploadedSnapshot(torrentId, task));
       _emitStats(torrentId, task);
-      _schedulePoll(torrentId, task);
     });
+  }
+
+  /// Restart the poll loop for all active tasks.
+  /// Called after window restore to fix frozen progress displays.
+  void restartAllPolling() {
+    for (final entry in _tasks.entries.toList()) {
+      _pollTimers[entry.key]?.cancel();
+      _startPollTimer(entry.key, entry.value);
+      _log(entry.key, 'Poll loop restarted after window restore.');
+    }
+    unawaited(TorrentService.instance.refreshTorrentStates());
   }
 
   void _emitStats(String torrentId, dt.TorrentTask task) {
@@ -1728,8 +1761,10 @@ class TorrentEngineService {
   /// so this compiles cleanly on Android too. Fire-and-forget.
   void markFileHiddenOnWindows(String filePath) {
     if (!Platform.isWindows) return;
-    Process.run('attrib', ['+h', filePath])
-        .catchError((_) => ProcessResult(0, 1, '', ''));
+    Process.run('attrib', [
+      '+h',
+      filePath,
+    ]).catchError((_) => ProcessResult(0, 1, '', ''));
   }
 
   /// Scan a directory and hide any .bt.state files found there.
@@ -1739,27 +1774,37 @@ class TorrentEngineService {
       final dir = Directory(dirPath);
       if (!await dir.exists()) return;
       await for (final entity in dir.list(recursive: false)) {
-        if (entity is File &&
-            entity.path.toLowerCase().endsWith('.bt.state')) {
+        if (entity is File && entity.path.toLowerCase().endsWith('.bt.state')) {
           markFileHiddenOnWindows(entity.path);
         }
       }
     } catch (_) {}
   }
 
-  Future<void> _forceStateRecovery(String torrentId, dt.TorrentTask task) async {
+  Future<void> _forceStateRecovery(
+    String torrentId,
+    dt.TorrentTask task,
+  ) async {
     try {
-      _log(torrentId, 'Starting disk-based state recovery (bitfield rebuild)...');
+      _log(
+        torrentId,
+        'Starting disk-based state recovery (bitfield rebuild)...',
+      );
       final dynamic t = task;
       String savePath = '';
-      try { savePath = (t.savePath as String?) ?? ''; } catch (_) {}
+      try {
+        savePath = (t.savePath as String?) ?? '';
+      } catch (_) {}
       if (savePath.isEmpty) {
         // Fallback: read filePath from the persisted torrent record
         final torrent = await TorrentService.instance.getTorrentById(torrentId);
         savePath = torrent?.filePath?.trim() ?? '';
       }
       if (savePath.isEmpty) {
-        _log(torrentId, 'StateRecovery skipped: could not determine save path.');
+        _log(
+          torrentId,
+          'StateRecovery skipped: could not determine save path.',
+        );
         return;
       }
 
@@ -1774,13 +1819,19 @@ class TorrentEngineService {
       final result = await recovery.recoverStateFile();
 
       if (result == null) {
-        _log(torrentId, 'StateRecovery returned null — some pieces may need re-download.');
+        _log(
+          torrentId,
+          'StateRecovery returned null — some pieces may need re-download.',
+        );
         return;
       }
 
       final total = result.bitfield.piecesNum;
       final completed = result.bitfield.completedPieces.length;
-      _log(torrentId, 'StateRecovery: $completed / $total pieces verified on disk.');
+      _log(
+        torrentId,
+        'StateRecovery: $completed / $total pieces verified on disk.',
+      );
 
       if (total > 0 && completed >= total) {
         // Every piece is on disk and hash-verified — mark complete
@@ -1804,8 +1855,10 @@ class TorrentEngineService {
   Future<void> forceStateRecovery(String torrentId) async {
     final task = _tasks[torrentId];
     if (task == null) {
-      throw StateError('Torrent $torrentId is not currently active. '
-          'Resume it first, then verify.');
+      throw StateError(
+        'Torrent $torrentId is not currently active. '
+        'Resume it first, then verify.',
+      );
     }
     await _forceStateRecovery(torrentId, task);
   }
@@ -2065,7 +2118,10 @@ class TorrentEngineService {
         final target = p.normalize(p.join(saveDir, relative));
         if (!_isPathInside(target, saveDir)) continue;
 
-        final targetType = await FileSystemEntity.type(target, followLinks: false);
+        final targetType = await FileSystemEntity.type(
+          target,
+          followLinks: false,
+        );
         if (targetType == FileSystemEntityType.notFound) {
           ops++;
           continue;
@@ -2152,77 +2208,23 @@ class TorrentEngineService {
     }
     _forceRedownloadInFlight.add(torrentId);
     try {
-    final runningModel = _tasks[torrentId]?.metaInfo;
-    await stopTorrent(torrentId);
-    await Future.delayed(const Duration(milliseconds: 200));
+      final runningModel = _tasks[torrentId]?.metaInfo;
+      await stopTorrent(torrentId);
+      await Future.delayed(const Duration(milliseconds: 200));
 
-    final torrent = await TorrentService.instance.getTorrentById(torrentId);
-    if (torrent == null) throw StateError('Torrent not found: $torrentId');
+      final torrent = await TorrentService.instance.getTorrentById(torrentId);
+      if (torrent == null) throw StateError('Torrent not found: $torrentId');
 
-    final filePath = torrent.filePath?.trim() ?? '';
-    final configuredDir = SettingsService.instance.downloadDestination.trim();
-    final preferredPath = configuredDir.isNotEmpty
-        ? configuredDir
-        : (filePath.isNotEmpty && !_isTorrentFilePath(filePath)
-              ? filePath
-              : null);
-    final saveDir = await _resolveWritableDownloadDir(preferredPath);
+      final filePath = torrent.filePath?.trim() ?? '';
+      final configuredDir = SettingsService.instance.downloadDestination.trim();
+      final preferredPath = configuredDir.isNotEmpty
+          ? configuredDir
+          : (filePath.isNotEmpty && !_isTorrentFilePath(filePath)
+                ? filePath
+                : null);
+      final saveDir = await _resolveWritableDownloadDir(preferredPath);
 
-    // Reset visible state immediately so UI drops to 0% without waiting for disk cleanup.
-    await TorrentService.instance.updateTorrent(
-      torrent.copyWith(
-        status: 'downloading',
-        bytesDown: 0,
-        bytesUp: 0,
-        completedAt: null,
-        seeders: 0,
-        leechers: 0,
-        filePath: saveDir,
-      ),
-    );
-    TorrentService.instance.invalidateDiskSnapshot(torrentId);
-    unawaited(TorrentService.instance.refreshTorrentStates());
-
-    await _deleteBtStateFiles(saveDir, torrentId);
-    if (configuredDir.isNotEmpty && configuredDir != saveDir) {
-      await _deleteBtStateFiles(configuredDir, torrentId);
-    }
-
-    final relativePaths = <String>{};
-    if (runningModel != null) {
-      relativePaths.addAll(_relativeFilePathsFromModel(runningModel));
-    }
-
-    if (relativePaths.isEmpty) {
-      final fileModel = await _loadModelFromTorrentFileForRedownload(torrent);
-      if (fileModel != null) {
-        relativePaths.addAll(_relativeFilePathsFromModel(fileModel));
-      }
-    }
-
-    if (relativePaths.isEmpty) {
-      final cachedModel = await _loadCachedModelForRedownload(torrent);
-      if (cachedModel != null) {
-        relativePaths.addAll(_relativeFilePathsFromModel(cachedModel));
-      }
-    }
-
-    final lockedPaths = await _deleteTorrentContentForRedownload(
-      torrent,
-      saveDir,
-      relativePaths,
-    );
-
-    if (lockedPaths.isNotEmpty) {
-      final sample = lockedPaths.take(3).join(', ');
-      debugPrint(
-        'forceRedownload: files are locked, switching to isolated redownload dir. Files: $sample',
-      );
-
-      final isolatedDir = await _createIsolatedRedownloadDir(
-        saveDir,
-        torrent.name,
-      );
+      // Reset visible state immediately so UI drops to 0% without waiting for disk cleanup.
       await TorrentService.instance.updateTorrent(
         torrent.copyWith(
           status: 'downloading',
@@ -2231,17 +2233,71 @@ class TorrentEngineService {
           completedAt: null,
           seeders: 0,
           leechers: 0,
-          filePath: isolatedDir,
+          filePath: saveDir,
         ),
       );
       TorrentService.instance.invalidateDiskSnapshot(torrentId);
       unawaited(TorrentService.instance.refreshTorrentStates());
 
-      await startTorrent(torrentId, destinationPath: isolatedDir);
-      return;
-    }
+      await _deleteBtStateFiles(saveDir, torrentId);
+      if (configuredDir.isNotEmpty && configuredDir != saveDir) {
+        await _deleteBtStateFiles(configuredDir, torrentId);
+      }
 
-    await startTorrent(torrentId, destinationPath: saveDir);
+      final relativePaths = <String>{};
+      if (runningModel != null) {
+        relativePaths.addAll(_relativeFilePathsFromModel(runningModel));
+      }
+
+      if (relativePaths.isEmpty) {
+        final fileModel = await _loadModelFromTorrentFileForRedownload(torrent);
+        if (fileModel != null) {
+          relativePaths.addAll(_relativeFilePathsFromModel(fileModel));
+        }
+      }
+
+      if (relativePaths.isEmpty) {
+        final cachedModel = await _loadCachedModelForRedownload(torrent);
+        if (cachedModel != null) {
+          relativePaths.addAll(_relativeFilePathsFromModel(cachedModel));
+        }
+      }
+
+      final lockedPaths = await _deleteTorrentContentForRedownload(
+        torrent,
+        saveDir,
+        relativePaths,
+      );
+
+      if (lockedPaths.isNotEmpty) {
+        final sample = lockedPaths.take(3).join(', ');
+        debugPrint(
+          'forceRedownload: files are locked, switching to isolated redownload dir. Files: $sample',
+        );
+
+        final isolatedDir = await _createIsolatedRedownloadDir(
+          saveDir,
+          torrent.name,
+        );
+        await TorrentService.instance.updateTorrent(
+          torrent.copyWith(
+            status: 'downloading',
+            bytesDown: 0,
+            bytesUp: 0,
+            completedAt: null,
+            seeders: 0,
+            leechers: 0,
+            filePath: isolatedDir,
+          ),
+        );
+        TorrentService.instance.invalidateDiskSnapshot(torrentId);
+        unawaited(TorrentService.instance.refreshTorrentStates());
+
+        await startTorrent(torrentId, destinationPath: isolatedDir);
+        return;
+      }
+
+      await startTorrent(torrentId, destinationPath: saveDir);
     } finally {
       _forceRedownloadInFlight.remove(torrentId);
     }

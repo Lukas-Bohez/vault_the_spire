@@ -83,6 +83,7 @@ class TrayService with TrayListener, WindowListener {
       items: [
         MenuItem(key: 'show', label: 'Show Vault'),
         MenuItem(key: 'pause_all', label: 'Pause All Torrents'),
+        MenuItem(key: 'resume_all', label: 'Resume All Torrents'),
         MenuItem.separator(),
         MenuItem(key: 'quit', label: 'Exit'),
       ],
@@ -112,6 +113,9 @@ class TrayService with TrayListener, WindowListener {
       case 'pause_all':
         TorrentEngineService.instance.pauseAll();
         break;
+      case 'resume_all':
+        TorrentEngineService.instance.resumeAll();
+        break;
       case 'quit':
         unawaited(onTrayQuit?.call() ?? Future<void>.value());
         break;
@@ -134,6 +138,11 @@ class TrayService with TrayListener, WindowListener {
 
   @override
   void onWindowMoved() => _scheduleGeometrySave();
+
+  @override
+  void onWindowFocus() {
+    TorrentEngineService.instance.restartAllPolling();
+  }
 
   static const _kWindowX = 'window_x';
   static const _kWindowY = 'window_y';
@@ -186,11 +195,12 @@ class TrayService with TrayListener, WindowListener {
 
   Future<void> _showWindow() async {
     final show = onTrayShow?.call();
-    if (show is Future<void>) {
+    if (show is Future) {
       await show;
     }
     await windowManager.show();
     await windowManager.focus();
+    TorrentEngineService.instance.restartAllPolling();
   }
 
   Future<void> destroy() async {
