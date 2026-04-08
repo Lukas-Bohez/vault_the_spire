@@ -1527,6 +1527,69 @@ class TorrentEngineService {
     return null;
   }
 
+  bool _hasAllPiecesComplete(dt.TorrentTask task) {
+    try {
+      final dynamic t = task;
+      final fileComplete = (t.fileManager?.isAllComplete as bool?) ?? false;
+      final piecesMap = t.pieceManager?.pieces as Map?;
+      if (piecesMap == null || piecesMap.isEmpty) {
+        return fileComplete;
+      }
+
+      for (final entry in piecesMap.entries) {
+        final isComplete =
+            (entry.value.isCompletelyDownloaded as bool?) ?? false;
+        if (!isComplete) {
+          return false;
+        }
+      }
+      return true;
+    } catch (_) {
+      // Fallback to task-level completion heuristics when piece map is unavailable.
+      return _isTaskComplete(task);
+    }
+  }
+
+  void _requestMissingPieces(dt.TorrentTask task) {
+    try {
+      final dynamic t = task;
+      final piecesMap = t.pieceManager?.pieces as Map?;
+      if (piecesMap == null || piecesMap.isEmpty) return;
+
+      for (final entry in piecesMap.entries) {
+        final isComplete =
+            (entry.value.isCompletelyDownloaded as bool?) ?? false;
+        if (!isComplete) {
+          try {
+            t.requestPiece(entry.key);
+          } catch (_) {
+            // Ignore per-piece request failures and continue.
+          }
+        }
+      }
+    } catch (_) {
+      // Best-effort only.
+    }
+  }
+
+  Future<bool> _verifyCompletionIntegrity(
+    String torrentId,
+    dt.TorrentTask task,
+  ) async {
+    await _forceStateRecovery(torrentId, task);
+    final complete = _hasAllPiecesComplete(task);
+    if (!complete) {
+      _log(
+        torrentId,
+        'Completion check failed after recovery: missing/corrupt pieces detected. Resuming download.',
+      );
+      _requestMissingPieces(task);
+      _ensureTaskRunningMode(task);
+      return false;
+    }
+    return true;
+  }
+
   void _wireEvents(String torrentId, dt.TorrentTask task) {
     task.createListener()
       ..on<dt.StateFileUpdated>((_) {
@@ -1535,6 +1598,17 @@ class TorrentEngineService {
       })
       ..on<dt.TaskCompleted>((_) async {
         _emitStats(torrentId, task);
+
+        final verified = await _verifyCompletionIntegrity(torrentId, task);
+        if (!verified) {
+          await TorrentService.instance.updateTorrentStatus(
+            torrentId,
+            'downloading',
+          );
+          _emitStats(torrentId, task);
+          return;
+        }
+
         final hasOutput = await _verifyOutputExists(torrentId, task);
         await TorrentService.instance.updateTorrentStatus(
           torrentId,
@@ -1661,20 +1735,7 @@ class TorrentEngineService {
     final progress = task.progress;
     _recordProgressSample(torrentId, progress);
     final totalLength = task.metaInfo.length ?? task.metaInfo.totalSize;
-    var isAllComplete = false;
-    try {
-      final dynamic t = task;
-      isAllComplete = (t.fileManager.isAllComplete as bool?) ?? false;
-    } catch (_) {
-      isAllComplete = false;
-    }
-
-    final state =
-        isAllComplete ||
-            (totalLength > 0 && downloaded >= totalLength) ||
-            progress >= 0.999
-        ? 'seeding'
-        : 'downloading';
+    final state = _isTaskComplete(task) ? 'seeding' : 'downloading';
     final now = DateTime.now();
     final lastSample = _lastUploadedSampleByTorrent[torrentId];
     if (lastSample != null) {
@@ -2456,6 +2517,10 @@ class TorrentEngineService {
   }
 
   bool _isTaskComplete(dt.TorrentTask task) {
+    if (_hasAllPiecesComplete(task)) {
+      return true;
+    }
+
     try {
       final dynamicTask = task as dynamic;
       final isAllComplete = dynamicTask.fileManager?.isAllComplete as bool?;
@@ -2466,10 +2531,12 @@ class TorrentEngineService {
 
     final totalLength = task.metaInfo.length ?? task.metaInfo.totalSize;
     final downloaded = task.downloaded ?? 0;
-    if (totalLength > 0 && downloaded >= totalLength) {
+    if (totalLength > 0 &&
+        downloaded >= totalLength &&
+        task.progress >= 0.999) {
       return true;
     }
-    return task.progress >= 0.999;
+    return false;
   }
 
   void _ensureTaskRunningMode(dt.TorrentTask task) {
