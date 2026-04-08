@@ -67,6 +67,21 @@ Write-Host "  Packaging Windows build -> $winZip"
 Compress-Archive -Path "$winSrc\*" -DestinationPath $winZip -Force
 Write-Host "  Windows zip: $winZip" -ForegroundColor Green
 
+# ── 5. Stage upload artifacts ───────────────────────────────────────────────
+$uploadDir = Join-Path $projectRoot "1 Upload"
+if (Test-Path $uploadDir) {
+    Get-ChildItem $uploadDir -File | Where-Object {
+        $_.Name -notin @(
+            "vault_the_spire_${version}_android.aab",
+            "vault_the_spire_${version}_windows_x64.zip"
+        )
+    } | Remove-Item -Force
+
+    Copy-Item $aabDest (Join-Path $uploadDir ([IO.Path]::GetFileName($aabDest))) -Force
+    Copy-Item $winZip (Join-Path $uploadDir ([IO.Path]::GetFileName($winZip))) -Force
+    Write-Host "  Staged upload artifacts in 1 Upload" -ForegroundColor Green
+}
+
 # ── Summary ──────────────────────────────────────────────────────────────────
 Write-Host ""
 Write-Host "=== Build complete ===" -ForegroundColor Cyan
