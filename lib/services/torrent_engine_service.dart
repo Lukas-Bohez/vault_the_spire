@@ -11,7 +11,6 @@ import 'package:dtorrent_task_v2/src/piece/sequential_config.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
-import 'package:win32/win32.dart';
 
 import 'package:vault_the_spire/models/torrent.dart';
 import 'package:vault_the_spire/services/notification_service.dart';
@@ -252,33 +251,27 @@ class TorrentEngineService {
     }
   }
 
-  SequentialConfig? _sequentialConfigFor(dt.TorrentModel model) {
-    const videoExts = {
-      '.mkv',
-      '.mp4',
-      '.avi',
-      '.mov',
-      '.m4v',
-      '.ts',
-      '.wmv',
-      '.flv',
-      '.webm',
-      '.mpg',
-      '.mpeg',
+  /// Returns the best SequentialConfig for this torrent:
+  /// - Video → streaming-optimised with moov-atom prioritisation
+  /// - Audio → streaming-optimised for audio
+  /// - Everything else (game installers, archives, etc.) → minimal sequential
+  ///   config that still prevents concurrent multi-file write races, which
+  ///   is the root cause of the bitfield-cache desync / stuck-at-99% bug.
+  ///
+  /// IMPORTANT: the caller must pass stream: seqConfig != null to newTask()
+  /// so the AdvancedSequentialPieceSelector is actually activated.
+  SequentialConfig _sequentialConfigFor(dt.TorrentModel dtModel) {
+    const videoExts = <String>{
+      '.mkv', '.mp4', '.avi', '.mov', '.m4v',
+      '.ts', '.wmv', '.flv', '.webm', '.mpg', '.mpeg',
     };
-    const audioExts = {
-      '.mp3',
-      '.flac',
-      '.aac',
-      '.ogg',
-      '.wav',
-      '.m4a',
-      '.opus',
+    const audioExts = <String>{
+      '.mp3', '.flac', '.aac', '.ogg', '.wav', '.m4a', '.opus',
     };
 
     final paths = [
-      ...model.files.map((f) => f.path.toLowerCase()),
-      if (model.isSingleFile) model.name.toLowerCase(),
+      ...dtModel.files.map((f) => f.path.toLowerCase()),
+      if (dtModel.isSingleFile) dtModel.name.toLowerCase(),
     ];
 
     if (paths.any((p) => videoExts.any(p.endsWith))) {
@@ -287,7 +280,9 @@ class TorrentEngineService {
     if (paths.any((p) => audioExts.any(p.endsWith))) {
       return SequentialConfig.forAudioStreaming();
     }
-
+    // Non-media: use minimal sequential to reduce concurrent write races on
+    // large multi-file torrents. adaptiveStrategy=true lets the selector fall
+    // back to rarest-first if peers are slow, so download speed is preserved.
     return const SequentialConfig(
       lookAheadSize: 8,
       criticalZoneSize: 2 * 1024 * 1024,
@@ -602,17 +597,25 @@ class TorrentEngineService {
         }
 
         final currentProgress = task.progress;
+
+        // Activate faster health checks once past 90%
+        if (currentProgress >= 0.90 && !_fastHealthCheckTimers.containsKey(torrentId)) {
+          _fastHealthCheckTimers[torrentId] = Timer.periodic(
+            const Duration(seconds: 15),
+            (_) => _recordProgressSample(torrentId, _tasks[torrentId]?.progress ?? currentProgress),
+          );
+          _log(torrentId, 'Near-complete: upgraded to 15s health-check cadence.');
+        }
+
         if (!_isTaskComplete(task) && currentProgress >= 0.95) {
           final lastChange =
               _lastProgressChangeAtByTorrent[torrentId] ??
               DateTime.fromMillisecondsSinceEpoch(0);
           final stalledFor = DateTime.now().difference(lastChange);
-
           if (stalledFor >= const Duration(seconds: 90)) {
             _stallRecoveryCycles[torrentId] =
                 (_stallRecoveryCycles[torrentId] ?? 0) + 1;
             final cycle = _stallRecoveryCycles[torrentId] ?? 0;
-
             _log(
               torrentId,
               'Near-complete stall at ${(currentProgress * 100).toStringAsFixed(2)}% '
@@ -620,46 +623,40 @@ class TorrentEngineService {
             );
 
             if (cycle == 1) {
-              await TorrentService.instance.updateTorrentStatus(
-                torrentId,
-                'checking',
-              );
+              // Cycle 1: refresh peers AND rebuild bitfield from disk.
+              // The bitfield cache can desync under concurrent multi-file writes
+              // (GTA IV, large FitGirl repacks). StateRecovery re-reads actual
+              // bytes, SHA-1 validates every piece, and rebuilds completedPieces.
               TorrentService.instance.invalidateDiskSnapshot(torrentId);
               unawaited(TorrentService.instance.refreshTorrentStates());
               await _refreshConnection(torrentId, task);
-              try {
-                task.requestPeersFromDHT();
-              } catch (_) {}
+              try { task.requestPeersFromDHT(); } catch (_) {}
               unawaited(_forceStateRecovery(torrentId, task));
+
             } else if (cycle == 2) {
+              // Cycle 2: retry peer refresh + explicitly re-request missing pieces
               await _refreshConnection(torrentId, task);
-              try {
-                task.requestPeersFromDHT();
-              } catch (_) {}
+              try { task.requestPeersFromDHT(); } catch (_) {}
               try {
                 final dynamic t = task;
                 final pm = t.pieceManager;
                 if (pm != null) {
-                  final pieces = pm.pieces as Map<int, dynamic>? ?? {};
-                  for (final entry in pieces.entries) {
-                    final piece = entry.value;
+                  final pieces = (pm.pieces as Map?)?.entries ?? [];
+                  for (final entry in pieces) {
                     final isComplete =
-                        piece.isCompletelyDownloaded as bool? ?? false;
+                        (entry.value.isCompletelyDownloaded as bool?) ?? false;
                     if (!isComplete) {
-                      _log(torrentId, 'Re-requesting piece ${entry.key}');
-                      try {
-                        t.requestPiece(entry.key);
-                      } catch (_) {}
+                      try { t.requestPiece(entry.key); } catch (_) {}
                     }
                   }
                 }
               } catch (_) {}
+              unawaited(_forceStateRecovery(torrentId, task));
+
             } else if (cycle >= 3) {
+              // Cycle 3: hard restart as last resort
               _stallRecoveryCycles[torrentId] = 0;
-              _log(
-                torrentId,
-                'Stall unresolved after 3 cycles — hard restart.',
-              );
+              _log(torrentId, 'Stall unresolved after 3 recovery cycles — hard restart.');
               await _hardRestartTorrent(torrentId);
               return;
             }
@@ -684,66 +681,6 @@ class TorrentEngineService {
       return;
     }
     await _refreshConnection(torrentId, task);
-  }
-
-  Future<void> forceStateRecovery(String torrentId) async {
-    final task = _tasks[torrentId];
-    if (task == null) {
-      throw StateError('Torrent $torrentId is not currently active.');
-    }
-    await _forceStateRecovery(torrentId, task);
-  }
-
-  Future<void> _forceStateRecovery(String torrentId, dt.TorrentTask task) async {
-    try {
-      _log(torrentId, 'Running disk-based state recovery to fix stuck bitfield...');
-      final dynamic t = task;
-      final savePath = t.savePath as String? ?? '';
-      if (savePath.isEmpty) {
-        _log(torrentId, 'StateRecovery skipped: savePath unavailable.');
-        return;
-      }
-      final dtModel = task.metaInfo;
-      final pieces = (t.pieceManager?.pieces?.values?.toList() ?? <dynamic>[])
-          .cast<dt_piece.Piece>();
-      final recovery = dt.StateRecovery(dtModel, savePath, pieces);
-      final result = await recovery.recoverStateFile();
-      if (result != null) {
-        _log(
-          torrentId,
-          'StateRecovery complete — bitfield rebuilt from disk. '
-          'Completed: ${result.bitfield.completedPieces.length}/'
-          '${result.bitfield.piecesNum} pieces.',
-        );
-        final bitfieldComplete =
-            result.bitfield.piecesNum == result.bitfield.completedPieces.length;
-        if (bitfieldComplete) {
-          _log(torrentId, 'All pieces verified on disk — marking complete.');
-          await TorrentService.instance.updateTorrentStatus(torrentId, 'seeding');
-          TorrentService.instance.invalidateDiskSnapshot(torrentId);
-          unawaited(TorrentService.instance.refreshTorrentStates());
-        } else {
-          final missing =
-              result.bitfield.piecesNum - result.bitfield.completedPieces.length;
-          _log(
-            torrentId,
-            '$missing pieces still missing after recovery — continuing download.',
-          );
-          await TorrentService.instance.updateTorrentStatus(
-            torrentId,
-            'downloading',
-          );
-        }
-      } else {
-        _log(
-          torrentId,
-          'StateRecovery returned null — pieces may need re-download.',
-        );
-      }
-    } catch (e, st) {
-      _log(torrentId, 'StateRecovery error (non-fatal): $e');
-      debugPrint('[StateRecovery] $torrentId: $e\n$st');
-    }
   }
 
   /// Verifies all downloaded pieces against their SHA-1 hashes.
@@ -947,14 +884,17 @@ class TorrentEngineService {
       );
     }
 
-    final seqConfig = _sequentialConfigFor(dtModel);
+    // Aggressive peer connectivity: enable DHT, PEX, sequential video streaming,
+    // and use fallback trackers.
+    // stream: true activates AdvancedSequentialPieceSelector — required for
+    // the SequentialConfig to take effect. Without it the config is ignored.
     final task = dt.TorrentTask.newTask(
       dtModel,
       saveDir,
-      seqConfig != null,
+      true,   // stream=true activates sequential piece selection
       null,
       null,
-      seqConfig,
+      _sequentialConfigFor(dtModel),
     );
     _tasks[torrent.id] = task;
     _wireEvents(torrent.id, task);
@@ -1231,14 +1171,17 @@ class TorrentEngineService {
       );
     }
 
-    final seqCfg = _sequentialConfigFor(dtModel);
+    // Aggressive peer connectivity: enable DHT, PEX, sequential video streaming,
+    // and use fallback trackers.
+    // stream: true activates AdvancedSequentialPieceSelector — required for
+    // the SequentialConfig to take effect. Without it the config is ignored.
     final task = dt.TorrentTask.newTask(
       dtModel,
       saveDir,
-      seqCfg != null,
+      true,   // stream=true activates sequential piece selection
       magnet.webSeeds.isNotEmpty ? magnet.webSeeds : null,
       magnet.acceptableSources.isNotEmpty ? magnet.acceptableSources : null,
-      seqCfg,
+      _sequentialConfigFor(dtModel),
     );
 
     if (magnet.selectedFileIndices?.isNotEmpty == true) {
@@ -1629,19 +1572,6 @@ class TorrentEngineService {
 
     final progress = task.progress;
     _recordProgressSample(torrentId, progress);
-    if (progress >= 0.90 && !(_fastHealthCheckTimers.containsKey(torrentId))) {
-      _fastHealthCheckTimers[torrentId] = Timer.periodic(
-        const Duration(seconds: 15),
-        (_) {
-          final t = _tasks[torrentId];
-          if (t == null || _isTaskComplete(t)) {
-            _fastHealthCheckTimers.remove(torrentId)?.cancel();
-            return;
-          }
-          _recordProgressSample(torrentId, t.progress);
-        },
-      );
-    }
     final totalLength = task.metaInfo.length ?? task.metaInfo.totalSize;
     var isAllComplete = false;
     try {
@@ -1651,24 +1581,12 @@ class TorrentEngineService {
       isAllComplete = false;
     }
 
-    final stalledNearCompletion =
-      progress >= 0.95 &&
-      ((_lastProgressChangeAtByTorrent[torrentId] == null)
-        ? false
-        : DateTime.now()
-                .difference(
-                _lastProgressChangeAtByTorrent[torrentId]!,
-                )
-                .inSeconds >=
-              90);
     final state =
-      isAllComplete ||
-        (totalLength > 0 && downloaded >= totalLength) ||
-        progress >= 0.999
-      ? 'seeding'
-      : stalledNearCompletion
-      ? 'checking'
-      : 'downloading';
+        isAllComplete ||
+            (totalLength > 0 && downloaded >= totalLength) ||
+            progress >= 0.999
+        ? 'seeding'
+        : 'downloading';
     final now = DateTime.now();
     final lastSample = _lastUploadedSampleByTorrent[torrentId];
     if (lastSample != null) {
@@ -1683,29 +1601,26 @@ class TorrentEngineService {
 
     final seededRatio = totalLength > 0 ? (uploaded / totalLength) : 0.0;
     final seededPct = (seededRatio * 100).clamp(0.0, double.infinity);
+    final stalledNearCompletion =
+        progress >= 0.95 &&
+        ((_lastProgressChangeAtByTorrent[torrentId] == null)
+            ? false
+            : DateTime.now()
+                          .difference(
+                            _lastProgressChangeAtByTorrent[torrentId]!,
+                          )
+                          .inSeconds >=
+                      90 &&
+                  state != 'seeding');
     final msg = state == 'seeding'
         ? 'Seeding • ${(seededPct).toStringAsFixed(1)}% shared back (${_formatByteCount(uploaded)}/${_formatByteCount(totalLength)}) • $peers peer${peers == 1 ? '' : 's'} connected'
-      : stalledNearCompletion
-        ? '${(progress * 100).toStringAsFixed(2)}% — Checking final pieces...'
-      : peers == 0
-      ? 'Searching for peers...'
+        : peers == 0
+        ? 'Searching for peers...'
+        : stalledNearCompletion
+        ? 'Stalled near completion • ${(progress * 100).toStringAsFixed(1)}% • $peers peer${peers == 1 ? '' : 's'}'
         : downloaded == 0
         ? 'Connected to $peers peer${peers == 1 ? '' : 's'}, waiting for pieces...'
-        : () {
-            final remaining = totalLength > 0 ? totalLength - downloaded : 0;
-            String etaStr = '';
-            if (dlSpeed > 0 && remaining > 0) {
-              final etaSec = (remaining / dlSpeed).round();
-              if (etaSec < 60) {
-                etaStr = ' • ETA: ${etaSec}s';
-              } else if (etaSec < 3600) {
-                etaStr = ' • ETA: ${(etaSec / 60).round()}m';
-              } else {
-                etaStr = ' • ETA: ${(etaSec / 3600).toStringAsFixed(1)}h';
-              }
-            }
-            return '${(progress * 100).toStringAsFixed(1)}% — $peers peer${peers == 1 ? '' : 's'}$etaStr';
-          }();
+        : '${(progress * 100).toStringAsFixed(1)}% — $peers peer${peers == 1 ? '' : 's'}';
 
     int dhtNodes = 0;
     int trackers = 0;
@@ -1757,9 +1672,6 @@ class TorrentEngineService {
     );
   }
 
-  Duration get _postStopDelay =>
-      Platform.isWindows ? const Duration(seconds: 3) : const Duration(seconds: 1);
-
   String _formatByteCount(int bytes) {
     if (bytes <= 0) return '0 B';
     const units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -1797,6 +1709,106 @@ class TorrentEngineService {
     }
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // Disk-based state recovery
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /// Rebuilds the in-memory bitfield by reading actual bytes from disk and
+  /// SHA-1 validating every piece. Called when a torrent stalls near
+  /// completion — fixes the cache-desync bug in Bitfield.completedPieces
+  /// that causes GTA IV / large multi-file torrents to freeze at 99.x%.
+  // ─────────────────────────────────────────────────────────────────────────
+  // Platform helpers
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /// Mark a file as hidden on Windows so .bt.state files don't confuse users.
+  /// Safe no-op on non-Windows platforms.
+  /// Mark a file as hidden so .bt.state files don't clutter Explorer.
+  /// Uses the `attrib` shell command — no win32 FFI import needed,
+  /// so this compiles cleanly on Android too. Fire-and-forget.
+  void markFileHiddenOnWindows(String filePath) {
+    if (!Platform.isWindows) return;
+    Process.run('attrib', ['+h', filePath]).catchError((_) {});
+  }
+
+  /// Scan a directory and hide any .bt.state files found there.
+  Future<void> _hideStateFilesInDir(String dirPath) async {
+    if (!Platform.isWindows) return;
+    try {
+      final dir = Directory(dirPath);
+      if (!await dir.exists()) return;
+      await for (final entity in dir.list(recursive: false)) {
+        if (entity is File &&
+            entity.path.toLowerCase().endsWith('.bt.state')) {
+          markFileHiddenOnWindows(entity.path);
+        }
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _forceStateRecovery(String torrentId, dt.TorrentTask task) async {
+    try {
+      _log(torrentId, 'Starting disk-based state recovery (bitfield rebuild)...');
+      final dynamic t = task;
+      String savePath = '';
+      try { savePath = (t.savePath as String?) ?? ''; } catch (_) {}
+      if (savePath.isEmpty) {
+        // Fallback: read filePath from the persisted torrent record
+        final torrent = await TorrentService.instance.getTorrentById(torrentId);
+        savePath = torrent?.filePath?.trim() ?? '';
+      }
+      if (savePath.isEmpty) {
+        _log(torrentId, 'StateRecovery skipped: could not determine save path.');
+        return;
+      }
+
+      final dtModel = task.metaInfo;
+      List<dt_piece.Piece> pieces = [];
+      try {
+        final raw = t.pieceManager?.pieces?.values?.toList() ?? [];
+        pieces = raw.cast<dt_piece.Piece>();
+      } catch (_) {}
+
+      final recovery = dt.StateRecovery(dtModel, savePath, pieces);
+      final result = await recovery.recoverStateFile();
+
+      if (result == null) {
+        _log(torrentId, 'StateRecovery returned null — some pieces may need re-download.');
+        return;
+      }
+
+      final total = result.bitfield.piecesNum;
+      final completed = result.bitfield.completedPieces.length;
+      _log(torrentId, 'StateRecovery: $completed / $total pieces verified on disk.');
+
+      if (total > 0 && completed >= total) {
+        // Every piece is on disk and hash-verified — mark complete
+        _log(torrentId, 'All pieces confirmed on disk — marking seeding.');
+        await TorrentService.instance.updateTorrentStatus(torrentId, 'seeding');
+        TorrentService.instance.invalidateDiskSnapshot(torrentId);
+        unawaited(TorrentService.instance.refreshTorrentStates());
+        // Cancel fast health check — no longer needed
+        _fastHealthCheckTimers.remove(torrentId)?.cancel();
+      } else if (total > 0) {
+        final missing = total - completed;
+        _log(torrentId, '$missing pieces still missing — continuing download.');
+      }
+    } catch (e, st) {
+      _log(torrentId, 'StateRecovery error (non-fatal): $e');
+      debugPrint('[StateRecovery] $torrentId: $e\n$st');
+    }
+  }
+
+  /// Public entry point for the "Verify files" UI button.
+  Future<void> forceStateRecovery(String torrentId) async {
+    final task = _tasks[torrentId];
+    if (task == null) {
+      throw StateError('Torrent $torrentId is not currently active. '
+          'Resume it first, then verify.');
+    }
+    await _forceStateRecovery(torrentId, task);
+  }
+
   Future<void> _hardRestartTorrent(String torrentId) async {
     if (_hardRecoveryInFlight.contains(torrentId)) return;
 
@@ -1804,7 +1816,7 @@ class TorrentEngineService {
     if (restartCount >= 3) {
       _log(
         torrentId,
-        'Max restarts reached — marking error_stalled. Use "Verify files" or "Redownload" buttons to recover.',
+        'Max hard restarts reached. Marking torrent as error_stalled.',
       );
       await TorrentService.instance.updateTorrentStatus(
         torrentId,
@@ -1815,7 +1827,10 @@ class TorrentEngineService {
 
     final nextAllowed = _nextAllowedHardRestart[torrentId];
     if (nextAllowed != null && DateTime.now().isBefore(nextAllowed)) {
-      _log(torrentId, 'Hard restart deferred — backoff active.');
+      _log(
+        torrentId,
+        'Hard restart deferred until $nextAllowed due to backoff.',
+      );
       return;
     }
 
@@ -1827,41 +1842,9 @@ class TorrentEngineService {
 
     _hardRecoveryInFlight.add(torrentId);
     try {
-      _log(torrentId, 'Hard restart #${restartCount + 1}/3 — stopping task...');
+      _log(torrentId, 'Hard restart #${restartCount + 1} of 3 starting.');
       await stopTorrent(torrentId);
-
-      await Future.delayed(_postStopDelay);
-
-      final torrent = await TorrentService.instance.getTorrentById(torrentId);
-      if (torrent != null) {
-        final configured = SettingsService.instance.downloadDestination.trim();
-        final savePath = torrent.filePath?.trim().isNotEmpty == true &&
-                !_isTorrentFilePath(torrent.filePath)
-            ? torrent.filePath!
-            : configured;
-        if (savePath.isNotEmpty) {
-          try {
-            final dtModel = await dt.TorrentModel.parse(torrent.filePath ?? '');
-            final recovery = dt.StateRecovery(dtModel, savePath, []);
-            final recovered = await recovery.recoverStateFile();
-            if (recovered != null &&
-                recovered.bitfield.piecesNum ==
-                    recovered.bitfield.completedPieces.length) {
-              _log(
-                torrentId,
-                'Hard restart: state recovery found all pieces complete — marking seeded without restart.',
-              );
-              await TorrentService.instance.updateTorrentStatus(
-                torrentId,
-                'seeding',
-              );
-              TorrentService.instance.invalidateDiskSnapshot(torrentId);
-              return;
-            }
-          } catch (_) {}
-        }
-      }
-
+      await Future.delayed(const Duration(seconds: 1));
       final configured = SettingsService.instance.downloadDestination.trim();
       await startTorrent(
         torrentId,
@@ -1934,24 +1917,7 @@ class TorrentEngineService {
         if (!belongsToTorrent) continue;
       }
 
-      _markFileHiddenOnWindows(entity.path);
-    }
-  }
-
-  void markFileHiddenOnWindows(String filePath) {
-    _markFileHiddenOnWindows(filePath);
-  }
-
-  void _markFileHiddenOnWindows(String filePath) {
-    if (!Platform.isWindows) return;
-    try {
-      final pathUtf16 = TEXT(filePath);
-      final attrs = GetFileAttributes(pathUtf16);
-      if (attrs != 0xFFFFFFFF) {
-        SetFileAttributes(pathUtf16, attrs | FILE_ATTRIBUTE_HIDDEN);
-      }
-    } catch (e) {
-      debugPrint('_markFileHiddenOnWindows: $e');
+      markFileHiddenOnWindows(entity.path);
     }
   }
 

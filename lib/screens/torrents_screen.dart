@@ -243,27 +243,14 @@ class _TorrentsScreenState extends State<TorrentsScreen>
   }
 
   Future<void> _deleteTorrent(TorrentViewState ts) async {
-    try {
-      await TorrentEngineService.instance.stopTorrent(ts.model.id);
-      await TorrentService.instance.removeTorrent(ts.model.id);
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Torrent removed.')));
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Remove failed: $e')));
-    }
-  }
-
-  Future<bool?> _confirmDelete(TorrentViewState ts) async {
-    return showDialog<bool>(
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Remove torrent?'),
-        content: Text('"${ts.name}" will be removed. Files are kept.'),
+        content: Text(
+          '"${ts.name}" will be removed from the list. '
+          'Downloaded files are NOT deleted.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -280,6 +267,20 @@ class _TorrentsScreenState extends State<TorrentsScreen>
         ],
       ),
     );
+    if (confirmed != true) return;
+    try {
+      await TorrentEngineService.instance.stopTorrent(ts.model.id);
+      await TorrentService.instance.removeTorrent(ts.model.id);
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Torrent removed.')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Remove failed: $e')));
+    }
   }
 
   Future<void> _openTorrentFolder(TorrentModel torrent) async {
@@ -510,7 +511,8 @@ class _TorrentsScreenState extends State<TorrentsScreen>
   }
 
   Widget _buildFab() {
-    if (!Platform.isAndroid) {
+    final isMobile = Platform.isAndroid || Platform.isIOS;
+    if (!isMobile) {
       return const SizedBox.shrink();
     }
 
@@ -518,25 +520,34 @@ class _TorrentsScreenState extends State<TorrentsScreen>
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        FloatingActionButton.small(
-          heroTag: 'fab_create',
-          onPressed: _openCreateTorrent,
-          tooltip: 'Create torrent',
-          child: const Icon(Icons.create_new_folder_outlined),
-        ),
-        const SizedBox(height: 8),
-        FloatingActionButton.small(
-          heroTag: 'fab_file',
-          onPressed: _pickTorrentFile,
-          tooltip: 'Add .torrent file',
-          child: const Icon(Icons.file_open_outlined),
-        ),
-        const SizedBox(height: 8),
-        FloatingActionButton.extended(
-          heroTag: 'fab_magnet',
-          onPressed: _showAddMagnetDialog,
-          icon: const Icon(Icons.add_link),
-          label: const Text('Add magnet'),
+        if (_fabExpanded) ...[
+          FloatingActionButton.small(
+            heroTag: 'create_torrent_fab',
+            onPressed: _openCreateTorrent,
+            tooltip: 'Create torrent',
+            child: const Icon(Icons.create_new_folder_outlined),
+          ),
+          const SizedBox(height: 8),
+          FloatingActionButton.small(
+            heroTag: 'pick_torrent_fab',
+            onPressed: _pickTorrentFile,
+            tooltip: 'Pick .torrent file',
+            child: const Icon(Icons.file_open_outlined),
+          ),
+          const SizedBox(height: 8),
+          FloatingActionButton.extended(
+            heroTag: 'paste_magnet_fab',
+            onPressed: _showAddMagnetDialog,
+            icon: const Icon(Icons.add_link),
+            label: const Text('Paste magnet'),
+          ),
+          const SizedBox(height: 8),
+        ],
+        FloatingActionButton(
+          heroTag: 'torrent_fab_toggle',
+          onPressed: () => setState(() => _fabExpanded = !_fabExpanded),
+          tooltip: _fabExpanded ? 'Close actions' : 'Add torrent',
+          child: Icon(_fabExpanded ? Icons.close : Icons.add),
         ),
       ],
     );
@@ -578,27 +589,8 @@ class _TorrentsScreenState extends State<TorrentsScreen>
                 cacheExtent: 200,
                 padding: EdgeInsets.only(bottom: Platform.isAndroid ? 96 : 12),
                 itemCount: torrents.length,
-                itemBuilder: (context, index) {
-                  final ts = torrents[index];
-                  final card = _buildTorrentCard(context, ts);
-                  if (!Platform.isAndroid) return card;
-                  return Dismissible(
-                    key: ValueKey('dismiss_${ts.id}'),
-                    direction: DismissDirection.endToStart,
-                    background: Container(
-                      alignment: Alignment.centerRight,
-                      color: Theme.of(context).colorScheme.errorContainer,
-                      padding: const EdgeInsets.only(right: 20),
-                      child: Icon(
-                        Icons.delete_outline,
-                        color: Theme.of(context).colorScheme.onErrorContainer,
-                      ),
-                    ),
-                    confirmDismiss: (_) => _confirmDelete(ts),
-                    onDismissed: (_) => _deleteTorrent(ts),
-                    child: card,
-                  );
-                },
+                itemBuilder: (context, index) =>
+                    _buildTorrentCard(context, torrents[index]),
               );
             },
           ),
@@ -900,13 +892,6 @@ class _TorrentsScreenState extends State<TorrentsScreen>
                               color: cs.onSurfaceVariant,
                             ),
                           ),
-                          Text(
-                            ' (${_fmtSize(ts.downloaded)} down)',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: cs.onSurfaceVariant,
-                            ),
-                          ),
                         ],
                         const Spacer(),
                         // Download speed
@@ -920,29 +905,6 @@ class _TorrentsScreenState extends State<TorrentsScreen>
                             _fmtSpeed(ts.downloadSpeed),
                             style: TextStyle(fontSize: 10, color: cs.primary),
                           ),
-                          if (ts.model.totalSize != null) ...() {
-                            final remaining =
-                                ((ts.model.totalSize! * (1 - ts.progress))).round();
-                            final etaSec = (remaining / ts.downloadSpeed).round();
-                            String eta;
-                            if (etaSec < 60) {
-                              eta = '${etaSec}s';
-                            } else if (etaSec < 3600) {
-                              eta = '${(etaSec / 60).round()}m';
-                            } else {
-                              eta = '${(etaSec / 3600).toStringAsFixed(1)}h';
-                            }
-                            return [
-                              const SizedBox(width: 4),
-                              Text(
-                                'ETA $eta',
-                                style: TextStyle(
-                                  fontSize: 10,
-                                  color: cs.onSurfaceVariant,
-                                ),
-                              ),
-                            ];
-                          }(),
                         ],
                         // Upload speed
                         if (ts.uploadSpeed > 512) ...[
@@ -957,6 +919,35 @@ class _TorrentsScreenState extends State<TorrentsScreen>
                             style: TextStyle(fontSize: 10, color: cs.tertiary),
                           ),
                         ],
+                        // ETA while downloading
+                        if (ts.downloadSpeed > 512 &&
+                            ts.model.totalSize != null &&
+                            ts.model.totalSize! > 0 &&
+                            ts.progress < 0.999) ...() {
+                          final remaining =
+                              (ts.model.totalSize! * (1.0 - ts.progress))
+                                  .round();
+                          final etaSec =
+                              (remaining / ts.downloadSpeed).round();
+                          String eta;
+                          if (etaSec < 60) {
+                            eta = '${etaSec}s';
+                          } else if (etaSec < 3600) {
+                            eta = '${(etaSec / 60).round()}m';
+                          } else {
+                            eta =
+                                '${(etaSec / 3600).toStringAsFixed(1)}h';
+                          }
+                          return [
+                            const SizedBox(width: 4),
+                            Text(
+                              'ETA $eta',
+                              style: TextStyle(
+                                  fontSize: 10,
+                                  color: cs.onSurfaceVariant),
+                            ),
+                          ];
+                        }(),
                         // Peers
                         if (ts.peers > 0) ...[
                           const SizedBox(width: 4),
@@ -997,11 +988,7 @@ class _TorrentsScreenState extends State<TorrentsScreen>
                       _redownloadTorrent(ts);
                       break;
                     case 'delete':
-                      _confirmDelete(ts).then((ok) {
-                        if (ok == true) {
-                          _deleteTorrent(ts);
-                        }
-                      });
+                      _deleteTorrent(ts);
                       break;
                   }
                 },

@@ -2,9 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:vault_the_spire/models/torrent.dart';
-import 'package:vault_the_spire/services/settings_service.dart';
 import 'package:vault_the_spire/services/torrent_engine_service.dart';
 import 'package:vault_the_spire/services/torrent_service.dart';
 
@@ -191,6 +189,7 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
                       const SizedBox(height: 12),
                       ClipRRect(
                         borderRadius: BorderRadius.circular(6),
+                        // Pulse (indeterminate) when verifying pieces on disk
                         child: statusLabel == 'Checking'
                             ? const LinearProgressIndicator(minHeight: 12)
                             : LinearProgressIndicator(
@@ -199,18 +198,18 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
                                 backgroundColor: cs.surfaceContainerHighest,
                               ),
                       ),
-                      const SizedBox(height: 8),
                       if (statusLabel == 'Checking')
                         Padding(
                           padding: const EdgeInsets.only(top: 8),
                           child: Text(
-                            'Verifying pieces on disk — this may take a moment for large torrents.',
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Theme.of(context).colorScheme.onSurfaceVariant,
-                            ),
+                            'Verifying pieces on disk…',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                    color: cs.onSurfaceVariant),
                             textAlign: TextAlign.center,
                           ),
                         ),
+                      const SizedBox(height: 8),
                       if (torrent.totalSize != null &&
                           torrent.totalSize! > 0)
                         Row(
@@ -274,26 +273,6 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
                   runSpacing: 8,
                   children: [
                     FilledButton.tonalIcon(
-                      icon: Icon(
-                        (view?.isActive ?? false)
-                            ? Icons.pause_circle_outline
-                            : Icons.play_circle_outline,
-                        size: 16,
-                      ),
-                      label: Text((view?.isActive ?? false) ? 'Pause' : 'Resume'),
-                      onPressed: () async {
-                        if (view?.isActive ?? false) {
-                          await TorrentEngineService.instance.stopTorrent(torrent.id);
-                          await TorrentService.instance.updateTorrentStatus(
-                            torrent.id,
-                            'paused',
-                          );
-                        } else {
-                          await TorrentEngineService.instance.startTorrent(torrent.id);
-                        }
-                      },
-                    ),
-                    FilledButton.tonalIcon(
                       icon: const Icon(Icons.refresh, size: 16),
                       label: const Text('Force refresh'),
                       onPressed: () async {
@@ -306,62 +285,6 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
                                   'Connection refresh triggered')));
                       },
                     ),
-                    OutlinedButton.icon(
-                      icon: const Icon(Icons.fact_check_outlined, size: 16),
-                      label: const Text('Verify files'),
-                      onPressed: () async {
-                        final messenger = ScaffoldMessenger.of(context);
-                        messenger.showSnackBar(
-                          const SnackBar(content: Text('Verifying files on disk...')),
-                        );
-                        try {
-                          await TorrentEngineService.instance.forceStateRecovery(
-                            torrent.id,
-                          );
-                          if (!mounted) return;
-                          messenger.showSnackBar(
-                            const SnackBar(content: Text('Verification complete.')),
-                          );
-                        } catch (e) {
-                          if (!mounted) return;
-                          messenger.showSnackBar(
-                            SnackBar(content: Text('Verify failed: $e')),
-                          );
-                        }
-                      },
-                    ),
-                    if (!Platform.isAndroid)
-                      OutlinedButton.icon(
-                        icon: const Icon(Icons.folder_open, size: 16),
-                        label: const Text('Open folder'),
-                        onPressed: () async {
-                          final path = torrent.filePath?.trim() ?? '';
-                          final dir = Directory(path).existsSync()
-                              ? path
-                              : SettingsService.instance.downloadDestination;
-                          if (dir.isEmpty || !Directory(dir).existsSync()) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(content: Text('Folder not found.')),
-                            );
-                            return;
-                          }
-                          try {
-                            if (Platform.isWindows) {
-                              await Process.run('explorer.exe', [dir]);
-                            } else {
-                              await launchUrl(
-                                Uri.file(dir),
-                                mode: LaunchMode.externalApplication,
-                              );
-                            }
-                          } catch (e) {
-                            if (!mounted) return;
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Could not open folder: $e')),
-                            );
-                          }
-                        },
-                      ),
                     OutlinedButton.icon(
                       icon: const Icon(Icons.replay, size: 16),
                       label: const Text('Redownload'),
@@ -385,6 +308,27 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
                           const SnackBar(
                               content:
                                   Text('Logs copied to clipboard')));
+                      },
+                    ),
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.fact_check_outlined, size: 16),
+                      label: const Text('Verify files'),
+                      onPressed: () async {
+                        final messenger = ScaffoldMessenger.of(context);
+                        messenger.showSnackBar(const SnackBar(
+                            content: Text(
+                                'Verifying files on disk — this may take a moment…')));
+                        try {
+                          await TorrentEngineService.instance
+                              .forceStateRecovery(torrent.id);
+                          if (!mounted) return;
+                          messenger.showSnackBar(const SnackBar(
+                              content: Text('Verification complete.')));
+                        } catch (e) {
+                          if (!mounted) return;
+                          messenger.showSnackBar(SnackBar(
+                              content: Text('Verify failed: $e')));
+                        }
                       },
                     ),
                   ],

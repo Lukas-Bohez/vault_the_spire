@@ -582,8 +582,8 @@ class TorrentService {
 
   String _statusLabelForState(String state) {
     if (state.contains('seed')) return 'Seeding';
-    if (state.contains('download')) return 'Downloading';
     if (state.contains('checking')) return 'Checking';
+    if (state.contains('download')) return 'Downloading';
     if (state.contains('pause')) return 'Paused';
     if (state.contains('error_file_in_use')) return 'File In Use';
     if (state.contains('error_missing_files')) return 'Missing Files';
@@ -827,23 +827,25 @@ class TorrentService {
       }
     }
 
+    // On Windows: hide any .bt.state files in the download folder so they
+    // don't appear in Explorer and confuse users.
     if (Platform.isWindows) {
-      unawaited(_hideExistingBtStateFiles());
+      unawaited(_hideAllBtStateFiles());
     }
   }
 
-  Future<void> _hideExistingBtStateFiles() async {
-    final dir = SettingsService.instance.downloadDestination;
+  Future<void> _hideAllBtStateFiles() async {
+    final dir = SettingsService.instance.downloadDestination.trim();
     if (dir.isEmpty) return;
     try {
-      await for (final entity in Directory(dir).list(recursive: true)) {
-        if (entity is File && entity.path.toLowerCase().endsWith('.bt.state')) {
+      await for (final entity in Directory(dir)
+          .list(recursive: true, followLinks: false)) {
+        if (entity is File &&
+            entity.path.toLowerCase().endsWith('.bt.state')) {
           TorrentEngineService.instance.markFileHiddenOnWindows(entity.path);
         }
       }
-    } catch (_) {
-      // Best-effort startup cleanup only.
-    }
+    } catch (_) {}
   }
 
   Future<void> updateTorrentStatus(String id, String status) async {
