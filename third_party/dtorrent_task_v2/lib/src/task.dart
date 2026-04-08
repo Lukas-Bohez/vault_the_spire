@@ -1018,7 +1018,7 @@ class _TorrentTask
           ?.readSubPieceComplete(event.pieceIndex, event.begin, event.block));
     pieceManagerListener
       ?..on<PieceAccepted>((event) => processPieceAccepted(event.pieceIndex))
-      ..on<PieceRejected>((event) => null);
+      ..on<PieceRejected>((event) => processPieceRejected(event.index));
     lsdListener?.on<LSDNewPeer>(_processLSDPeerEvent);
     _lsd?.port = _serverSocket?.port;
     try {
@@ -1235,7 +1235,8 @@ class _TorrentTask
   void _processReceivePiece(PeerPieceEvent event) {
     if (_pieceManager == null || _peersManager == null) return;
 
-    _log.info('Received piece from ${event.peer.address}: index=${event.index}, begin=${event.begin}, len=${event.block.length}');
+    _log.fine(
+        'Received piece from ${event.peer.address}: index=${event.index}, begin=${event.begin}, len=${event.block.length}');
 
     var piece = _pieceManager![event.index];
     var i = event.index;
@@ -1243,7 +1244,7 @@ class _TorrentTask
       var blockStart = piece.offset + event.begin;
       var blockEnd = blockStart + event.block.length;
       if (blockEnd > piece.end) {
-        _log.info('Error:', 'Piece overlaps with next piece');
+        _log.warning('Piece overlaps with next piece: index=${event.index}');
         // will request the same piece below
       } else {
         if (!piece.isCompleted) {
@@ -1282,7 +1283,8 @@ class _TorrentTask
       return;
     }
 
-    _log.info('Peer handshake complete for ${event.peer.address}, sending bitfield');
+    _log.fine(
+      'Peer handshake complete for ${event.peer.address}, sending bitfield');
     event.peer.sendBitfield(_fileManager!.localBitfield);
 
     // Try immediately to start piece requests after handshake.
@@ -1309,7 +1311,8 @@ class _TorrentTask
 
   void _processBitfieldUpdate(PeerBitfieldEvent bitfieldEvent) {
     if (_fileManager == null || _pieceManager == null) return;
-    _log.info('Bitfield update from ${bitfieldEvent.peer.address}: remote has ${bitfieldEvent.peer.remoteCompletePieces.length} pieces, local has ${_fileManager!.localBitfield.completedPieces.length} pieces');
+    _log.fine(
+        'Bitfield update from ${bitfieldEvent.peer.address}: remote has ${bitfieldEvent.peer.remoteCompletePieces.length} pieces, local has ${_fileManager!.localBitfield.completedPieces.length} pieces');
     if (bitfieldEvent.bitfield != null) {
       if (_fileManager!.isAllComplete && bitfieldEvent.peer.isSeeder) {
         bitfieldEvent.peer.dispose(BadException(
@@ -1329,7 +1332,8 @@ class _TorrentTask
       }
 
       if (shouldBeInterested) {
-        _log.info('Peer ${bitfieldEvent.peer.address} is interesting and ${bitfieldEvent.peer.chokeMe ? 'choked' : 'unchoked'}');
+        _log.fine(
+            'Peer ${bitfieldEvent.peer.address} is interesting and ${bitfieldEvent.peer.chokeMe ? 'choked' : 'unchoked'}');
         // Send interested if we haven't already
         if (!bitfieldEvent.peer.interestedRemote) {
           bitfieldEvent.peer.sendInterested(true);
@@ -1347,7 +1351,8 @@ class _TorrentTask
           }
           // Start requesting if peer is sleeping (has no active requests)
           if (bitfieldEvent.peer.isSleeping) {
-            _log.info('Peer ${bitfieldEvent.peer.address} is sleeping, request pieces');
+            _log.fine(
+                'Peer ${bitfieldEvent.peer.address} is sleeping, request pieces');
             Timer.run(() => requestPieces(bitfieldEvent.peer));
           }
         }
@@ -1393,7 +1398,8 @@ class _TorrentTask
 
   void _processChokeChange(PeerChokeChanged event) {
     if (_pieceManager == null || _peersManager == null) return;
-    _log.info('Peer ${event.peer.address} choke state changed: ${event.choked ? 'choked' : 'unchoked'}');
+    _log.fine(
+        'Peer ${event.peer.address} choke state changed: ${event.choked ? 'choked' : 'unchoked'}');
     // Update available peers for pieces.
     if (!event.choked) {
       var completedPieces = event.peer.remoteCompletePieces;
@@ -1412,9 +1418,11 @@ class _TorrentTask
 
   void _processRequestTimeout(Peer peer, List<List<int>> requests) {
     if (_pieceManager == null || _peersManager == null) return;
+    final nearEndgame = _isNearCompletionForEndgame();
+    final resendThreshold = nearEndgame ? 0 : 1;
     var flag = false;
     for (var request in requests) {
-      if (request[4] >= 3) {
+      if (request[4] >= resendThreshold) {
         flag = true;
         Timer.run(() => peer.requestCancel(request[0], request[1], request[2]));
         var index = request[0];
@@ -1425,7 +1433,7 @@ class _TorrentTask
       }
     }
     // Wake up other possibly idle peers.
-    if (flag) {
+    if (flag || nearEndgame) {
       for (var p in _peersManager!.activePeers) {
         if (p != peer && p.isSleeping) {
           // TODO: should we request from all peers ?
@@ -1435,9 +1443,17 @@ class _TorrentTask
     }
   }
 
+  bool _isNearCompletionForEndgame() {
+    final manager = _fileManager;
+    if (manager == null) return false;
+    final bitfield = manager.localBitfield;
+    final remaining = bitfield.piecesNum - bitfield.completedPieces.length;
+    return remaining > 0 && remaining <= 12;
+  }
+
   void requestPieces(Peer peer, [int pieceIndex = -1]) async {
     if (_pieceManager == null || _peersManager == null) return;
-    _log.info('requestPieces called for ${peer.address}, pieceIndex=$pieceIndex');
+    _log.fine('requestPieces called for ${peer.address}, pieceIndex=$pieceIndex');
     if (_peersManager!.addPausedRequest(peer, pieceIndex)) return;
     Piece? piece;
     if (pieceIndex != -1) {

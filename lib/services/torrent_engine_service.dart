@@ -1265,8 +1265,16 @@ class TorrentEngineService {
       _sequentialConfigFor(dtModel),
     );
 
+    // Do not auto-apply magnet `so` file selection hints.
+    // Many public magnets include `so` for partial/preview downloads, which can
+    // make full-torrent progress appear hard-stuck at a fixed percent.
+    // Keep default behavior aligned with mainstream clients: download full content
+    // unless the user explicitly changes file priorities in-app.
     if (magnet.selectedFileIndices?.isNotEmpty == true) {
-      task.applySelectedFiles(magnet.selectedFileIndices!);
+      _log(
+        torrent.id,
+        'Ignoring magnet so= file-selection hint to avoid implicit partial downloads.',
+      );
     }
 
     _tasks[torrent.id] = task;

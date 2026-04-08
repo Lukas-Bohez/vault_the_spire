@@ -17,6 +17,14 @@ const RECORD_TIME = 5000000;
 /// The maximum number of requests to be increased in each round is 3.
 const MAX_CWND_INCREASE_REQUESTS_PER_RTT = 3 * 16384;
 
+/// Initial congestion window size for TCP peers.
+/// Keep several 16KiB blocks in flight to avoid underutilization on normal RTT.
+const INITIAL_TCP_CWND = DEFAULT_REQUEST_LENGTH * 8;
+
+/// Minimum congestion window used after timeout backoff.
+/// Resetting to a single block is too aggressive and can mimic hard stalls.
+const MIN_RECOVERY_CWND = DEFAULT_REQUEST_LENGTH * 4;
+
 /// Initial congestion window size for uTP (optimized for better performance)
 /// Set to 2.5x DEFAULT_REQUEST_LENGTH (40960 bytes) for faster startup
 const INITIAL_UTP_CWND = 40960; // DEFAULT_REQUEST_LENGTH * 2.5 = 16384 * 2.5
@@ -34,7 +42,7 @@ mixin CongestionControl on EventsEmittable<PeerEvent> {
 
   Timer? _timeout;
 
-  int _allowWindowSize = DEFAULT_REQUEST_LENGTH;
+  int _allowWindowSize = INITIAL_TCP_CWND;
 
   final List<List<dynamic>> _downloadedHistory = <List<dynamic>>[];
 
@@ -90,7 +98,7 @@ mixin CongestionControl on EventsEmittable<PeerEvent> {
 
       times++;
       _rto *= 2;
-      _allowWindowSize = DEFAULT_REQUEST_LENGTH;
+      _allowWindowSize = MIN_RECOVERY_CWND;
       //TODO: remove the need for casting
       events.emit(RequestTimeoutEvent(timeoutR, this as Peer));
       startRequestDataTimeout(times);
