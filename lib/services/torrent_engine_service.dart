@@ -103,6 +103,7 @@ class TorrentEngineService {
   final Map<String, DateTime> _lastUploadedSampleByTorrent = {};
   final Map<String, int> _scrapedSeedersByTorrent = {};
   final Map<String, int> _scrapedLeechersByTorrent = {};
+  final Set<String> _refreshInFlight = <String>{};
   final Set<String> _forceRedownloadInFlight = <String>{};
   DateTime _lastPeerLogTime = DateTime.fromMillisecondsSinceEpoch(0);
   int _peerEventsSinceLastLog = 0;
@@ -542,9 +543,14 @@ class TorrentEngineService {
   Future<void> _refreshConnectionIfDue(
     String torrentId,
     dt.TorrentTask task, {
-    Duration minInterval = const Duration(minutes: 3),
+    Duration minInterval = const Duration(minutes: 5),
     String reason = 'periodic_health_check',
   }) async {
+    if (_refreshInFlight.contains(torrentId)) {
+      _log(torrentId, 'Refresh skipped ($reason): refresh already in flight.');
+      return;
+    }
+
     final lastRefresh = _lastRefreshAtByTorrent[torrentId];
     if (lastRefresh != null &&
         DateTime.now().difference(lastRefresh) < minInterval) {
@@ -554,8 +560,14 @@ class TorrentEngineService {
       );
       return;
     }
+
+    _refreshInFlight.add(torrentId);
     _lastRefreshAtByTorrent[torrentId] = DateTime.now();
-    await _refreshConnection(torrentId, task);
+    try {
+      await _refreshConnection(torrentId, task);
+    } finally {
+      _refreshInFlight.remove(torrentId);
+    }
   }
 
   void _startHealthCheckTimer(String torrentId, dt.TorrentTask task) {
@@ -614,6 +626,7 @@ class TorrentEngineService {
             await _refreshConnectionIfDue(
               torrentId,
               task,
+              minInterval: const Duration(minutes: 5),
               reason: 'peerless_intervals',
             );
           }
@@ -643,12 +656,17 @@ class TorrentEngineService {
               await _refreshConnectionIfDue(
                 torrentId,
                 task,
+                minInterval: const Duration(minutes: 10),
                 reason: 'stagnant_download_intervals',
               );
               try {
                 task.requestPeersFromDHT();
               } catch (_) {
                 // Best-effort only.
+              }
+              if ((_stallRecoveryCycles[torrentId] ?? 0) >= 2) {
+                unawaited(_forceStateRecovery(torrentId, task));
+                _requestMissingPieces(task);
               }
             }
           } else {
@@ -764,7 +782,12 @@ class TorrentEngineService {
       debugPrint('forceRefresh: torrent not active in memory: $torrentId');
       return;
     }
-    await _refreshConnection(torrentId, task);
+    await _refreshConnectionIfDue(
+      torrentId,
+      task,
+      minInterval: const Duration(seconds: 20),
+      reason: 'manual_force_refresh',
+    );
   }
 
   /// Verifies all downloaded pieces against their SHA-1 hashes.
@@ -2442,6 +2465,7 @@ class TorrentEngineService {
     _lastReportedProgressByTorrent.remove(torrentId);
     _lastProgressChangeAtByTorrent.remove(torrentId);
     _lastRefreshAtByTorrent.remove(torrentId);
+    _refreshInFlight.remove(torrentId);
     _lastDownloadedByTorrent.remove(torrentId);
     _stagnantDownloadIntervals.remove(torrentId);
     _tasks.remove(torrentId);
