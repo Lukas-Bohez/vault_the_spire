@@ -96,6 +96,9 @@ class TorrentEngineService {
   final Map<String, DateTime> _lastProgressLogTimes = {};
   final Map<String, double> _lastReportedProgressByTorrent = {};
   final Map<String, DateTime> _lastProgressChangeAtByTorrent = {};
+  final Map<String, DateTime> _lastRefreshAtByTorrent = {};
+  final Map<String, int> _lastDownloadedByTorrent = {};
+  final Map<String, int> _stagnantDownloadIntervals = {};
   final Map<String, int> _uploadedBytesByTorrent = {};
   final Map<String, DateTime> _lastUploadedSampleByTorrent = {};
   final Map<String, int> _scrapedSeedersByTorrent = {};
@@ -536,11 +539,32 @@ class TorrentEngineService {
     }
   }
 
+  Future<void> _refreshConnectionIfDue(
+    String torrentId,
+    dt.TorrentTask task, {
+    Duration minInterval = const Duration(minutes: 3),
+    String reason = 'periodic_health_check',
+  }) async {
+    final lastRefresh = _lastRefreshAtByTorrent[torrentId];
+    if (lastRefresh != null &&
+        DateTime.now().difference(lastRefresh) < minInterval) {
+      _log(
+        torrentId,
+        'Refresh skipped ($reason): cooldown active (${minInterval.inSeconds}s).',
+      );
+      return;
+    }
+    _lastRefreshAtByTorrent[torrentId] = DateTime.now();
+    await _refreshConnection(torrentId, task);
+  }
+
   void _startHealthCheckTimer(String torrentId, dt.TorrentTask task) {
     _healthCheckTimers[torrentId]?.cancel();
     _peerlessCounters[torrentId] = 0;
     _zeroProgressCounters[torrentId] = 0;
     _stallRecoveryCycles[torrentId] = 0;
+    _stagnantDownloadIntervals[torrentId] = 0;
+    _lastDownloadedByTorrent[torrentId] = task.downloaded ?? 0;
 
     _healthCheckTimers[torrentId] = Timer.periodic(const Duration(seconds: 30), (
       timer,
@@ -554,6 +578,25 @@ class TorrentEngineService {
         }
 
         final peers = task.connectedPeersNumber;
+        final downloaded = task.downloaded ?? 0;
+        final previousDownloaded =
+            _lastDownloadedByTorrent[torrentId] ?? downloaded;
+        final downloadedDelta = downloaded - previousDownloaded;
+        _lastDownloadedByTorrent[torrentId] = downloaded;
+
+        final progress = task.progress;
+        final lastProgress =
+            _lastReportedProgressByTorrent[torrentId] ?? progress;
+        final progressDelta = progress - lastProgress;
+        final bool madeForwardProgress =
+            downloadedDelta > 64 * 1024 || progressDelta > 0.0001;
+
+        if (madeForwardProgress) {
+          _stagnantDownloadIntervals[torrentId] = 0;
+          _zeroProgressCounters[torrentId] = 0;
+          _stallRecoveryCycles[torrentId] = 0;
+        }
+
         if (peers == 0) {
           try {
             task.requestPeersFromDHT();
@@ -566,48 +609,50 @@ class TorrentEngineService {
             torrentId,
             'No peers for interval, peerless count ${_peerlessCounters[torrentId]}',
           );
-          if (_peerlessCounters[torrentId]! >= 4) {
+          if (_peerlessCounters[torrentId]! >= 8) {
             _peerlessCounters[torrentId] = 0;
-            await _refreshConnection(torrentId, task);
+            await _refreshConnectionIfDue(
+              torrentId,
+              task,
+              reason: 'peerless_intervals',
+            );
           }
         } else {
           if ((_peerlessCounters[torrentId] ?? 0) > 0) {
             _log(torrentId, 'Peers returned at $peers connections');
           }
           _peerlessCounters[torrentId] = 0;
-          final downloaded = task.downloaded ?? 0;
-          final progress = task.progress;
-          if (downloaded <= 0 && progress < 0.001) {
-            _zeroProgressCounters[torrentId] =
-                (_zeroProgressCounters[torrentId] ?? 0) + 1;
-            _log(
-              torrentId,
-              'Peers connected but no piece progress yet '
-              '(stall count ${_zeroProgressCounters[torrentId]}).',
-            );
-            if ((_zeroProgressCounters[torrentId] ?? 0) >= 4) {
-              _zeroProgressCounters[torrentId] = 0;
+          if (!madeForwardProgress) {
+            _stagnantDownloadIntervals[torrentId] =
+                (_stagnantDownloadIntervals[torrentId] ?? 0) + 1;
+
+            if (downloaded <= 0 && progress < 0.001) {
+              _zeroProgressCounters[torrentId] =
+                  (_zeroProgressCounters[torrentId] ?? 0) + 1;
+            }
+
+            final stagnantCount = _stagnantDownloadIntervals[torrentId] ?? 0;
+            if (stagnantCount >= 8 && task.currentDownloadSpeed <= 0.5) {
+              _stagnantDownloadIntervals[torrentId] = 0;
               _stallRecoveryCycles[torrentId] =
                   (_stallRecoveryCycles[torrentId] ?? 0) + 1;
               _log(
                 torrentId,
-                'Triggering stall recovery: reannounce + DHT refresh.',
+                'Triggering stall recovery after stagnant download intervals.',
               );
-              await _refreshConnection(torrentId, task);
+              await _refreshConnectionIfDue(
+                torrentId,
+                task,
+                reason: 'stagnant_download_intervals',
+              );
               try {
                 task.requestPeersFromDHT();
               } catch (_) {
                 // Best-effort only.
               }
-              if ((_stallRecoveryCycles[torrentId] ?? 0) >= 3) {
-                _stallRecoveryCycles[torrentId] = 0;
-                await _hardRestartTorrent(torrentId);
-                return;
-              }
             }
           } else {
-            _zeroProgressCounters[torrentId] = 0;
-            _stallRecoveryCycles[torrentId] = 0;
+            _stagnantDownloadIntervals[torrentId] = 0;
           }
         }
 
@@ -651,14 +696,24 @@ class TorrentEngineService {
               // bytes, SHA-1 validates every piece, and rebuilds completedPieces.
               TorrentService.instance.invalidateDiskSnapshot(torrentId);
               unawaited(TorrentService.instance.refreshTorrentStates());
-              await _refreshConnection(torrentId, task);
+              await _refreshConnectionIfDue(
+                torrentId,
+                task,
+                minInterval: const Duration(minutes: 1),
+                reason: 'near_complete_recovery_cycle_1',
+              );
               try {
                 task.requestPeersFromDHT();
               } catch (_) {}
               unawaited(_forceStateRecovery(torrentId, task));
             } else if (cycle == 2) {
               // Cycle 2: retry peer refresh + explicitly re-request missing pieces
-              await _refreshConnection(torrentId, task);
+              await _refreshConnectionIfDue(
+                torrentId,
+                task,
+                minInterval: const Duration(minutes: 1),
+                reason: 'near_complete_recovery_cycle_2',
+              );
               try {
                 task.requestPeersFromDHT();
               } catch (_) {}
@@ -1897,12 +1952,18 @@ class TorrentEngineService {
     _hardRecoveryInFlight.add(torrentId);
     try {
       _log(torrentId, 'Hard restart #${restartCount + 1} of 3 starting.');
+      final torrent = await TorrentService.instance.getTorrentById(torrentId);
       await stopTorrent(torrentId);
       await Future.delayed(const Duration(seconds: 1));
+
+      final storedDownloadDir = torrent == null
+          ? null
+          : _storedDownloadDirForResume(torrent);
       final configured = SettingsService.instance.downloadDestination.trim();
       await startTorrent(
         torrentId,
-        destinationPath: configured.isEmpty ? null : configured,
+        destinationPath:
+            storedDownloadDir ?? (configured.isEmpty ? null : configured),
       );
       _log(torrentId, 'Hard restart complete.');
     } catch (e) {
@@ -2319,6 +2380,9 @@ class TorrentEngineService {
     _scrapedLeechersByTorrent.remove(torrentId);
     _lastReportedProgressByTorrent.remove(torrentId);
     _lastProgressChangeAtByTorrent.remove(torrentId);
+    _lastRefreshAtByTorrent.remove(torrentId);
+    _lastDownloadedByTorrent.remove(torrentId);
+    _stagnantDownloadIntervals.remove(torrentId);
     _tasks.remove(torrentId);
   }
 
