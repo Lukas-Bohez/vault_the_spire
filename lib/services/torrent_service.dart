@@ -256,6 +256,9 @@ class TorrentService {
       <String, TorrentViewState>{};
   final Map<String, _DiskReconcileSnapshot> _diskSnapshots =
       <String, _DiskReconcileSnapshot>{};
+    final Map<String, double> _progressHighWaterByTorrentId =
+      <String, double>{};
+    final Map<String, int> _downloadedHighWaterByTorrentId = <String, int>{};
   final Map<String, DateTime> _pendingMetadataRetryAfter = <String, DateTime>{};
   final Set<String> _pendingMetadataRetryInFlight = <String>{};
   bool _stateSyncStarted = false;
@@ -429,11 +432,43 @@ class TorrentService {
           missingOnDisk: missingOnDisk,
           hasRuntime: runtime != null,
         );
-        final progress = isComplete
+        var progress = isComplete
             ? 1.0
             : totalSize > 0
             ? (downloaded / totalSize).clamp(0.0, 1.0)
             : (runtime?.progress ?? torrent.progress).clamp(0.0, 1.0);
+
+        final allowsProgressRegression =
+            missingOnDisk ||
+            state.contains('checking') ||
+            state.contains('error_missing_files');
+
+        if (allowsProgressRegression) {
+          _progressHighWaterByTorrentId[torrent.id] = progress;
+          _downloadedHighWaterByTorrentId[torrent.id] = downloaded;
+        } else {
+          final previousProgress =
+              _progressHighWaterByTorrentId[torrent.id] ??
+              _latestStatesByTorrentId[torrent.id]?.progress ??
+              torrent.progress;
+          if (progress + 0.02 < previousProgress) {
+            progress = previousProgress;
+          }
+          _progressHighWaterByTorrentId[torrent.id] = math.max(
+            previousProgress,
+            progress,
+          );
+
+          final previousDownloaded =
+              _downloadedHighWaterByTorrentId[torrent.id] ?? torrent.bytesDown;
+          if (totalSize > 0 && downloaded < previousDownloaded) {
+            downloaded = previousDownloaded;
+          }
+          _downloadedHighWaterByTorrentId[torrent.id] = math.max(
+            previousDownloaded,
+            downloaded,
+          );
+        }
 
         final isSeeding = state.contains('seed');
         final dlSpeed = isSeeding ? 0.0 : (runtime?.downloadSpeed ?? 0.0);
@@ -727,6 +762,8 @@ class TorrentService {
     _runtimeByTorrentId.remove(id);
     _latestStatesByTorrentId.remove(id);
     _diskSnapshots.remove(id);
+    _progressHighWaterByTorrentId.remove(id);
+    _downloadedHighWaterByTorrentId.remove(id);
     _pendingMetadataRetryAfter.remove(id);
     _pendingMetadataRetryInFlight.remove(id);
     _snapshotPending = true;
@@ -961,6 +998,8 @@ class TorrentService {
           _runtimeByTorrentId.remove(id);
           _latestStatesByTorrentId.remove(id);
           _diskSnapshots.remove(id);
+          _progressHighWaterByTorrentId.remove(id);
+          _downloadedHighWaterByTorrentId.remove(id);
           _pendingMetadataRetryAfter.remove(id);
           _pendingMetadataRetryInFlight.remove(id);
         }
