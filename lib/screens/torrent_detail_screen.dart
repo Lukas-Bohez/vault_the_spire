@@ -121,8 +121,9 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
       builder: (context, snapshot) {
         final view = snapshot.data;
         final torrent = view?.model ?? widget.torrent;
-        final progress =
-            (view?.progress ?? torrent.progress).clamp(0.0, 1.0);
+        final progress = normalizeTorrentProgressForDisplay(
+          (view?.progress ?? torrent.progress).clamp(0.0, 1.0),
+        );
         final statusLabel =
             view?.statusLabel ?? (torrent.status ?? 'Unknown');
         final cs = Theme.of(context).colorScheme;

@@ -25,6 +25,14 @@ class TorrentAlreadyExistsException implements Exception {
 
 enum MagnetAddOutcome { started, queued, pendingMetadata }
 
+const double displayCompleteProgressThreshold = 0.9989;
+
+double normalizeTorrentProgressForDisplay(double progress) {
+  final clamped = progress.clamp(0.0, 1.0);
+  if (clamped >= displayCompleteProgressThreshold) return 1.0;
+  return clamped;
+}
+
 class TorrentViewState {
   final TorrentModel model;
   final int downloaded;
@@ -68,6 +76,7 @@ class TorrentViewState {
   String get name => model.name;
   bool get isSeeding => state.contains('seed');
   bool get isActive => state.contains('download') || state.contains('seed');
+  double get displayProgress => normalizeTorrentProgressForDisplay(progress);
   double get seedingProgress {
     final total = model.totalSize ?? 0;
     if (total <= 0) return 0.0;
@@ -630,6 +639,7 @@ class TorrentService {
   }
 
   String _fallbackStatusMessage(String state, double progress, int peers) {
+    final displayProgress = normalizeTorrentProgressForDisplay(progress);
     if (state.contains('error_file_in_use')) {
       return 'Redownload blocked: close programs using the file and retry.';
     }
@@ -640,21 +650,21 @@ class TorrentService {
       return 'Waiting for peers to provide metadata...';
     }
     if (state.contains('seed')) {
-      return 'Seeding • ${(progress * 100).toStringAsFixed(1)}%';
+      return 'Seeding • ${(displayProgress * 100).toStringAsFixed(1)}%';
     }
     if (state.contains('pause')) {
-      return 'Paused • ${(progress * 100).toStringAsFixed(1)}%';
+      return 'Paused • ${(displayProgress * 100).toStringAsFixed(1)}%';
     }
     if (state.contains('download')) {
       if (peers <= 0) {
         return 'Searching for peers...';
       }
-      return 'Downloading • ${(progress * 100).toStringAsFixed(1)}% • $peers peers';
+      return 'Downloading • ${(displayProgress * 100).toStringAsFixed(1)}% • $peers peers';
     }
     if (state.contains('error')) {
       return 'Torrent error';
     }
-    return '${(progress * 100).toStringAsFixed(1)}%';
+    return '${(displayProgress * 100).toStringAsFixed(1)}%';
   }
 
   void _retryPendingMetadataIfDue(TorrentModel torrent) {

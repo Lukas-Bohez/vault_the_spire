@@ -791,7 +791,7 @@ class _TorrentsScreenState extends State<TorrentsScreen>
 
   Widget _buildTorrentCard(BuildContext context, TorrentViewState ts) {
     final torrent = ts.model;
-    final progress = ts.progress.clamp(0.0, 1.0);
+    final progress = ts.displayProgress;
     final stateColor = _stateColor(context, ts.state);
     final cs = Theme.of(context).colorScheme;
 
@@ -923,9 +923,9 @@ class _TorrentsScreenState extends State<TorrentsScreen>
                         if (ts.downloadSpeed > 512 &&
                             ts.model.totalSize != null &&
                             ts.model.totalSize! > 0 &&
-                            ts.progress < 0.999) ...() {
+                            progress < 0.999) ...() {
                           final remaining =
-                              (ts.model.totalSize! * (1.0 - ts.progress))
+                              (ts.model.totalSize! * (1.0 - progress))
                                   .round();
                           final etaSec =
                               (remaining / ts.downloadSpeed).round();

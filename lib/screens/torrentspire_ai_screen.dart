@@ -1030,7 +1030,7 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
                             for (final item in activeDownloads)
                               Builder(
                                 builder: (context) {
-                                  final progress = item.progress.clamp(0.0, 1.0);
+                                  final progress = item.displayProgress;
                                   return ListTile(
                                     dense: true,
                                     title: Text(
