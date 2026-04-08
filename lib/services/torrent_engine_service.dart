@@ -190,7 +190,7 @@ class TorrentEngineService {
   void _recordProgressSample(String torrentId, double progress) {
     final previous = _lastReportedProgressByTorrent[torrentId];
     _lastReportedProgressByTorrent[torrentId] = progress;
-    if (previous == null || (progress - previous).abs() >= 0.001) {
+    if (previous == null || (progress - previous).abs() >= 0.00001) {
       _lastProgressChangeAtByTorrent[torrentId] = DateTime.now();
     }
   }
@@ -595,6 +595,9 @@ class TorrentEngineService {
             _lastDownloadedByTorrent[torrentId] ?? downloaded;
         final downloadedDelta = downloaded - previousDownloaded;
         _lastDownloadedByTorrent[torrentId] = downloaded;
+        if (downloadedDelta > 0) {
+          _lastProgressChangeAtByTorrent[torrentId] = DateTime.now();
+        }
 
         final progress = task.progress;
         final lastProgress =
@@ -623,12 +626,16 @@ class TorrentEngineService {
           );
           if (_peerlessCounters[torrentId]! >= 8) {
             _peerlessCounters[torrentId] = 0;
-            await _refreshConnectionIfDue(
+            _log(
               torrentId,
-              task,
-              minInterval: const Duration(minutes: 5),
-              reason: 'peerless_intervals',
+              'Peerless intervals reached: requesting DHT peers only (auto-refresh disabled).',
             );
+            _addDhtBootstrapNodes(task);
+            try {
+              task.requestPeersFromDHT();
+            } catch (_) {
+              // Best-effort only.
+            }
           }
         } else {
           if ((_peerlessCounters[torrentId] ?? 0) > 0) {
@@ -651,23 +658,16 @@ class TorrentEngineService {
                   (_stallRecoveryCycles[torrentId] ?? 0) + 1;
               _log(
                 torrentId,
-                'Triggering stall recovery after stagnant download intervals.',
+                'Triggering stall recovery after stagnant download intervals (auto-refresh disabled).',
               );
-              await _refreshConnectionIfDue(
-                torrentId,
-                task,
-                minInterval: const Duration(minutes: 10),
-                reason: 'stagnant_download_intervals',
-              );
+              _addDhtBootstrapNodes(task);
               try {
                 task.requestPeersFromDHT();
               } catch (_) {
                 // Best-effort only.
               }
-              if ((_stallRecoveryCycles[torrentId] ?? 0) >= 2) {
-                unawaited(_forceStateRecovery(torrentId, task));
-                _requestMissingPieces(task);
-              }
+              unawaited(_forceStateRecovery(torrentId, task));
+              _requestMissingPieces(task);
             }
           } else {
             _stagnantDownloadIntervals[torrentId] = 0;
@@ -708,59 +708,33 @@ class TorrentEngineService {
             );
 
             if (cycle == 1) {
-              // Cycle 1: refresh peers AND rebuild bitfield from disk.
-              // The bitfield cache can desync under concurrent multi-file writes
-              // (GTA IV, large FitGirl repacks). StateRecovery re-reads actual
-              // bytes, SHA-1 validates every piece, and rebuilds completedPieces.
+              // Cycle 1: rebuild bitfield from disk and request missing pieces.
               TorrentService.instance.invalidateDiskSnapshot(torrentId);
               unawaited(TorrentService.instance.refreshTorrentStates());
-              await _refreshConnectionIfDue(
-                torrentId,
-                task,
-                minInterval: const Duration(minutes: 1),
-                reason: 'near_complete_recovery_cycle_1',
-              );
               try {
                 task.requestPeersFromDHT();
               } catch (_) {}
               unawaited(_forceStateRecovery(torrentId, task));
+              _requestMissingPieces(task);
             } else if (cycle == 2) {
-              // Cycle 2: retry peer refresh + explicitly re-request missing pieces
-              await _refreshConnectionIfDue(
-                torrentId,
-                task,
-                minInterval: const Duration(minutes: 1),
-                reason: 'near_complete_recovery_cycle_2',
-              );
+              // Cycle 2: retry DHT peer discovery + explicitly request missing pieces.
               try {
                 task.requestPeersFromDHT();
               } catch (_) {}
-              try {
-                final dynamic t = task;
-                final pm = t.pieceManager;
-                if (pm != null) {
-                  final pieces = (pm.pieces as Map?)?.entries ?? [];
-                  for (final entry in pieces) {
-                    final isComplete =
-                        (entry.value.isCompletelyDownloaded as bool?) ?? false;
-                    if (!isComplete) {
-                      try {
-                        t.requestPiece(entry.key);
-                      } catch (_) {}
-                    }
-                  }
-                }
-              } catch (_) {}
+              _requestMissingPieces(task);
               unawaited(_forceStateRecovery(torrentId, task));
             } else if (cycle >= 3) {
-              // Cycle 3: hard restart as last resort
+              // Cycle 3+: keep torrent active and continue piece recovery.
               _stallRecoveryCycles[torrentId] = 0;
               _log(
                 torrentId,
-                'Stall unresolved after 3 recovery cycles — hard restart.',
+                'Near-complete stall persists; continuing piece recovery without auto-refresh/hard-restart.',
               );
-              await _hardRestartTorrent(torrentId);
-              return;
+              try {
+                task.requestPeersFromDHT();
+              } catch (_) {}
+              _requestMissingPieces(task);
+              unawaited(_forceStateRecovery(torrentId, task));
             }
           }
         }
