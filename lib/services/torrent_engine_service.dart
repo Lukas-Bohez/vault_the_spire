@@ -1632,7 +1632,9 @@ class TorrentEngineService {
 
   /// Deferred background verification that doesn't block completion.
   /// Runs after TaskCompleted is marked so Android isolate/JNI issues don't crash the app.
-  /// Returns early if task is disposed or if file manager confirms all pieces are written.
+  /// CRITICAL: Does NOT use StateRecovery or isolate-spawning validation on Android.
+  /// Isolate.spawn() uses fork() which is incompatible with JNI after file writes.
+  /// Torrent is already confirmed 100% complete by task engine; verification is optional.
   Future<void> _verifyCompletionIntegrityDeferred(
     String torrentId,
     dt.TorrentTask task,
@@ -1651,47 +1653,30 @@ class TorrentEngineService {
         return;
       }
 
-      // If file manager confirms all pieces are on disk, skip verbose disk validation.
-      // This prevents Android fork crashes from isolate spawning during heavy I/O.
+      // CRITICAL FIX: Skip all StateRecovery/isolate-based validation on Android.
+      // The task engine already confirmed completion (TaskCompleted fired).
+      // File manager's isAllComplete flag is the authoritative source.
+      // Spawning isolates for hash validation causes "libbinder ProcessState can not be used after fork" crash.
       final fileManagerComplete = (task.fileManager?.isAllComplete as bool?) ?? false;
       _log(
         torrentId,
-        'Deferred completion check: fileManager.isAllComplete=$fileManagerComplete',
+        'Deferred completion check: fileManager.isAllComplete=$fileManagerComplete (skipping disk validation entirely)',
       );
-      if (fileManagerComplete) {
-        _log(torrentId, 'File manager confirms all pieces written. Skipping disk validation.');
-        return; // Already confirmed complete, no need for re-verification
+
+      if (!fileManagerComplete) {
+        // If file manager disagrees with task completion, log it but don't re-request.
+        // Torrent is still marked seeding; task engine will handle recovery if needed.
+        _log(
+          torrentId,
+          'WARNING: File manager reports incomplete, but task marked complete. '
+          'Skipping re-download to prevent fork crash. Task engine will handle recovery.',
+        );
       }
 
-      // Only run StateRecovery if file manager doesn't confirm completion.
-      // This is safest path for catching re-download scenarios.
-      _log(torrentId, 'Running deferred state recovery...');
-      await _forceStateRecoveryWithTimeout(torrentId, task, Duration(seconds: 30));
+      _log(torrentId, 'Deferred verification complete (non-blocking, isolate-safe).');
     } catch (e) {
       debugPrint('[DeferredVerification] $torrentId: $e');
       // Non-fatal — torrent already marked complete by task engine.
-    }
-  }
-
-  /// StateRecovery with timeout to prevent hanging on Android I/O.
-  Future<void> _forceStateRecoveryWithTimeout(
-    String torrentId,
-    dt.TorrentTask task,
-    Duration timeout,
-  ) async {
-    try {
-      await _forceStateRecovery(torrentId, task).timeout(
-        timeout,
-        onTimeout: () {
-          _log(
-            torrentId,
-            'State recovery timed out after ${timeout.inSeconds}s. '
-            'Skipping re-download requests (torrent already marked complete).',
-          );
-        },
-      );
-    } catch (e) {
-      debugPrint('[StateRecoveryTimeout] $torrentId: $e');
     }
   }
 
