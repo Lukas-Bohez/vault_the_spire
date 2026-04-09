@@ -322,12 +322,9 @@ class TorrentService {
       (_) => unawaited(_reconcileDiskState(force: true)),
     );
 
-    // If we already have cached merged states, emit them immediately.
-    // Do not emit an empty list here, otherwise UI may show a false
-    // "no torrents" state while DB/runtime refresh is still loading.
-    if (_latestStatesByTorrentId.isNotEmpty) {
-      _torrentStatesController.add(_latestStatesByTorrentId.values.toList());
-    }
+    // Emit an initial value immediately so StreamBuilder consumers can render
+    // a stable empty state while the first DB snapshot is still loading.
+    _torrentStatesController.add(_latestStatesByTorrentId.values.toList());
 
     unawaited(_takeSnapshot(force: true));
   }
