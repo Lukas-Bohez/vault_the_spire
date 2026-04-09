@@ -113,6 +113,84 @@ class _TorrentsScreenState extends State<TorrentsScreen>
     super.initState();
     unawaited(_loadSortMode());
     unawaited(TorrentService.instance.refreshTorrentStates());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkDownloadFolderOnInit();
+    });
+  }
+
+  Future<void> _checkDownloadFolderOnInit() async {
+    final folder = SettingsService.instance.downloadDestination.trim();
+    if (folder.isEmpty) {
+      if (!mounted) return;
+      _showSetDownloadFolderDialog();
+    }
+  }
+
+  Future<bool> _validateDownloadFolder() async {
+    final folder = SettingsService.instance.downloadDestination.trim();
+    if (folder.isEmpty) {
+      if (mounted) {
+        _showSetDownloadFolderDialog();
+      }
+      return false;
+    }
+
+    // Check if folder exists and is accessible
+    try {
+      final dir = Directory(folder);
+      if (!dir.existsSync()) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content:
+                  Text('Download folder "$folder" no longer exists.'),
+              action: SnackBarAction(
+                label: 'Change',
+                onPressed: _showSetDownloadFolderDialog,
+              ),
+              duration: const Duration(seconds: 8),
+            ),
+          );
+        }
+        return false;
+      }
+      return true;
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Cannot access download folder: $e'),
+            action: SnackBarAction(
+              label: 'Change',
+              onPressed: _showSetDownloadFolderDialog,
+            ),
+            duration: const Duration(seconds: 8),
+          ),
+        );
+      }
+      return false;
+    }
+  }
+
+  void _showSetDownloadFolderDialog() {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Set Download Folder'),
+        content: const Text(
+          'You must set a download folder before adding torrents. '
+          'This prevents downloads from being stored in inaccessible app storage. '
+          'Please go to Settings > Download Location and select a folder on external storage.',
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Open Settings'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -357,6 +435,7 @@ class _TorrentsScreenState extends State<TorrentsScreen>
   }
 
   Future<void> _pickTorrentFile() async {
+    if (!await _validateDownloadFolder()) return;
     if (_pickerBusy) return;
     _pickerBusy = true;
     try {
@@ -393,6 +472,7 @@ class _TorrentsScreenState extends State<TorrentsScreen>
   }
 
   Future<void> _handleDropPath(String path) async {
+    if (!await _validateDownloadFolder()) return;
     try {
       if (path.toLowerCase().endsWith('.torrent')) {
         await TorrentService.instance.addTorrentFromTorrentFile(path);
@@ -413,6 +493,7 @@ class _TorrentsScreenState extends State<TorrentsScreen>
   }
 
   Future<void> _showAddMagnetDialog() async {
+    if (!await _validateDownloadFolder()) return;
     final ctrl = TextEditingController();
     final result = await showDialog<String>(
       context: context,
@@ -699,6 +780,7 @@ class _TorrentsScreenState extends State<TorrentsScreen>
   }
 
   Widget _buildEmptyState() {
+    final hasFolder = SettingsService.instance.downloadDestination.trim().isNotEmpty;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -706,52 +788,63 @@ class _TorrentsScreenState extends State<TorrentsScreen>
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
-              Icons.download_for_offline_outlined,
+              hasFolder
+                  ? Icons.download_for_offline_outlined
+                  : Icons.folder_open_outlined,
               size: 72,
               color: Theme.of(context).colorScheme.outlineVariant,
             ),
             const SizedBox(height: 16),
             Text(
-              'No torrents yet',
+              hasFolder ? 'No torrents yet' : 'Set Download Folder First',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
             const SizedBox(height: 8),
             Text(
-              Platform.isAndroid
-                  ? 'Tap + to add or create torrents'
-                  : Platform.isIOS
-                  ? 'Tap + to add or create torrents'
-                  : 'Use + in the top bar to add or create torrents\nYou can also drag and drop files',
+              hasFolder
+                  ? (Platform.isAndroid
+                      ? 'Tap + to add or create torrents'
+                      : Platform.isIOS
+                      ? 'Tap + to add or create torrents'
+                      : 'Use + in the top bar to add or create torrents\nYou can also drag and drop files')
+                  : 'Go to Settings > Download Location and choose a folder on external storage to prevent file corruption from inaccessible app storage.',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
             ),
             const SizedBox(height: 24),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              alignment: WrapAlignment.center,
-              children: [
-                FilledButton.icon(
-                  onPressed: _showAddMagnetDialog,
-                  icon: const Icon(Icons.add_link),
-                  label: const Text('Add Magnet'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: _pickTorrentFile,
-                  icon: const Icon(Icons.file_open_outlined),
-                  label: const Text('Add .torrent File'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: _openCreateTorrent,
-                  icon: const Icon(Icons.create_new_folder_outlined),
-                  label: const Text('Create Torrent'),
-                ),
-              ],
-            ),
+            if (hasFolder)
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                alignment: WrapAlignment.center,
+                children: [
+                  FilledButton.icon(
+                    onPressed: _showAddMagnetDialog,
+                    icon: const Icon(Icons.add_link),
+                    label: const Text('Add Magnet'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _pickTorrentFile,
+                    icon: const Icon(Icons.file_open_outlined),
+                    label: const Text('Add .torrent File'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _openCreateTorrent,
+                    icon: const Icon(Icons.create_new_folder_outlined),
+                    label: const Text('Create Torrent'),
+                  ),
+                ],
+              )
+            else
+              FilledButton.icon(
+                onPressed: _showSetDownloadFolderDialog,
+                icon: const Icon(Icons.folder_open),
+                label: const Text('Go to Settings'),
+              ),
           ],
         ),
       ),

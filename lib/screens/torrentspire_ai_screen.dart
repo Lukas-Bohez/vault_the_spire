@@ -109,6 +109,84 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
     // );
     // Verify AI connection immediately
     _checkAiReadiness();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkDownloadFolderOnInit();
+    });
+  }
+
+  Future<void> _checkDownloadFolderOnInit() async {
+    final folder = SettingsService.instance.downloadDestination.trim();
+    if (folder.isEmpty) {
+      if (!mounted) return;
+      _showSetDownloadFolderDialog();
+    }
+  }
+
+  Future<bool> _validateDownloadFolder() async {
+    final folder = SettingsService.instance.downloadDestination.trim();
+    if (folder.isEmpty) {
+      if (mounted) {
+        _showSetDownloadFolderDialog();
+      }
+      return false;
+    }
+
+    // Check if folder exists and is accessible
+    try {
+      final dir = Directory(folder);
+      if (!dir.existsSync()) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content:
+                  Text('Download folder "$folder" no longer exists.'),
+              action: SnackBarAction(
+                label: 'Change',
+                onPressed: _showSetDownloadFolderDialog,
+              ),
+              duration: const Duration(seconds: 8),
+            ),
+          );
+        }
+        return false;
+      }
+      return true;
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Cannot access download folder: $e'),
+            action: SnackBarAction(
+              label: 'Change',
+              onPressed: _showSetDownloadFolderDialog,
+            ),
+            duration: const Duration(seconds: 8),
+          ),
+        );
+      }
+      return false;
+    }
+  }
+
+  void _showSetDownloadFolderDialog() {
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Set Download Folder'),
+        content: const Text(
+          'You must set a download folder before downloading torrents. '
+          'This prevents downloads from being stored in inaccessible app storage and causing file corruption. '
+          'Please navigate to Settings and select a folder on external storage.',
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Open Settings'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -230,6 +308,7 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
   }
 
   Future<void> _addMagnet() async {
+    if (!await _validateDownloadFolder()) return;
     final text = _magnetController.text.trim();
     if (text.isEmpty) return;
     final outcome = await TorrentService.instance.addTorrentFromMagnetLink(text);
@@ -247,6 +326,7 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
   }
 
   Future<void> _startDownload(SearchResult result) async {
+    if (!await _validateDownloadFolder()) return;
     if (result.magnetLink.isEmpty) return;
     final outcome = await TorrentService.instance.addTorrentFromMagnetLink(
       result.magnetLink,
