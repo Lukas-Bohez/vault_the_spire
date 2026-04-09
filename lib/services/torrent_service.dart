@@ -399,10 +399,7 @@ class TorrentService {
 
         final runtimeState = runtime?.state.toLowerCase() ?? '';
         final runtimeLooksComplete =
-            runtime != null &&
-            (runtimeState.contains('seed') ||
-                (totalSize > 0 && runtime.downloaded >= totalSize) ||
-                runtime.progress >= 0.999);
+          runtime != null && runtimeState.contains('seed');
         final diskContradictsCompletion =
             hasDiskSnapshot &&
             totalSize > 0 &&
@@ -410,14 +407,14 @@ class TorrentService {
             diskBytes < (totalSize * 0.98).round();
         final runtimeComplete =
             runtimeLooksComplete && !diskContradictsCompletion;
-        final completionByBytes =
-            totalSize > 0 &&
-            downloaded >= totalSize &&
-            (!hasDiskSnapshot ||
-                diskComplete ||
-                diskBytes >= (totalSize * 0.98).round());
+        final diskCompleteTrusted =
+          diskComplete &&
+          (runtime == null ||
+            runtimeState.contains('seed') ||
+            runtimeState.contains('pause') ||
+            runtimeState.contains('stop'));
         final isComplete =
-            !missingOnDisk && (diskComplete || runtimeComplete || completionByBytes);
+          !missingOnDisk && (diskCompleteTrusted || runtimeComplete);
 
         if (diskContradictsCompletion) {
           downloaded = diskBytes;

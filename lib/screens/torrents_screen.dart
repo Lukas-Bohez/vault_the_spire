@@ -86,6 +86,48 @@ class _TorrentsScreenState extends State<TorrentsScreen>
   bool _fabExpanded = false;
   bool _pickerBusy = false;
 
+  String? _androidDocumentsUriForPath(String directoryPath) {
+    final normalized = directoryPath.replaceAll('\\', '/');
+    const prefixes = <String>['/storage/emulated/0/', '/sdcard/'];
+    for (final prefix in prefixes) {
+      if (normalized.startsWith(prefix)) {
+        final relative = normalized.substring(prefix.length);
+        final encodedDocId = Uri.encodeComponent('primary:$relative');
+        return 'content://com.android.externalstorage.documents/document/$encodedDocId';
+      }
+    }
+    return null;
+  }
+
+  Future<bool> _tryOpenFolderOnAndroid(String directoryPath) async {
+    final docUri = _androidDocumentsUriForPath(directoryPath);
+    if (docUri != null) {
+      try {
+        if (await launchUrl(
+          Uri.parse(docUri),
+          mode: LaunchMode.externalApplication,
+        )) {
+          return true;
+        }
+      } catch (_) {
+        // Fall through to file URI fallback.
+      }
+    }
+
+    try {
+      if (await launchUrl(
+        Uri.file(directoryPath),
+        mode: LaunchMode.externalApplication,
+      )) {
+        return true;
+      }
+    } catch (_) {
+      // Keep fallback snackbar path below.
+    }
+
+    return false;
+  }
+
   _SortMode _sortModeFromSettings(int value) {
     if (value < 0 || value >= _SortMode.values.length) {
       return _SortMode.dateAdded;
@@ -393,12 +435,16 @@ class _TorrentsScreenState extends State<TorrentsScreen>
       return;
     }
 
-    // Android: file:// URIs throw FileUriExposedException — show path instead
+    // Android: try Documents provider first, then fallback to showing the path.
     if (Platform.isAndroid) {
+      final opened = await _tryOpenFolderOnAndroid(directoryPath);
+      if (opened) return;
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Files saved to:\n$directoryPath'),
+          content: Text(
+            'Unable to open folder automatically. Files saved to:\n$directoryPath',
+          ),
           duration: const Duration(seconds: 6),
           action: SnackBarAction(label: 'OK', onPressed: () {}),
         ),

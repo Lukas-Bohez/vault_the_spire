@@ -2588,16 +2588,11 @@ class TorrentEngineService {
       final isAllComplete = dynamicTask.fileManager?.isAllComplete as bool?;
       if (isAllComplete == true) return true;
     } catch (_) {
-      // Fallback to downloaded/progress checks below.
+      // Fall through to conservative incomplete result below.
     }
-
-    final totalLength = task.metaInfo.length ?? task.metaInfo.totalSize;
-    final downloaded = task.downloaded ?? 0;
-    if (totalLength > 0 &&
-        downloaded >= totalLength &&
-        task.progress >= 0.999) {
-      return true;
-    }
+    // Do NOT mark complete from downloaded/progress counters alone.
+    // Those counters can temporarily reach 100% while piece validity is still pending,
+    // which can surface as videos that play the beginning then skip large gaps.
     return false;
   }
 
