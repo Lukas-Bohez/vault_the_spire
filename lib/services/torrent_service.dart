@@ -199,23 +199,33 @@ _DiskScanResult _runDiskScanSync(_DiskScanInput input) {
           final isStateBackup =
               lowerPath.contains('.bt.state.backup.') ||
               lowerPath.contains('.bt.state.bak');
-          if (!isStateFile && !isStateBackup && !lowerPath.endsWith('.torrent')) {
+          if (!isStateFile &&
+              !isStateBackup &&
+              !lowerPath.endsWith('.torrent')) {
             bytes = directFile.statSync().size;
           }
         } else {
+          // Avoid recursive wildcard scans across the whole download root.
+          // They can be expensive on large libraries and cause Explorer churn.
           for (final entity in root.listSync(
             recursive: false,
             followLinks: false,
           )) {
             final base = p.basename(entity.path).toLowerCase();
-            if (!base.contains(nameToken)) continue;
+            final isExactDirName = entity is Directory && base == nameToken;
+            final isLikelyExactFile =
+                entity is File &&
+                (base == nameToken || base.startsWith('$nameToken.'));
+            if (!isExactDirName && !isLikelyExactFile) continue;
             if (entity is File) {
               final lowerPath = entity.path.toLowerCase();
               final isStateFile = lowerPath.endsWith('.bt.state');
               final isStateBackup =
                   lowerPath.contains('.bt.state.backup.') ||
                   lowerPath.contains('.bt.state.bak');
-              if (!isStateFile && !isStateBackup && !lowerPath.endsWith('.torrent')) {
+              if (!isStateFile &&
+                  !isStateBackup &&
+                  !lowerPath.endsWith('.torrent')) {
                 bytes += entity.statSync().size;
               }
             } else if (entity is Directory) {
@@ -224,7 +234,8 @@ _DiskScanResult _runDiskScanSync(_DiskScanInput input) {
           }
         }
       } else {
-        bytes = sumFileBytesRecursively(root);
+        // No reliable target name: skip broad recursive scan and keep fallback.
+        bytes = input.fallbackBytes;
       }
     } else if (type == FileSystemEntityType.file) {
       final lowerPath = input.outputPath.toLowerCase();
@@ -265,9 +276,8 @@ class TorrentService {
       <String, TorrentViewState>{};
   final Map<String, _DiskReconcileSnapshot> _diskSnapshots =
       <String, _DiskReconcileSnapshot>{};
-    final Map<String, double> _progressHighWaterByTorrentId =
-      <String, double>{};
-    final Map<String, int> _downloadedHighWaterByTorrentId = <String, int>{};
+  final Map<String, double> _progressHighWaterByTorrentId = <String, double>{};
+  final Map<String, int> _downloadedHighWaterByTorrentId = <String, int>{};
   final Map<String, DateTime> _pendingMetadataRetryAfter = <String, DateTime>{};
   final Set<String> _pendingMetadataRetryInFlight = <String>{};
   bool _stateSyncStarted = false;
@@ -399,7 +409,7 @@ class TorrentService {
 
         final runtimeState = runtime?.state.toLowerCase() ?? '';
         final runtimeLooksComplete =
-          runtime != null && runtimeState.contains('seed');
+            runtime != null && runtimeState.contains('seed');
         final diskContradictsCompletion =
             hasDiskSnapshot &&
             totalSize > 0 &&
@@ -408,13 +418,13 @@ class TorrentService {
         final runtimeComplete =
             runtimeLooksComplete && !diskContradictsCompletion;
         final diskCompleteTrusted =
-          diskComplete &&
-          (runtime == null ||
-            runtimeState.contains('seed') ||
-            runtimeState.contains('pause') ||
-            runtimeState.contains('stop'));
+            diskComplete &&
+            (runtime == null ||
+                runtimeState.contains('seed') ||
+                runtimeState.contains('pause') ||
+                runtimeState.contains('stop'));
         final isComplete =
-          !missingOnDisk && (diskCompleteTrusted || runtimeComplete);
+            !missingOnDisk && (diskCompleteTrusted || runtimeComplete);
 
         if (diskContradictsCompletion) {
           downloaded = diskBytes;
@@ -558,6 +568,18 @@ class TorrentService {
   Future<void> _reconcileDiskState({bool force = false}) async {
     final torrents = await TorrentsDao.instance.getAllTorrents();
     final futures = torrents.map((torrent) async {
+      final status = (torrent.status ?? '').toLowerCase();
+      final activeByPersistedState =
+          status.contains('download') ||
+          status.contains('rechecking') ||
+          status.contains('pending_metadata');
+      final activeByRuntime = TorrentEngineService.instance.isRunning(
+        torrent.id,
+      );
+      if (activeByPersistedState || activeByRuntime) {
+        return;
+      }
+
       final cached = _diskSnapshots[torrent.id];
       if (!force &&
           cached != null &&
@@ -774,7 +796,12 @@ class TorrentService {
     unawaited(_takeSnapshot(force: true));
   }
 
-  void invalidateDiskSnapshot(String id) {
+  void clearRuntimeStatus(String id) {
+    _runtimeByTorrentId.remove(id);
+    _queueStateRefresh(force: true);
+  }
+
+  void invalidateDiskSnapshot(String id, {bool runReconcile = true}) {
     _runtimeByTorrentId.remove(id);
     _latestStatesByTorrentId.remove(id);
     _diskSnapshots[id] = _DiskReconcileSnapshot(
@@ -785,7 +812,9 @@ class TorrentService {
     );
     _snapshotPending = true;
     unawaited(_takeSnapshot(force: true));
-    unawaited(_reconcileDiskState(force: true));
+    if (runReconcile) {
+      unawaited(_reconcileDiskState(force: true));
+    }
   }
 
   Future<void> purgeTorrentArtifacts(String id) async {
@@ -880,10 +909,10 @@ class TorrentService {
     final dir = SettingsService.instance.downloadDestination.trim();
     if (dir.isEmpty) return;
     try {
-      await for (final entity in Directory(dir)
-          .list(recursive: true, followLinks: false)) {
-        if (entity is File &&
-            entity.path.toLowerCase().endsWith('.bt.state')) {
+      await for (final entity in Directory(
+        dir,
+      ).list(recursive: true, followLinks: false)) {
+        if (entity is File && entity.path.toLowerCase().endsWith('.bt.state')) {
           TorrentEngineService.instance.markFileHiddenOnWindows(entity.path);
         }
       }

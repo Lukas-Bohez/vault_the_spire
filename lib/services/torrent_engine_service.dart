@@ -99,6 +99,7 @@ class TorrentEngineService {
   final Map<String, DateTime> _lastRefreshAtByTorrent = {};
   final Map<String, int> _lastDownloadedByTorrent = {};
   final Map<String, int> _stagnantDownloadIntervals = {};
+  final Set<String> _pausedTorrentIds = <String>{};
   final Map<String, int> _uploadedBytesByTorrent = {};
   final Map<String, DateTime> _lastUploadedSampleByTorrent = {};
   final Map<String, int> _scrapedSeedersByTorrent = {};
@@ -582,6 +583,14 @@ class TorrentEngineService {
       timer,
     ) async {
       try {
+        if (_pausedTorrentIds.contains(torrentId)) {
+          _peerlessCounters[torrentId] = 0;
+          _zeroProgressCounters[torrentId] = 0;
+          _stallRecoveryCycles[torrentId] = 0;
+          _stagnantDownloadIntervals[torrentId] = 0;
+          return;
+        }
+
         if (_isTaskComplete(task)) {
           _peerlessCounters[torrentId] = 0;
           _zeroProgressCounters[torrentId] = 0;
@@ -855,6 +864,8 @@ class TorrentEngineService {
     // If already running, do nothing
     if (isRunning(torrentId)) return;
 
+    _pausedTorrentIds.remove(torrentId);
+
     final torrent = await TorrentService.instance.getTorrentById(torrentId);
     if (torrent == null) throw StateError('Torrent not found: $torrentId');
 
@@ -1039,7 +1050,7 @@ class TorrentEngineService {
     try {
       (task as dynamic).unpause();
     } catch (_) {}
-    _ensureTaskRunningMode(task);
+    _ensureTaskRunningMode(torrent.id, task);
 
     _progressTimers[torrent.id]?.cancel();
     _progressTimers[torrent.id] = Timer.periodic(const Duration(seconds: 5), (
@@ -1312,7 +1323,7 @@ class TorrentEngineService {
     try {
       (task as dynamic).unpause();
     } catch (_) {}
-    _ensureTaskRunningMode(task);
+    _ensureTaskRunningMode(torrent.id, task);
 
     _progressTimers[torrent.id]?.cancel();
     _progressTimers[torrent.id] = Timer.periodic(const Duration(seconds: 5), (
@@ -1589,7 +1600,7 @@ class TorrentEngineService {
         'Completion check failed after recovery: missing/corrupt pieces detected. Resuming download.',
       );
       _requestMissingPieces(task);
-      _ensureTaskRunningMode(task);
+      _ensureTaskRunningMode(torrentId, task);
       return false;
     }
     return true;
@@ -1649,7 +1660,8 @@ class TorrentEngineService {
 
       // Run full disk validation. If pieces are missing/corrupt, the recovery path
       // will push the torrent back to downloading and request missing pieces.
-      final fileManagerComplete = (task.fileManager?.isAllComplete as bool?) ?? false;
+      final fileManagerComplete =
+          (task.fileManager?.isAllComplete as bool?) ?? false;
       _log(
         torrentId,
         'Deferred completion check: fileManager.isAllComplete=$fileManagerComplete; running disk validation',
@@ -1660,6 +1672,14 @@ class TorrentEngineService {
         task,
         Duration(seconds: 45),
       );
+
+      if (_tasks[torrentId] == task && _hasAllPiecesComplete(task)) {
+        _log(
+          torrentId,
+          'Verification finished with all pieces complete; stopping task to release file handles.',
+        );
+        await stopTorrent(torrentId);
+      }
 
       _log(torrentId, 'Deferred verification complete.');
     } catch (e) {
@@ -1757,6 +1777,7 @@ class TorrentEngineService {
   }
 
   void _emitStats(String torrentId, dt.TorrentTask task) {
+    final isPaused = _pausedTorrentIds.contains(torrentId);
     final downloaded = task.downloaded ?? 0;
     int uploaded = _uploadedBytesByTorrent[torrentId] ?? 0;
     try {
@@ -1795,7 +1816,9 @@ class TorrentEngineService {
     final progress = task.progress;
     _recordProgressSample(torrentId, progress);
     final totalLength = task.metaInfo.length ?? task.metaInfo.totalSize;
-    final state = _isTaskComplete(task) ? 'seeding' : 'downloading';
+    final state = isPaused
+        ? 'paused'
+        : (_isTaskComplete(task) ? 'seeding' : 'downloading');
     final now = DateTime.now();
     final lastSample = _lastUploadedSampleByTorrent[torrentId];
     if (lastSample != null) {
@@ -1821,7 +1844,9 @@ class TorrentEngineService {
                           .inSeconds >=
                       90 &&
                   state != 'seeding');
-    final msg = state == 'seeding'
+    final msg = state == 'paused'
+        ? 'Paused • ${(progress * 100).toStringAsFixed(1)}%'
+        : state == 'seeding'
         ? 'Seeding • ${(seededPct).toStringAsFixed(1)}% shared back (${_formatByteCount(uploaded)}/${_formatByteCount(totalLength)}) • $peers peer${peers == 1 ? '' : 's'} connected'
         : peers == 0
         ? 'Searching for peers...'
@@ -1872,8 +1897,8 @@ class TorrentEngineService {
         trackers: trackers,
         seeders: seeders,
         leechers: leechers,
-        downloadSpeed: dlSpeed,
-        uploadSpeed: ulSpeed,
+        downloadSpeed: isPaused ? 0.0 : dlSpeed,
+        uploadSpeed: isPaused ? 0.0 : ulSpeed,
         seedingProgress: seededRatio.clamp(0.0, 1.0),
         statusMessage: msg,
         connectionMessage: connectionMsg,
@@ -2011,8 +2036,11 @@ class TorrentEngineService {
           'StateRecovery returned null — some pieces may need re-download.',
         );
         _requestMissingPieces(task);
-        _ensureTaskRunningMode(task);
-        await TorrentService.instance.updateTorrentStatus(torrentId, 'downloading');
+        _ensureTaskRunningMode(torrentId, task);
+        await TorrentService.instance.updateTorrentStatus(
+          torrentId,
+          'downloading',
+        );
         return;
       }
 
@@ -2045,8 +2073,11 @@ class TorrentEngineService {
         final missing = total - completed;
         _log(torrentId, '$missing pieces still missing — continuing download.');
         _requestMissingPieces(task);
-        _ensureTaskRunningMode(task);
-        await TorrentService.instance.updateTorrentStatus(torrentId, 'downloading');
+        _ensureTaskRunningMode(torrentId, task);
+        await TorrentService.instance.updateTorrentStatus(
+          torrentId,
+          'downloading',
+        );
       }
     } catch (e, st) {
       _log(torrentId, 'StateRecovery error (non-fatal): $e');
@@ -2445,7 +2476,10 @@ class TorrentEngineService {
           filePath: saveDir,
         ),
       );
-      TorrentService.instance.invalidateDiskSnapshot(torrentId);
+      TorrentService.instance.invalidateDiskSnapshot(
+        torrentId,
+        runReconcile: false,
+      );
       unawaited(TorrentService.instance.refreshTorrentStates());
 
       await _deleteBtStateFiles(saveDir, torrentId);
@@ -2499,7 +2533,10 @@ class TorrentEngineService {
             filePath: isolatedDir,
           ),
         );
-        TorrentService.instance.invalidateDiskSnapshot(torrentId);
+        TorrentService.instance.invalidateDiskSnapshot(
+          torrentId,
+          runReconcile: false,
+        );
         unawaited(TorrentService.instance.refreshTorrentStates());
 
         await startTorrent(torrentId, destinationPath: isolatedDir);
@@ -2532,6 +2569,7 @@ class TorrentEngineService {
     _refreshInFlight.remove(torrentId);
     _lastDownloadedByTorrent.remove(torrentId);
     _stagnantDownloadIntervals.remove(torrentId);
+    _pausedTorrentIds.remove(torrentId);
     _tasks.remove(torrentId);
   }
 
@@ -2545,6 +2583,7 @@ class TorrentEngineService {
       }
     }
     _cleanup(torrentId);
+    TorrentService.instance.clearRuntimeStatus(torrentId);
     try {
       await TorrentService.instance.updateTorrentStatus(torrentId, 'paused');
     } catch (e) {
@@ -2553,7 +2592,12 @@ class TorrentEngineService {
   }
 
   void pauseTorrent(String torrentId) {
-    _tasks[torrentId]?.pause();
+    final task = _tasks[torrentId];
+    _pausedTorrentIds.add(torrentId);
+    task?.pause();
+    if (task != null) {
+      _emitStats(torrentId, task);
+    }
     unawaited(
       TorrentService.instance
           .updateTorrentStatus(torrentId, 'paused')
@@ -2565,7 +2609,12 @@ class TorrentEngineService {
 
   void resumeTorrent(String torrentId) {
     final task = _tasks[torrentId];
+    _pausedTorrentIds.remove(torrentId);
     task?.resume();
+    if (task != null) {
+      _ensureTaskRunningMode(torrentId, task);
+      _emitStats(torrentId, task);
+    }
     final status = task != null && _isTaskComplete(task)
         ? 'seeding'
         : 'downloading';
@@ -2622,8 +2671,11 @@ class TorrentEngineService {
     return false;
   }
 
-  void _ensureTaskRunningMode(dt.TorrentTask task) {
+  void _ensureTaskRunningMode(String torrentId, dt.TorrentTask task) {
     if (_isTaskComplete(task)) {
+      return;
+    }
+    if (_pausedTorrentIds.contains(torrentId)) {
       return;
     }
     try {

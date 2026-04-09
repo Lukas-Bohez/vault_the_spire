@@ -342,6 +342,29 @@ class DownloadFile {
     return access!;
   }
 
+  Future<void> releaseFileHandles() async {
+    try {
+      await _writeAccess?.flush();
+    } catch (_) {
+      // Best-effort flush before releasing handles.
+    }
+
+    try {
+      await _writeAccess?.close();
+    } catch (_) {
+      // Handle may already be closed.
+    }
+
+    try {
+      await _readAccess?.close();
+    } catch (_) {
+      // Handle may already be closed.
+    }
+
+    _writeAccess = null;
+    _readAccess = null;
+  }
+
   Future<void> close() async {
     if (isClosed) return;
     _closed = true;

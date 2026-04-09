@@ -684,6 +684,7 @@ class _TorrentTask
     await _peersManager
         ?.disposeAllSeeder('Download complete,disconnect seeder');
     await _tracker?.complete();
+    await _fileManager?.releaseOpenFileHandles();
     events.emit(TaskCompleted());
   }
 
@@ -694,7 +695,8 @@ class _TorrentTask
   void _processTrackerPeerEvent(AnnouncePeerEventEvent event) {
     if (event.event == null) return;
     var ps = event.event!.peers;
-    _log.info('Tracker returned ${ps.length} peer(s) from ${event.source.announceUrl}');
+    _log.info(
+        'Tracker returned ${ps.length} peer(s) from ${event.source.announceUrl}');
     if (ps.isNotEmpty) {
       for (var url in ps) {
         _processNewPeerFound(url, PeerSource.tracker);
@@ -715,8 +717,7 @@ class _TorrentTask
 
   void _processDHTPeer(CompactAddress peer, String infoHash) {
     _log.info(
-      "Got new DHT peer $peer for infohash: ${Uint8List.fromList(infoHash.codeUnits).toHexString()}"
-    );
+        "Got new DHT peer $peer for infohash: ${Uint8List.fromList(infoHash.codeUnits).toHexString()}");
     if (infoHash == _infoHashString) {
       _processNewPeerFound(peer, PeerSource.dht);
     }
@@ -746,6 +747,7 @@ class _TorrentTask
     if (state == TaskState.paused) return;
     state = TaskState.paused;
     _peersManager?.pause();
+    unawaited(_fileManager?.releaseOpenFileHandles());
     events.emit(TaskPaused());
   }
 
@@ -1140,7 +1142,9 @@ class _TorrentTask
 
     // In superseeding mode, send HAVE only to specific peers for specific pieces
     final completionManager = _fileManager;
-    if (_superseeder != null && completionManager != null && completionManager.isAllComplete) {
+    if (_superseeder != null &&
+        completionManager != null &&
+        completionManager.isAllComplete) {
       _sendHaveSuperseeding(index);
     } else {
       _peersManager?.sendHaveToAll(index);
@@ -1284,7 +1288,7 @@ class _TorrentTask
     }
 
     _log.fine(
-      'Peer handshake complete for ${event.peer.address}, sending bitfield');
+        'Peer handshake complete for ${event.peer.address}, sending bitfield');
     event.peer.sendBitfield(_fileManager!.localBitfield);
 
     // Try immediately to start piece requests after handshake.
@@ -1453,7 +1457,8 @@ class _TorrentTask
 
   void requestPieces(Peer peer, [int pieceIndex = -1]) async {
     if (_pieceManager == null || _peersManager == null) return;
-    _log.fine('requestPieces called for ${peer.address}, pieceIndex=$pieceIndex');
+    _log.fine(
+        'requestPieces called for ${peer.address}, pieceIndex=$pieceIndex');
     if (_peersManager!.addPausedRequest(peer, pieceIndex)) return;
     Piece? piece;
     if (pieceIndex != -1) {

@@ -331,6 +331,13 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
     return written;
   }
 
+  Future<void> releaseOpenFileHandles() async {
+    for (var i = 0; i < _files.length; i++) {
+      final file = _files[i];
+      await file.releaseFileHandles();
+    }
+  }
+
   Future close() async {
     events.dispose();
     await _stateFile.close();

@@ -184,8 +184,7 @@ class _TorrentsScreenState extends State<TorrentsScreen>
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content:
-                  Text('Download folder "$folder" no longer exists.'),
+              content: Text('Download folder "$folder" no longer exists.'),
               action: SnackBarAction(
                 label: 'Change',
                 onPressed: _showSetDownloadFolderDialog,
@@ -308,13 +307,17 @@ class _TorrentsScreenState extends State<TorrentsScreen>
   Future<void> _toggleTorrent(TorrentViewState ts) async {
     try {
       if (ts.isActive) {
-        await TorrentEngineService.instance.stopTorrent(ts.model.id);
+        TorrentEngineService.instance.pauseTorrent(ts.model.id);
         await TorrentService.instance.updateTorrentStatus(
           ts.model.id,
           'paused',
         );
       } else {
-        await TorrentEngineService.instance.startTorrent(ts.model.id);
+        if (TorrentEngineService.instance.isRunning(ts.model.id)) {
+          TorrentEngineService.instance.resumeTorrent(ts.model.id);
+        } else {
+          await TorrentEngineService.instance.startTorrent(ts.model.id);
+        }
       }
     } catch (e) {
       if (!mounted) return;
@@ -826,7 +829,9 @@ class _TorrentsScreenState extends State<TorrentsScreen>
   }
 
   Widget _buildEmptyState() {
-    final hasFolder = SettingsService.instance.downloadDestination.trim().isNotEmpty;
+    final hasFolder = SettingsService.instance.downloadDestination
+        .trim()
+        .isNotEmpty;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -851,10 +856,10 @@ class _TorrentsScreenState extends State<TorrentsScreen>
             Text(
               hasFolder
                   ? (Platform.isAndroid
-                      ? 'Tap + to add or create torrents'
-                      : Platform.isIOS
-                      ? 'Tap + to add or create torrents'
-                      : 'Use + in the top bar to add or create torrents\nYou can also drag and drop files')
+                        ? 'Tap + to add or create torrents'
+                        : Platform.isIOS
+                        ? 'Tap + to add or create torrents'
+                        : 'Use + in the top bar to add or create torrents\nYou can also drag and drop files')
                   : 'Go to Settings > Download Location and choose a folder on external storage to prevent file corruption from inaccessible app storage.',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
@@ -1062,31 +1067,32 @@ class _TorrentsScreenState extends State<TorrentsScreen>
                         if (ts.downloadSpeed > 512 &&
                             ts.model.totalSize != null &&
                             ts.model.totalSize! > 0 &&
-                            progress < 0.999) ...() {
-                          final remaining =
-                              (ts.model.totalSize! * (1.0 - progress))
-                                  .round();
-                          final etaSec =
-                              (remaining / ts.downloadSpeed).round();
-                          String eta;
-                          if (etaSec < 60) {
-                            eta = '${etaSec}s';
-                          } else if (etaSec < 3600) {
-                            eta = '${(etaSec / 60).round()}m';
-                          } else {
-                            eta =
-                                '${(etaSec / 3600).toStringAsFixed(1)}h';
-                          }
-                          return [
-                            const SizedBox(width: 4),
-                            Text(
-                              'ETA $eta',
-                              style: TextStyle(
+                            progress < 0.999)
+                          ...() {
+                            final remaining =
+                                (ts.model.totalSize! * (1.0 - progress))
+                                    .round();
+                            final etaSec = (remaining / ts.downloadSpeed)
+                                .round();
+                            String eta;
+                            if (etaSec < 60) {
+                              eta = '${etaSec}s';
+                            } else if (etaSec < 3600) {
+                              eta = '${(etaSec / 60).round()}m';
+                            } else {
+                              eta = '${(etaSec / 3600).toStringAsFixed(1)}h';
+                            }
+                            return [
+                              const SizedBox(width: 4),
+                              Text(
+                                'ETA $eta',
+                                style: TextStyle(
                                   fontSize: 10,
-                                  color: cs.onSurfaceVariant),
-                            ),
-                          ];
-                        }(),
+                                  color: cs.onSurfaceVariant,
+                                ),
+                              ),
+                            ];
+                          }(),
                         // Peers
                         if (ts.peers > 0) ...[
                           const SizedBox(width: 4),
