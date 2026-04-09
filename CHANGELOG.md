@@ -2,6 +2,11 @@
 
 Closed Alpha tester group: https://groups.google.com/g/testersvaultthespire/c/BLdOUseagro
 
+## [4.2.1] - 2026-04-09
+### Changed
+- Bumped Android version code to 421 for the next release build.
+- Updated release artifact naming to 4.2.1 for Android AAB and Windows ZIP outputs.
+
 ## [3.0.1] - 2026-04-01
 ### Changed
 - Reduced AI chat render churn by throttling streaming assistant UI updates.
