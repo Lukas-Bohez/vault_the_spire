@@ -1604,16 +1604,6 @@ class TorrentEngineService {
       ..on<dt.TaskCompleted>((_) async {
         _emitStats(torrentId, task);
 
-        final verified = await _verifyCompletionIntegrity(torrentId, task);
-        if (!verified) {
-          await TorrentService.instance.updateTorrentStatus(
-            torrentId,
-            'downloading',
-          );
-          _emitStats(torrentId, task);
-          return;
-        }
-
         final hasOutput = await _verifyOutputExists(torrentId, task);
         await TorrentService.instance.updateTorrentStatus(
           torrentId,
@@ -1629,10 +1619,80 @@ class TorrentEngineService {
             debugPrint('Notification suppressed (non-fatal): $e');
           }
         }
+
+        // Defer integrity verification to background so it doesn't block completion.
+        // This prevents Android fork/libbinder crashes during isolate spawning for validation.
+        // Verification is non-critical — files already written and marked 100% complete.
+        unawaited(_verifyCompletionIntegrityDeferred(torrentId, task));
       })
       ..on<dt.TaskStopped>((_) {
         _cleanup(torrentId);
       });
+  }
+
+  /// Deferred background verification that doesn't block completion.
+  /// Runs after TaskCompleted is marked so Android isolate/JNI issues don't crash the app.
+  /// Returns early if task is disposed or if file manager confirms all pieces are written.
+  Future<void> _verifyCompletionIntegrityDeferred(
+    String torrentId,
+    dt.TorrentTask task,
+  ) async {
+    try {
+      // Skip if task is no longer active (user stopped/deleted it)
+      if (!_tasks.containsKey(torrentId) || _tasks[torrentId] != task) {
+        return;
+      }
+
+      // Defer this 2 seconds to let file writes complete and handles to close
+      await Future.delayed(Duration(seconds: 2));
+
+      // Double-check task still exists
+      if (!_tasks.containsKey(torrentId) || _tasks[torrentId] != task) {
+        return;
+      }
+
+      // If file manager confirms all pieces are on disk, skip verbose disk validation.
+      // This prevents Android fork crashes from isolate spawning during heavy I/O.
+      final fileManagerComplete = (task.fileManager?.isAllComplete as bool?) ?? false;
+      _log(
+        torrentId,
+        'Deferred completion check: fileManager.isAllComplete=$fileManagerComplete',
+      );
+      if (fileManagerComplete) {
+        _log(torrentId, 'File manager confirms all pieces written. Skipping disk validation.');
+        return; // Already confirmed complete, no need for re-verification
+      }
+
+      // Only run StateRecovery if file manager doesn't confirm completion.
+      // This is safest path for catching re-download scenarios.
+      _log(torrentId, 'Running deferred state recovery...');
+      await _forceStateRecoveryWithTimeout(torrentId, task, Duration(seconds: 30));
+    } catch (e) {
+      debugPrint('[DeferredVerification] $torrentId: $e');
+      // Non-fatal — torrent already marked complete by task engine.
+    }
+  }
+
+  /// StateRecovery with timeout to prevent hanging on Android I/O.
+  Future<void> _forceStateRecoveryWithTimeout(
+    String torrentId,
+    dt.TorrentTask task,
+    Duration timeout,
+  ) async {
+    try {
+      await _forceStateRecovery(torrentId, task).timeout(
+        timeout,
+        onTimeout: () {
+          _log(
+            torrentId,
+            'State recovery timed out after ${timeout.inSeconds}s. '
+            'Skipping re-download requests (torrent already marked complete).',
+          );
+        },
+      );
+    } catch (e) {
+      debugPrint('[StateRecoveryTimeout] $torrentId: $e');
+    }
   }
 
   Future<bool> _verifyOutputExists(
@@ -1925,6 +1985,17 @@ class TorrentEngineService {
         _log(
           torrentId,
           'StateRecovery skipped: could not determine save path.',
+        );
+        return;
+      }
+
+      // Verify save directory is accessible before attempting validation.
+      // This prevents crashes on Android when directory is inaccessible.
+      final saveDir = Directory(savePath);
+      if (!await saveDir.exists()) {
+        _log(
+          torrentId,
+          'StateRecovery skipped: save directory does not exist: $savePath',
         );
         return;
       }

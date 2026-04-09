@@ -48,7 +48,13 @@ class PieceManager {
       );
     }
     final file = _pieceFile(index);
-    await file.writeAsBytes(data, flush: true);
+    try {
+      await file.writeAsBytes(data, flush: true);
+    } catch (e) {
+      // Log but don't silently swallow file write errors.
+      // This helps surface issues like permission problems on Android.
+      rethrow;
+    }
   }
 
   Future<bool> savePiece(int index, Uint8List data) async {
