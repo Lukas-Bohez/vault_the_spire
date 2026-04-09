@@ -1,5 +1,7 @@
 # Release Readiness Report (2026-04-01)
 
+Closed Alpha tester group: https://groups.google.com/g/testersvaultthespire/c/BLdOUseagro
+
 ## Summary
 
 Codebase is release-ready for validated targets in this environment:

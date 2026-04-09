@@ -1,5 +1,7 @@
 Vault The Spire
 
+Closed Alpha tester group: https://groups.google.com/g/testersvaultthespire/c/BLdOUseagro
+
 Vault The Spire is a privacy-first, cross-platform Flutter application dedicated to decentralized P2P file downloading. Combining a powerful BitTorrent engine with a built-in web browser, it provides a seamless, all-in-one environment for finding and managing your files—with no telemetry, no accounts, and zero central servers.
 Privacy-First Mission
 
@@ -41,7 +43,14 @@ Under the Hood
 Quickstart
 End-User Install (Recommended)
 
-    Download the latest package from quizthespire.com (Windows zip or Android APK).
+    Closed Alpha access requires tester enrollment first.
+
+    1. Sign in to the Google Play Store with the same Google account used for the tester group.
+    2. Join the closed test here: https://groups.google.com/g/testersvaultthespire/c/BLdOUseagro
+    3. Tap the "Become a Tester" button on the Google Group / Play test page.
+    4. Download Vault The Spire from Google Play once the opt-in is active.
+
+    If Play Store permissions have not refreshed yet, wait 5-10 minutes, clear Play Store cache, and try again.
 
     Install and launch.
 

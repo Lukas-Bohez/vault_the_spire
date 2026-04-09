@@ -1,5 +1,7 @@
 # Changelog
 
+Closed Alpha tester group: https://groups.google.com/g/testersvaultthespire/c/BLdOUseagro
+
 ## [3.0.1] - 2026-04-01
 ### Changed
 - Reduced AI chat render churn by throttling streaming assistant UI updates.

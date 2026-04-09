@@ -1603,26 +1603,22 @@ class TorrentEngineService {
       })
       ..on<dt.TaskCompleted>((_) async {
         _emitStats(torrentId, task);
-
         final hasOutput = await _verifyOutputExists(torrentId, task);
-        await TorrentService.instance.updateTorrentStatus(
-          torrentId,
-          hasOutput ? 'seeding' : 'error_missing_output',
-        );
-        final torrent = await TorrentService.instance.getTorrentById(torrentId);
-        if (torrent != null && hasOutput) {
-          try {
-            await NotificationService.instance.showDownloadComplete(
-              torrent.name,
-            );
-          } catch (e) {
-            debugPrint('Notification suppressed (non-fatal): $e');
-          }
+        if (!hasOutput) {
+          await TorrentService.instance.updateTorrentStatus(
+            torrentId,
+            'error_missing_output',
+          );
+          return;
         }
 
+        await TorrentService.instance.updateTorrentStatus(
+          torrentId,
+          'rechecking',
+        );
+
         // Defer integrity verification to background so it doesn't block completion.
-        // This prevents Android fork/libbinder crashes during isolate spawning for validation.
-        // Verification is non-critical — files already written and marked 100% complete.
+        // The torrent is only promoted back to seeding after hash validation succeeds.
         unawaited(_verifyCompletionIntegrityDeferred(torrentId, task));
       })
       ..on<dt.TaskStopped>((_) {
@@ -1631,10 +1627,8 @@ class TorrentEngineService {
   }
 
   /// Deferred background verification that doesn't block completion.
-  /// Runs after TaskCompleted is marked so Android isolate/JNI issues don't crash the app.
-  /// CRITICAL: Does NOT use StateRecovery or isolate-spawning validation on Android.
-  /// Isolate.spawn() uses fork() which is incompatible with JNI after file writes.
-  /// Torrent is already confirmed 100% complete by task engine; verification is optional.
+  /// Runs after TaskCompleted is marked and promotes the torrent to seeding only
+  /// after disk hashes are validated.
   Future<void> _verifyCompletionIntegrityDeferred(
     String torrentId,
     dt.TorrentTask task,
@@ -1653,30 +1647,46 @@ class TorrentEngineService {
         return;
       }
 
-      // CRITICAL FIX: Skip all StateRecovery/isolate-based validation on Android.
-      // The task engine already confirmed completion (TaskCompleted fired).
-      // File manager's isAllComplete flag is the authoritative source.
-      // Spawning isolates for hash validation causes "libbinder ProcessState can not be used after fork" crash.
+      // Run full disk validation. If pieces are missing/corrupt, the recovery path
+      // will push the torrent back to downloading and request missing pieces.
       final fileManagerComplete = (task.fileManager?.isAllComplete as bool?) ?? false;
       _log(
         torrentId,
-        'Deferred completion check: fileManager.isAllComplete=$fileManagerComplete (skipping disk validation entirely)',
+        'Deferred completion check: fileManager.isAllComplete=$fileManagerComplete; running disk validation',
       );
 
-      if (!fileManagerComplete) {
-        // If file manager disagrees with task completion, log it but don't re-request.
-        // Torrent is still marked seeding; task engine will handle recovery if needed.
-        _log(
-          torrentId,
-          'WARNING: File manager reports incomplete, but task marked complete. '
-          'Skipping re-download to prevent fork crash. Task engine will handle recovery.',
-        );
-      }
+      await _forceStateRecoveryWithTimeout(
+        torrentId,
+        task,
+        Duration(seconds: 45),
+      );
 
-      _log(torrentId, 'Deferred verification complete (non-blocking, isolate-safe).');
+      _log(torrentId, 'Deferred verification complete.');
     } catch (e) {
       debugPrint('[DeferredVerification] $torrentId: $e');
       // Non-fatal — torrent already marked complete by task engine.
+    }
+  }
+
+  /// StateRecovery with timeout to prevent hanging on Android I/O.
+  Future<void> _forceStateRecoveryWithTimeout(
+    String torrentId,
+    dt.TorrentTask task,
+    Duration timeout,
+  ) async {
+    try {
+      await _forceStateRecovery(torrentId, task).timeout(
+        timeout,
+        onTimeout: () {
+          _log(
+            torrentId,
+            'State recovery timed out after ${timeout.inSeconds}s. '
+            'Skipping re-download requests.',
+          );
+        },
+      );
+    } catch (e) {
+      debugPrint('[StateRecoveryTimeout] $torrentId: $e');
     }
   }
 
@@ -2000,6 +2010,9 @@ class TorrentEngineService {
           torrentId,
           'StateRecovery returned null — some pieces may need re-download.',
         );
+        _requestMissingPieces(task);
+        _ensureTaskRunningMode(task);
+        await TorrentService.instance.updateTorrentStatus(torrentId, 'downloading');
         return;
       }
 
@@ -2016,11 +2029,24 @@ class TorrentEngineService {
         await TorrentService.instance.updateTorrentStatus(torrentId, 'seeding');
         TorrentService.instance.invalidateDiskSnapshot(torrentId);
         unawaited(TorrentService.instance.refreshTorrentStates());
+        final torrent = await TorrentService.instance.getTorrentById(torrentId);
+        if (torrent != null) {
+          try {
+            await NotificationService.instance.showDownloadComplete(
+              torrent.name,
+            );
+          } catch (e) {
+            debugPrint('Notification suppressed (non-fatal): $e');
+          }
+        }
         // Cancel fast health check — no longer needed
         _fastHealthCheckTimers.remove(torrentId)?.cancel();
       } else if (total > 0) {
         final missing = total - completed;
         _log(torrentId, '$missing pieces still missing — continuing download.');
+        _requestMissingPieces(task);
+        _ensureTaskRunningMode(task);
+        await TorrentService.instance.updateTorrentStatus(torrentId, 'downloading');
       }
     } catch (e, st) {
       _log(torrentId, 'StateRecovery error (non-fatal): $e');
