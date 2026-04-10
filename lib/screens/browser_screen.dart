@@ -28,7 +28,7 @@ class BrowserScreen extends StatefulWidget {
 }
 
 // AutomaticKeepAliveClientMixin keeps the widget tree alive when the parent
-// switches away to another tab — the WebView is not torn down and rebuilt,
+// switches away to another tab  -  the WebView is not torn down and rebuilt,
 // so the user returns to exactly the page they left.
 class _BrowserScreenState extends State<BrowserScreen>
   with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
@@ -85,7 +85,7 @@ class _BrowserScreenState extends State<BrowserScreen>
     _favorites = List<String>.from(SettingsService.instance.browserFavorites);
     _history = List<String>.from(SettingsService.instance.browserHistory);
 
-    // Restore last visited URL — if available use it, otherwise fall back to
+    // Restore last visited URL  -  if available use it, otherwise fall back to
     // the initialUrl arg, then the home URL.
     final lastUrl = SettingsService.instance.browserLastUrl;
     final startUrl = widget.initialUrl.isNotEmpty
@@ -328,7 +328,7 @@ class _BrowserScreenState extends State<BrowserScreen>
     }
   }
 
-  // Called every time a page finishes loading — persists the URL and updates history.
+  // Called every time a page finishes loading  -  persists the URL and updates history.
   void _recordVisit(String url) {
     if (url.isEmpty || url == 'about:blank') return;
 
@@ -338,7 +338,7 @@ class _BrowserScreenState extends State<BrowserScreen>
       if (_history.length > 500) _history.removeRange(500, _history.length);
     });
 
-    // Persist asynchronously — never await inside listeners.
+    // Persist asynchronously  -  never await inside listeners.
     SettingsService.instance.setBrowserLastUrl(url);
     SettingsService.instance.setBrowserHistory(_history);
   }

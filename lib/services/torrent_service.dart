@@ -358,11 +358,9 @@ class TorrentService {
 
     _diskReconcileTimer = Timer.periodic(
       _diskReconcileInterval,
-      (_) => unawaited(_reconcileDiskState(force: true)),
+      (_) => unawaited(_reconcileDiskState(force: false)),
     );
 
-    // Emit an initial value immediately so StreamBuilder consumers can render
-    // a stable empty state while the first DB snapshot is still loading.
     _torrentStatesController.add(_latestStatesByTorrentId.values.toList());
 
     unawaited(_takeSnapshot(force: true));
@@ -404,12 +402,18 @@ class TorrentService {
         final persistedState = torrent.status?.toLowerCase() ?? '';
         final diskBytes = diskSnapshot?.bytesOnDisk ?? torrent.bytesDown;
         final diskComplete = diskSnapshot?.isComplete ?? false;
+        final runtimeState = runtime?.state.toLowerCase() ?? '';
         final explicitlyResetToZero =
             persistedState == 'downloading' &&
-            torrent.bytesDown == 0 &&
-            (runtime == null || runtime.downloaded == 0);
+          torrent.bytesDown == 0;
+        final distrustDiskDuringActiveDownload =
+          persistedState.contains('downloading') &&
+          runtimeState.contains('download');
         final effectiveDiskComplete = explicitlyResetToZero ? false : diskComplete;
-        final effectiveDiskBytes = explicitlyResetToZero ? 0 : diskBytes;
+        final effectiveDiskBytes =
+          explicitlyResetToZero || distrustDiskDuringActiveDownload
+          ? 0
+          : diskBytes;
         final pathMissing = diskSnapshot?.pathMissing ?? false;
         final hasDiskSnapshot = diskSnapshot != null;
 
@@ -442,7 +446,6 @@ class TorrentService {
           downloaded = 0;
         }
 
-        final runtimeState = runtime?.state.toLowerCase() ?? '';
         final runtimeLooksComplete =
             runtime != null && runtimeState.contains('seed');
         final diskContradictsCompletion =
@@ -487,6 +490,7 @@ class TorrentService {
             : (runtime?.progress ?? torrent.progress).clamp(0.0, 1.0);
 
         final allowsProgressRegression =
+          explicitlyResetToZero ||
             missingOnDisk ||
             state.contains('checking') ||
             state.contains('error_missing_files');
@@ -605,6 +609,17 @@ class TorrentService {
     final futures = torrents.map((torrent) async {
       final cached = _diskSnapshots[torrent.id];
       final status = (torrent.status ?? '').toLowerCase();
+      final activeByPersistedState =
+          status.contains('download') ||
+          status.contains('rechecking') ||
+          status.contains('pending_metadata');
+      final activeByRuntime = TorrentEngineService.instance.isRunning(
+        torrent.id,
+      );
+      if (!force && (activeByPersistedState || activeByRuntime)) {
+        return;
+      }
+
       final isSeedingOrPaused =
           status.contains('seed') || status.contains('pause');
       final longInterval = const Duration(minutes: 10);
@@ -841,9 +856,26 @@ class TorrentService {
     _queueStateRefresh(force: true);
   }
 
+  void resetProgressTracking(String id) {
+    _runtimeByTorrentId.remove(id);
+    _latestStatesByTorrentId.remove(id);
+    _progressHighWaterByTorrentId.remove(id);
+    _downloadedHighWaterByTorrentId.remove(id);
+    _diskSnapshots[id] = _DiskReconcileSnapshot(
+      bytesOnDisk: 0,
+      isComplete: false,
+      pathMissing: false,
+      checkedAt: DateTime.now().add(const Duration(seconds: 55)),
+    );
+    _snapshotPending = true;
+    unawaited(_takeSnapshot(force: true));
+  }
+
   void invalidateDiskSnapshot(String id) {
     _runtimeByTorrentId.remove(id);
     _latestStatesByTorrentId.remove(id);
+    _progressHighWaterByTorrentId.remove(id);
+    _downloadedHighWaterByTorrentId.remove(id);
     // Keep a temporary zero-byte snapshot and delay reconcile slightly so
     // force-redownload deletes can complete before any disk scan reads stale files.
     _diskSnapshots[id] = _DiskReconcileSnapshot(

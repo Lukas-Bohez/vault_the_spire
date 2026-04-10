@@ -318,7 +318,7 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
                         final messenger = ScaffoldMessenger.of(context);
                         messenger.showSnackBar(const SnackBar(
                             content: Text(
-                                'Verifying files on disk — this may take a moment…')));
+                                'Verifying files on disk  -  this may take a moment…')));
                         try {
                           await TorrentEngineService.instance
                               .forceStateRecovery(torrent.id);

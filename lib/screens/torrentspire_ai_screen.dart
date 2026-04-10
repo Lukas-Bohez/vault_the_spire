@@ -735,7 +735,7 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
         if (index >= 0) {
           _messages[index] = _messages[index].copyWith(
             content:
-                'AI copilot offline — check your Ollama connection in Settings. ($e)',
+                'AI copilot offline  -  check your Ollama connection in Settings. ($e)',
             isStreaming: false,
           );
         }
@@ -1214,11 +1214,11 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
                       }
                       final sl = stats.isEmpty ? '' : stats.join(' / ');
                       final age = item.ageYears == null
-                          ? '—'
+                          ? ' - '
                           : (item.ageYears == 0
                                 ? 'this year'
                                 : '${item.ageYears} years ago');
-                      final source = item.source.isEmpty ? '—' : item.source;
+                      final source = item.source.isEmpty ? ' - ' : item.source;
                       return Card(
                         color: selected
                             ? cs.secondaryContainer
@@ -1230,7 +1230,7 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
                             overflow: TextOverflow.ellipsis,
                           ),
                           subtitle: Text(
-                            '${sl.isEmpty ? '' : '$sl | '}Size ${item.size == null ? '—' : _formatSize(item.size!)} | Source $source | Age $age',
+                            '${sl.isEmpty ? '' : '$sl | '}Size ${item.size == null ? ' - ' : _formatSize(item.size!)} | Source $source | Age $age',
                             style: const TextStyle(
                               fontFamily: 'monospace',
                               fontSize: 12,
@@ -1342,7 +1342,7 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
               _aiReady
                   ? 'AI Ready'
                   : aiEnabled
-                  ? 'AI copilot offline — check your Ollama connection in Settings'
+                  ? 'AI copilot offline  -  check your Ollama connection in Settings'
                   : 'AI Copilot disabled in Settings',
               style: TextStyle(
                 fontWeight: FontWeight.w600,

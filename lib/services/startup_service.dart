@@ -32,7 +32,7 @@ class StartupService {
 
   /// Creates a desktop shortcut/icon if one does not already exist.
   /// Called once on first run so the user can find the app again.
-  /// Safe to call on every startup — checks for existence before creating.
+  /// Safe to call on every startup  -  checks for existence before creating.
   static Future<void> ensureDesktopShortcut() async {
     if (Platform.isWindows) {
       await _ensureDesktopShortcutWindows();
@@ -57,12 +57,12 @@ class StartupService {
 \$s = \$w.CreateShortcut("$linkPath")
 \$s.TargetPath = "$exePath"
 \$s.WorkingDirectory = "${p.dirname(exePath)}"
-\$s.Description = "VaultTheSpire — Private Torrent & Messaging"
+\$s.Description = "VaultTheSpire  -  Private Torrent & Messaging"
 \$s.Save()
 ''';
       await Process.run('powershell', ['-NoProfile', '-Command', script]);
     } catch (_) {
-      // Non-fatal — if shortcut creation fails, the app still runs fine.
+      // Non-fatal  -  if shortcut creation fails, the app still runs fine.
     }
   }
 
