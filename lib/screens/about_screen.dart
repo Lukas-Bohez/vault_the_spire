@@ -427,26 +427,7 @@ class _AboutScreenState extends State<AboutScreen>
                     setState(() {});
                   },
                 ),
-                SwitchListTile(
-                  title: const Text('Delete .torrent file when removing'),
-                  contentPadding: EdgeInsets.zero,
-                  value: _settings.deleteTorrentFileOnRemove,
-                  onChanged: (v) async {
-                    await _settings.setDeleteTorrentFileOnRemove(v);
-                    if (!mounted) return;
-                    setState(() {});
-                  },
-                ),
-                SwitchListTile(
-                  title: const Text('Delete downloaded data when removing'),
-                  contentPadding: EdgeInsets.zero,
-                  value: _settings.deleteDataOnRemove,
-                  onChanged: (v) async {
-                    await _settings.setDeleteDataOnRemove(v);
-                    if (!mounted) return;
-                    setState(() {});
-                  },
-                ),
+
               ],
             ),
             const SizedBox(height: 10),

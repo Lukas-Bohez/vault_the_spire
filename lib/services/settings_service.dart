@@ -32,8 +32,6 @@ class SettingsService {
   static const _kAiOllamaUrl = 'ai_ollama_url';
   static const _kAiDefaultModel = 'ai_default_model';
   static const _kAutoStartOnAdd = 'auto_start_on_add';
-  static const _kDeleteTorrentFileOnRemove = 'delete_torrent_file_on_remove';
-  static const _kDeleteDataOnRemove = 'delete_data_on_remove';
   static const _kUseDht = 'use_dht';
   static const _kUsePex = 'use_pex';
   static const _kUseLpd = 'use_lpd';
@@ -75,8 +73,6 @@ class SettingsService {
   String aiOllamaUrl = _defaultOllamaUrl();
   String aiDefaultModel = kDefaultAiModel;
   bool autoStartOnAdd = true;
-  bool deleteTorrentFileOnRemove = false;
-  bool deleteDataOnRemove = false;
   bool useDht = true;
   bool usePex = true;
   bool useLpd = false;
@@ -115,9 +111,6 @@ class SettingsService {
     aiOllamaUrl = prefs.getString(_kAiOllamaUrl) ?? _defaultOllamaUrl();
     aiDefaultModel = prefs.getString(_kAiDefaultModel) ?? kDefaultAiModel;
     autoStartOnAdd = prefs.getBool(_kAutoStartOnAdd) ?? true;
-    deleteTorrentFileOnRemove =
-      prefs.getBool(_kDeleteTorrentFileOnRemove) ?? false;
-    deleteDataOnRemove = prefs.getBool(_kDeleteDataOnRemove) ?? false;
     useDht = prefs.getBool(_kUseDht) ?? true;
     usePex = prefs.getBool(_kUsePex) ?? true;
     useLpd = prefs.getBool(_kUseLpd) ?? false;
@@ -237,18 +230,6 @@ class SettingsService {
     autoStartOnAdd = value;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_kAutoStartOnAdd, value);
-  }
-
-  Future<void> setDeleteTorrentFileOnRemove(bool value) async {
-    deleteTorrentFileOnRemove = value;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_kDeleteTorrentFileOnRemove, value);
-  }
-
-  Future<void> setDeleteDataOnRemove(bool value) async {
-    deleteDataOnRemove = value;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_kDeleteDataOnRemove, value);
   }
 
   Future<void> setUseDht(bool value) async {
