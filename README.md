@@ -2,7 +2,7 @@ Vault The Spire
 
 Closed Alpha tester group: https://groups.google.com/g/testersvaultthespire/c/BLdOUseagro
 
-Vault The Spire is a privacy-first, cross-platform Flutter application dedicated to decentralized P2P file downloading. Combining a powerful BitTorrent engine with a built-in web browser, it provides a seamless, all-in-one environment for finding and managing your files—with no telemetry, no accounts, and zero central servers.
+Vault The Spire is a privacy-first, cross-platform Flutter application dedicated to decentralized P2P file downloading. Combining a powerful BitTorrent engine with a built-in web browser, it provides a seamless, all-in-one environment for finding and managing your files, with no telemetry, no accounts, and zero central servers.
 Privacy-First Mission
 
 Vault The Spire is built on the simple idea that your download habits are your own business.

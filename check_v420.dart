@@ -34,5 +34,5 @@ void main() {
   check('lib/screens/torrents_screen.dart',
       'ETA', 'ETA in torrent list');
   check('pubspec.yaml', 'version: 4.2.0+1', 'version 4.2.0+1');
-  print('\nAll checks passed — safe to build.');
+    print('\nAll checks passed - safe to build.');
 }

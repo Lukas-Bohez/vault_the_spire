@@ -1,4 +1,4 @@
-# VaultTheSpire — Google Play Store Readiness Checklist
+# VaultTheSpire - Google Play Store Readiness Checklist
 
 ## 1. Google Play Developer Account
 - [ ] Register at play.google.com/console ($25 one-time fee)
@@ -6,10 +6,10 @@
 - [ ] Accept Google Play Developer Distribution Agreement
 
 ## 2. App Content & Policy Compliance
-- [ ] Write and publish a Privacy Policy (required — must be hosted at a public URL)
+- [ ] Write and publish a Privacy Policy (required; must be hosted at a public URL)
 - [ ] Write Terms of Service clearly stating prohibited uses, including:
   - [ ] No illegal content of any kind
-  - [ ] No CSAM (explicitly named — zero tolerance)
+  - [ ] No CSAM (explicitly named; zero tolerance)
   - [ ] No copyright infringement
   - [ ] No harassment or hate speech
 - [ ] Complete the Content Rating Questionnaire in Play Console (IARC rating)
@@ -20,7 +20,7 @@
 ## 3. Store Listing
 - [ ] App name: VaultTheSpire
 - [ ] Short description (80 chars max)
-- [ ] Full description (4000 chars max) — highlight privacy, encryption, P2P
+- [ ] Full description (4000 chars max): highlight privacy, encryption, P2P
 - [ ] Feature graphic (1024x500px)
 - [ ] App icon (512x512px, PNG)
 - [ ] At least 2 screenshots per device type (phone required, tablet optional)
