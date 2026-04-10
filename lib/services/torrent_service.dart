@@ -305,6 +305,8 @@ class TorrentService {
       <String, TorrentViewState>{};
   final Map<String, _DiskReconcileSnapshot> _diskSnapshots =
       <String, _DiskReconcileSnapshot>{};
+    final Map<String, DateTime> _lastDownloadActivityByTorrentId =
+      <String, DateTime>{};
   final Map<String, double> _progressHighWaterByTorrentId = <String, double>{};
   final Map<String, int> _downloadedHighWaterByTorrentId = <String, int>{};
   final Map<String, DateTime> _pendingMetadataRetryAfter = <String, DateTime>{};
@@ -474,9 +476,17 @@ class TorrentService {
         }
 
         final uploaded = runtime?.uploaded ?? torrent.bytesUp;
-        final state = (runtime?.downloadSpeed ?? 0) > 0
-            ? 'downloading'
-            : 'seeding';
+        final now = DateTime.now();
+        final downloadSpeed = runtime?.downloadSpeed ?? 0.0;
+        if (downloadSpeed > 0) {
+          _lastDownloadActivityByTorrentId[torrent.id] = now;
+        }
+        final lastActive = _lastDownloadActivityByTorrentId[torrent.id];
+        final recentlyDownloading =
+          lastActive != null && now.difference(lastActive).inSeconds < 10;
+        final state = (downloadSpeed > 0 || recentlyDownloading)
+          ? 'downloading'
+          : 'seeding';
         var progress = state == 'downloading' ? 0.0 : 1.0;
 
         const allowsProgressRegression = true;
@@ -825,6 +835,7 @@ class TorrentService {
     _runtimeByTorrentId.remove(id);
     _latestStatesByTorrentId.remove(id);
     _diskSnapshots.remove(id);
+    _lastDownloadActivityByTorrentId.remove(id);
     _progressHighWaterByTorrentId.remove(id);
     _downloadedHighWaterByTorrentId.remove(id);
     _pendingMetadataRetryAfter.remove(id);
@@ -835,12 +846,14 @@ class TorrentService {
 
   void clearRuntimeStatus(String id) {
     _runtimeByTorrentId.remove(id);
+    _lastDownloadActivityByTorrentId.remove(id);
     _queueStateRefresh(force: true);
   }
 
   void resetProgressTracking(String id) {
     _runtimeByTorrentId.remove(id);
     _latestStatesByTorrentId.remove(id);
+    _lastDownloadActivityByTorrentId.remove(id);
     _progressHighWaterByTorrentId.remove(id);
     _downloadedHighWaterByTorrentId.remove(id);
     _diskSnapshots[id] = _DiskReconcileSnapshot(
@@ -856,6 +869,7 @@ class TorrentService {
   void invalidateDiskSnapshot(String id) {
     _runtimeByTorrentId.remove(id);
     _latestStatesByTorrentId.remove(id);
+    _lastDownloadActivityByTorrentId.remove(id);
     _progressHighWaterByTorrentId.remove(id);
     _downloadedHighWaterByTorrentId.remove(id);
     // Keep a temporary zero-byte snapshot and delay reconcile slightly so
@@ -1084,6 +1098,7 @@ class TorrentService {
           _runtimeByTorrentId.remove(id);
           _latestStatesByTorrentId.remove(id);
           _diskSnapshots.remove(id);
+          _lastDownloadActivityByTorrentId.remove(id);
           _progressHighWaterByTorrentId.remove(id);
           _downloadedHighWaterByTorrentId.remove(id);
           _pendingMetadataRetryAfter.remove(id);

@@ -177,26 +177,12 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
                         ],
                       ),
                       const SizedBox(height: 8),
-                      if (torrent.totalSize != null &&
-                          torrent.totalSize! > 0)
-                        Row(
-                          mainAxisAlignment:
-                              MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              '${_fmtBytes(view?.downloaded ?? torrent.bytesDown)} of ${_fmtBytes(torrent.totalSize!)}',
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .bodySmall,
-                            ),
-                            if (view?.isSeeding == true)
-                              Text(
-                                'Shared: ${_fmtBytes(view!.uploaded)}',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodySmall,
-                              ),
-                          ],
+                      if (view?.isSeeding == true)
+                        Text(
+                          'Shared: ${_fmtBytes(view!.uploaded)}',
+                          style: Theme.of(context)
+                              .textTheme
+                              .bodySmall,
                         ),
                     ]),
                   ),
@@ -313,11 +299,6 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
                   ),
                   _InfoRow('Total size',
                       _fmtBytes(torrent.totalSize ?? 0)),
-                  _InfoRow(
-                    'Downloaded',
-                    _fmtBytes(
-                        view?.downloaded ?? torrent.bytesDown),
-                  ),
                   _InfoRow(
                     'Uploaded',
                     _fmtBytes(view?.uploaded ?? torrent.bytesUp),
