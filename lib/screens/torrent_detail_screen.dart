@@ -6,8 +6,6 @@ import 'package:vault_the_spire/models/torrent.dart';
 import 'package:vault_the_spire/services/torrent_engine_service.dart';
 import 'package:vault_the_spire/services/torrent_service.dart';
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
 String _fmtBytes(int bytes) {
   if (bytes <= 0) return '0 B';
   const u = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -19,8 +17,6 @@ String _fmtBytes(int bytes) {
   }
   return '${v.toStringAsFixed(i == 0 ? 0 : 1)} ${u[i]}';
 }
-
-// ── Sub-widgets ───────────────────────────────────────────────────────────────
 
 class _StatPill extends StatelessWidget {
   final IconData icon;

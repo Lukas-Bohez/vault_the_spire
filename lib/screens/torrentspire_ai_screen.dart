@@ -41,7 +41,6 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
 
   StreamSubscription<List<SearchResult>>? _searchSubscription;
   StreamSubscription<List<TorrentViewState>>? _torrentStatesSubscription;
-  // Timer? _settingsSyncTimer; // TODO: re-enable periodic sync
 
   SearchResult? _selected;
   String _category = 'All';
@@ -94,20 +93,6 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
           }
         });
     unawaited(TorrentService.instance.refreshTorrentStates());
-    // TODO: Re-enable periodic sync after debugging blank screen
-    // _settingsSyncTimer = Timer.periodic(
-    //   const Duration(seconds: 5),
-    //   (_) {
-    //     if (mounted) {
-    //       try {
-    //         _syncAiSettings().ignore();
-    //       } catch (e) {
-    //         debugPrint('Settings sync error: $e');
-    //       }
-    //     }
-    //   },
-    // );
-    // Verify AI connection immediately
     _checkAiReadiness();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _checkDownloadFolderOnInit();

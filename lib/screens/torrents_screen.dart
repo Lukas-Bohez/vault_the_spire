@@ -13,8 +13,6 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:vault_the_spire/services/torrent_engine_service.dart';
 import 'package:vault_the_spire/services/torrent_service.dart';
 
-// ── Sort modes ────────────────────────────────────────────────────────────────
-
 enum _SortMode {
   dateAdded,
   nameAZ,
@@ -65,8 +63,6 @@ extension _SortLabel on _SortMode {
   }
 }
 
-// ── Screen ────────────────────────────────────────────────────────────────────
-
 class TorrentsScreen extends StatefulWidget {
   const TorrentsScreen({super.key});
 
@@ -109,9 +105,7 @@ class _TorrentsScreenState extends State<TorrentsScreen>
         )) {
           return true;
         }
-      } catch (_) {
-        // Fall through to file URI fallback.
-      }
+      } catch (_) {}
     }
 
     try {
@@ -121,9 +115,7 @@ class _TorrentsScreenState extends State<TorrentsScreen>
       )) {
         return true;
       }
-    } catch (_) {
-      // Keep fallback snackbar path below.
-    }
+    } catch (_) {}
 
     return false;
   }
@@ -269,13 +261,11 @@ class _TorrentsScreenState extends State<TorrentsScreen>
   List<TorrentViewState> _sorted(List<TorrentViewState> all) {
     var list = all.toList();
 
-    // Search filter
     if (_searchQuery.isNotEmpty) {
       final q = _searchQuery.toLowerCase();
       list = list.where((t) => t.name.toLowerCase().contains(q)).toList();
     }
 
-    // Sort
     list.sort((a, b) {
       switch (_sortMode) {
         case _SortMode.dateAdded:

@@ -27,9 +27,6 @@ class BrowserScreen extends StatefulWidget {
   State<BrowserScreen> createState() => _BrowserScreenState();
 }
 
-// AutomaticKeepAliveClientMixin keeps the widget tree alive when the parent
-// switches away to another tab  -  the WebView is not torn down and rebuilt,
-// so the user returns to exactly the page they left.
 class _BrowserScreenState extends State<BrowserScreen>
   with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
   @override
@@ -96,8 +93,6 @@ class _BrowserScreenState extends State<BrowserScreen>
 
     _addressController.text = startUrl;
 
-    // If we have a real URL to restore (not the home page), show the webview
-    // immediately rather than the home screen.
     if (startUrl.isNotEmpty && startUrl != _homeUrl) {
       _showHomeScreen = false;
     }
@@ -180,8 +175,6 @@ class _BrowserScreenState extends State<BrowserScreen>
               return;
             }
 
-            // Ignore subresource failures (ads/trackers/CDNs). Only a main-frame
-            // navigation failure should replace the browser content with an error view.
             if (error.isForMainFrame != true) {
               return;
             }
@@ -338,7 +331,6 @@ class _BrowserScreenState extends State<BrowserScreen>
       if (_history.length > 500) _history.removeRange(500, _history.length);
     });
 
-    // Persist asynchronously  -  never await inside listeners.
     SettingsService.instance.setBrowserLastUrl(url);
     SettingsService.instance.setBrowserHistory(_history);
   }
@@ -627,8 +619,6 @@ class _BrowserScreenState extends State<BrowserScreen>
     super.dispose();
   }
 
-  // ── Top bar shown in BOTH tab and standalone modes ───────────────────────
-
   Widget _buildTopBar(ThemeData theme) {
     final cs = theme.colorScheme;
     final currentUrl = _addressController.text.trim();
@@ -829,136 +819,182 @@ class _BrowserScreenState extends State<BrowserScreen>
     );
   }
 
-  // ── Home screen (favourites + history) ───────────────────────────────────
-
   Widget _buildHomeScreen(ThemeData theme) {
     return SingleChildScrollView(
       physics: const BouncingScrollPhysics(),
       padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isMobile = constraints.maxWidth < 600;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text('Browser', style: theme.textTheme.headlineSmall),
-              const Spacer(),
-              TextButton.icon(
-                icon: const Icon(Icons.star, size: 16),
-                label: const Text('Favourites'),
-                onPressed: () => setState(() => _showHistory = false),
-                style: TextButton.styleFrom(
-                  foregroundColor: !_showHistory
-                      ? theme.colorScheme.primary
-                      : null,
-                ),
-              ),
-              TextButton.icon(
-                icon: const Icon(Icons.history, size: 16),
-                label: const Text('History'),
-                onPressed: () => setState(() => _showHistory = true),
-                style: TextButton.styleFrom(
-                  foregroundColor: _showHistory
-                      ? theme.colorScheme.primary
-                      : null,
-                ),
-              ),
-              if (_showHistory && _history.isNotEmpty)
-                TextButton(
-                  onPressed: () async {
-                    setState(() => _history.clear());
-                    await SettingsService.instance.setBrowserHistory([]);
-                  },
-                  child: const Text('Clear'),
-                ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          if (_showHistory)
-            ..._history.map((entry) {
-              final parts = entry.split(' ');
-              final url = parts.length > 1 ? parts.last : entry;
-              final timestamp = parts.length > 1 ? parts.first : '';
-              return ListTile(
-                dense: true,
-                leading: const Icon(Icons.history, size: 16),
-                title: Text(
-                  url,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 13),
-                ),
-                subtitle: timestamp.isNotEmpty
-                    ? Text(
-                        timestamp.substring(0, 10),
-                        style: const TextStyle(fontSize: 11),
-                      )
-                    : null,
-                trailing: IconButton(
-                  icon: const Icon(Icons.close, size: 14),
-                  onPressed: () async {
-                    setState(() => _history.remove(entry));
-                    await SettingsService.instance.setBrowserHistory(_history);
-                  },
-                ),
-                onTap: () => _navigateTo(url),
-              );
-            })
-          else ...[
-            if (_favorites.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
-                child: Text(
-                  'No favourites yet. Star a page to add it.',
-                  textAlign: TextAlign.center,
-                ),
-              )
-            else
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                children: _favorites.map((url) {
-                  return InputChip(
-                    avatar: const Icon(
-                      Icons.star,
-                      size: 14,
-                      color: null,
+              if (isMobile)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text('Browser', style: theme.textTheme.headlineSmall),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextButton.icon(
+                            icon: const Icon(Icons.star, size: 16),
+                            label: const Text('Favourites'),
+                            onPressed: () => setState(() => _showHistory = false),
+                            style: TextButton.styleFrom(
+                              foregroundColor: !_showHistory
+                                  ? theme.colorScheme.primary
+                                  : null,
+                            ),
+                          ),
+                        ),
+                        Expanded(
+                          child: TextButton.icon(
+                            icon: const Icon(Icons.history, size: 16),
+                            label: const Text('History'),
+                            onPressed: () => setState(() => _showHistory = true),
+                            style: TextButton.styleFrom(
+                              foregroundColor: _showHistory
+                                  ? theme.colorScheme.primary
+                                  : null,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                    label: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 180),
-                      child: Text(
-                        url
-                            .replaceAll('https://', '')
-                            .replaceAll('http://', ''),
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 13),
+                    if (_showHistory && _history.isNotEmpty)
+                      TextButton(
+                        onPressed: () async {
+                          setState(() => _history.clear());
+                          await SettingsService.instance.setBrowserHistory([]);
+                        },
+                        child: const Text('Clear'),
+                      ),
+                  ],
+                )
+              else
+                Row(
+                  children: [
+                    Text('Browser', style: theme.textTheme.headlineSmall),
+                    const Spacer(),
+                    TextButton.icon(
+                      icon: const Icon(Icons.star, size: 16),
+                      label: const Text('Favourites'),
+                      onPressed: () => setState(() => _showHistory = false),
+                      style: TextButton.styleFrom(
+                        foregroundColor: !_showHistory
+                            ? theme.colorScheme.primary
+                            : null,
                       ),
                     ),
-                    onPressed: () => _navigateTo(url),
-                    deleteIcon: const Icon(Icons.close, size: 14),
-                    onDeleted: () async {
-                      setState(() => _favorites.remove(url));
-                      await SettingsService.instance.setBrowserFavorites(
-                        _favorites,
-                      );
-                    },
+                    TextButton.icon(
+                      icon: const Icon(Icons.history, size: 16),
+                      label: const Text('History'),
+                      onPressed: () => setState(() => _showHistory = true),
+                      style: TextButton.styleFrom(
+                        foregroundColor: _showHistory
+                            ? theme.colorScheme.primary
+                            : null,
+                      ),
+                    ),
+                    if (_showHistory && _history.isNotEmpty)
+                      TextButton(
+                        onPressed: () async {
+                          setState(() => _history.clear());
+                          await SettingsService.instance.setBrowserHistory([]);
+                        },
+                        child: const Text('Clear'),
+                      ),
+                  ],
+                ),
+              const SizedBox(height: 12),
+              if (_showHistory)
+                ..._history.map((entry) {
+                  final parts = entry.split(' ');
+                  final url = parts.length > 1 ? parts.last : entry;
+                  final timestamp = parts.length > 1 ? parts.first : '';
+                  return ListTile(
+                    dense: true,
+                    leading: const Icon(Icons.history, size: 16),
+                    title: Text(
+                      url,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                    subtitle: timestamp.isNotEmpty
+                        ? Text(
+                            timestamp.substring(0, 10),
+                            style: const TextStyle(fontSize: 11),
+                          )
+                        : null,
+                    trailing: IconButton(
+                      icon: const Icon(Icons.close, size: 14),
+                      onPressed: () async {
+                        setState(() => _history.remove(entry));
+                        await SettingsService.instance.setBrowserHistory(_history);
+                      },
+                    ),
+                    onTap: () => _navigateTo(url),
                   );
-                }).toList(),
-              ),
-            const SizedBox(height: 20),
-            const Text(
-              'Quick links',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 10,
-              runSpacing: 10,
-              children:
-                  [
-                        'https://www.startpage.com/',
-                        'https://duckduckgo.com/',
-                        'https://news.ycombinator.com/',
-                        'https://www.wikipedia.org/',
-                      ]
+                })
+              else ...[
+                if (_favorites.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 24),
+                    child: Text(
+                      'No favourites yet. Star a page to add it.',
+                      textAlign: TextAlign.center,
+                    ),
+                  )
+                else
+                  Wrap(
+                    spacing: isMobile ? 6 : 10,
+                    runSpacing: isMobile ? 6 : 10,
+                    children: _favorites.map((url) {
+                      final maxWidth = isMobile ? 140.0 : 180.0;
+                      return InputChip(
+                        avatar: const Icon(
+                          Icons.star,
+                          size: 14,
+                          color: null,
+                        ),
+                        label: ConstrainedBox(
+                          constraints: BoxConstraints(maxWidth: maxWidth),
+                          child: Text(
+                            url
+                                .replaceAll('https://', '')
+                                .replaceAll('http://', ''),
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                        ),
+                        onPressed: () => _navigateTo(url),
+                        deleteIcon: const Icon(Icons.close, size: 14),
+                        onDeleted: () async {
+                          setState(() => _favorites.remove(url));
+                          await SettingsService.instance.setBrowserFavorites(
+                            _favorites,
+                          );
+                        },
+                      );
+                    }).toList(),
+                  ),
+                const SizedBox(height: 20),
+                const Text(
+                  'Quick links',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: isMobile ? 6 : 10,
+                  runSpacing: isMobile ? 6 : 10,
+                  children: [
+                    'https://www.startpage.com/',
+                    'https://duckduckgo.com/',
+                    'https://news.ycombinator.com/',
+                    'https://www.wikipedia.org/',
+                  ]
                       .map(
                         (url) => OutlinedButton(
                           onPressed: () => _navigateTo(url),
@@ -969,14 +1005,14 @@ class _BrowserScreenState extends State<BrowserScreen>
                         ),
                       )
                       .toList(),
-            ),
-          ],
-        ],
+                ),
+              ],
+            ],
+          );
+        },
       ),
     );
   }
-
-  // ── WebView body ──────────────────────────────────────────────────────────
 
   Widget _buildWebViewBody() {
     if (_webViewError != null) {
