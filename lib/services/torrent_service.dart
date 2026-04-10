@@ -405,6 +405,9 @@ class TorrentService {
         final diskBytes = diskSnapshot?.bytesOnDisk ?? torrent.bytesDown;
         final diskComplete = diskSnapshot?.isComplete ?? false;
         final runtimeState = runtime?.state.toLowerCase() ?? '';
+        final activeDownloadState =
+            runtimeState.contains('download') ||
+            persistedState.contains('downloading');
         final explicitlyResetToZero =
             persistedState == 'downloading' &&
           torrent.bytesDown == 0;
@@ -480,11 +483,15 @@ class TorrentService {
         final downloadSpeed = runtime?.downloadSpeed ?? 0.0;
         if (downloadSpeed > 0) {
           _lastDownloadActivityByTorrentId[torrent.id] = now;
+        } else if (activeDownloadState &&
+            !_lastDownloadActivityByTorrentId.containsKey(torrent.id)) {
+          _lastDownloadActivityByTorrentId[torrent.id] = now;
         }
         final lastActive = _lastDownloadActivityByTorrentId[torrent.id];
         final recentlyDownloading =
           lastActive != null && now.difference(lastActive).inSeconds < 10;
-        final state = (downloadSpeed > 0 || recentlyDownloading)
+        final state = (activeDownloadState &&
+                (downloadSpeed > 0 || recentlyDownloading))
           ? 'downloading'
           : 'seeding';
         var progress = state == 'downloading' ? 0.0 : 1.0;

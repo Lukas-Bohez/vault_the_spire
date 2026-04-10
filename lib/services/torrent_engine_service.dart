@@ -2580,11 +2580,31 @@ class TorrentEngineService {
     _tasks.remove(torrentId);
   }
 
+  Future<void> _releaseTaskFileHandles(String torrentId) async {
+    final task = _tasks[torrentId];
+    if (task == null) return;
+    try {
+      final dynamic fm = (task as dynamic).fileManager;
+      if (fm == null) return;
+      final files = fm.files as List? ?? [];
+      for (final file in files) {
+        try {
+          await (file as dynamic).releaseWriteHandle();
+        } catch (_) {
+          // Best-effort cleanup only.
+        }
+      }
+    } catch (e) {
+      debugPrint('releaseTaskFileHandles failed for $torrentId: $e');
+    }
+  }
+
   Future<void> stopTorrent(String torrentId) async {
     final task = _tasks[torrentId];
     if (task != null) {
       try {
         await task.stop();
+        await _releaseTaskFileHandles(torrentId);
       } catch (e) {
         debugPrint('stopTorrent: task stop failed (non-fatal): $e');
       }
