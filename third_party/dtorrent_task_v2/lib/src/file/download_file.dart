@@ -254,6 +254,8 @@ class DownloadFile {
       _writeAccess = await _writeAccess?.setPosition(request.position);
       _writeAccess = await _writeAccess?.writeFrom(
           request.block, request.start, request.end);
+      // Flush each write so abrupt process termination does not lose buffered bytes.
+      await _writeAccess?.flush();
       request.completer.complete(true);
       // if there is a request pending push bytes to it
       if (!_bytesRequestController.isClosed) {
@@ -340,6 +342,19 @@ class DownloadFile {
       _streamSubscription = _streamController?.stream.listen(_processRequest);
     }
     return access!;
+  }
+
+  /// Flush and close only the write handle so the OS releases write locks.
+  /// Read handle is intentionally left open for read-only operations.
+  Future<void> releaseWriteHandle() async {
+    try {
+      await _writeAccess?.flush();
+      await _writeAccess?.close();
+    } catch (e) {
+      _log.warning('releaseWriteHandle error:', e);
+    } finally {
+      _writeAccess = null;
+    }
   }
 
   Future<void> releaseFileHandles() async {

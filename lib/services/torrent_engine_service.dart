@@ -1614,6 +1614,25 @@ class TorrentEngineService {
       })
       ..on<dt.TaskCompleted>((_) async {
         _emitStats(torrentId, task);
+
+        // Release write handles immediately after download completion so
+        // Windows no longer holds exclusive locks on downloaded files.
+        try {
+          final dynamic fm = (task as dynamic).fileManager;
+          if (fm != null) {
+            final files = fm.files as List? ?? [];
+            for (final file in files) {
+              try {
+                await (file as dynamic).releaseWriteHandle();
+              } catch (_) {
+                // Best-effort per file; continue releasing others.
+              }
+            }
+          }
+        } catch (e) {
+          debugPrint('TaskCompleted: write handle release failed (non-fatal): $e');
+        }
+
         final hasOutput = await _verifyOutputExists(torrentId, task);
         if (!hasOutput) {
           await TorrentService.instance.updateTorrentStatus(
@@ -2476,10 +2495,7 @@ class TorrentEngineService {
           filePath: saveDir,
         ),
       );
-      TorrentService.instance.invalidateDiskSnapshot(
-        torrentId,
-        runReconcile: false,
-      );
+      TorrentService.instance.invalidateDiskSnapshot(torrentId);
       unawaited(TorrentService.instance.refreshTorrentStates());
 
       await _deleteBtStateFiles(saveDir, torrentId);
@@ -2533,10 +2549,7 @@ class TorrentEngineService {
             filePath: isolatedDir,
           ),
         );
-        TorrentService.instance.invalidateDiskSnapshot(
-          torrentId,
-          runReconcile: false,
-        );
+        TorrentService.instance.invalidateDiskSnapshot(torrentId);
         unawaited(TorrentService.instance.refreshTorrentStates());
 
         await startTorrent(torrentId, destinationPath: isolatedDir);
@@ -2588,6 +2601,19 @@ class TorrentEngineService {
       await TorrentService.instance.updateTorrentStatus(torrentId, 'paused');
     } catch (e) {
       debugPrint('stopTorrent: status update failed (non-fatal): $e');
+    }
+  }
+
+  /// Returns relative file paths from the running task's torrent model.
+  /// Used by disk scan to stat specific files instead of recursive scans.
+  List<String> getKnownRelativePaths(String torrentId) {
+    try {
+      final task = _tasks[torrentId];
+      if (task == null) return const [];
+      final files = task.metaInfo.files;
+      return files.map((f) => f.path).toList();
+    } catch (_) {
+      return const [];
     }
   }
 

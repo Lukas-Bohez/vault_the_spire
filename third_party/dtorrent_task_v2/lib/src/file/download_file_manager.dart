@@ -168,6 +168,7 @@ class DownloadFileManager with EventsEmittable<DownloadFileManagerEvent> {
           // Emit only once per file
           if (file.completelyFlushed) {
             events.emit(DownloadManagerFileCompleted(file));
+            await file.releaseWriteHandle();
           }
         }
       }
