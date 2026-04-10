@@ -121,9 +121,6 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
       builder: (context, snapshot) {
         final view = snapshot.data;
         final torrent = view?.model ?? widget.torrent;
-        final progress = normalizeTorrentProgressForDisplay(
-          (view?.progress ?? torrent.progress).clamp(0.0, 1.0),
-        );
         final statusLabel =
             view?.statusLabel ?? (torrent.status ?? 'Unknown');
         final cs = Theme.of(context).colorScheme;
@@ -177,39 +174,8 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
                                     fontWeight: FontWeight.w700,
                                     color: cs.onPrimaryContainer)),
                           ),
-                          Text(
-                            '${(progress * 100).toStringAsFixed(2)}%',
-                            style: Theme.of(context)
-                                .textTheme
-                                .headlineMedium
-                                ?.copyWith(
-                                    fontWeight: FontWeight.w800),
-                          ),
                         ],
                       ),
-                      const SizedBox(height: 12),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(6),
-                        // Pulse (indeterminate) when verifying pieces on disk
-                        child: statusLabel == 'Checking'
-                            ? const LinearProgressIndicator(minHeight: 12)
-                            : LinearProgressIndicator(
-                                value: progress,
-                                minHeight: 12,
-                                backgroundColor: cs.surfaceContainerHighest,
-                              ),
-                      ),
-                      if (statusLabel == 'Checking')
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Text(
-                            'Verifying pieces on disk…',
-                            style: Theme.of(context).textTheme.bodySmall
-                                ?.copyWith(
-                                    color: cs.onSurfaceVariant),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
                       const SizedBox(height: 8),
                       if (torrent.totalSize != null &&
                           torrent.totalSize! > 0)
@@ -218,7 +184,7 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
                               MainAxisAlignment.spaceBetween,
                           children: [
                             Text(
-                              '${_fmtBytes((progress * torrent.totalSize!).round())} of ${_fmtBytes(torrent.totalSize!)}',
+                              '${_fmtBytes(view?.downloaded ?? torrent.bytesDown)} of ${_fmtBytes(torrent.totalSize!)}',
                               style: Theme.of(context)
                                   .textTheme
                                   .bodySmall,

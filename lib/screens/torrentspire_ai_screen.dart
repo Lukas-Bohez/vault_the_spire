@@ -1110,7 +1110,6 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
                             for (final item in activeDownloads)
                               Builder(
                                 builder: (context) {
-                                  final progress = item.displayProgress;
                                   return ListTile(
                                     dense: true,
                                     title: Text(
@@ -1120,24 +1119,9 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
                                     ),
                                     subtitle: Padding(
                                       padding: const EdgeInsets.only(top: 6),
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          LinearProgressIndicator(value: progress),
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            '${item.statusLabel} • ${(progress * 100).toStringAsFixed(1)}% • ${item.peers} peers',
-                                            style: const TextStyle(fontSize: 11),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    trailing: Text(
-                                      '${(progress * 100).toStringAsFixed(1)}%',
-                                      style: const TextStyle(
-                                        fontFeatures: [
-                                          FontFeature.tabularFigures(),
-                                        ],
+                                      child: Text(
+                                        '${item.statusLabel} • ${item.peers} peers',
+                                        style: const TextStyle(fontSize: 11),
                                       ),
                                     ),
                                   );

@@ -935,7 +935,6 @@ class _TorrentsScreenState extends State<TorrentsScreen>
 
   Widget _buildTorrentCard(BuildContext context, TorrentViewState ts) {
     final torrent = ts.model;
-    final progress = ts.displayProgress;
     final stateColor = _stateColor(context, ts.state);
     final cs = Theme.of(context).colorScheme;
 
@@ -984,16 +983,6 @@ class _TorrentsScreenState extends State<TorrentsScreen>
                       maxLines: 2,
                     ),
                     const SizedBox(height: 7),
-                    // Progress bar
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(3),
-                      child: LinearProgressIndicator(
-                        value: progress,
-                        minHeight: 5,
-                        backgroundColor: cs.surfaceContainerHighest,
-                        valueColor: AlwaysStoppedAnimation(stateColor),
-                      ),
-                    ),
                     const SizedBox(height: 5),
                     // Status row
                     Row(
@@ -1015,15 +1004,6 @@ class _TorrentsScreenState extends State<TorrentsScreen>
                               fontWeight: FontWeight.w700,
                               color: stateColor,
                             ),
-                          ),
-                        ),
-                        const SizedBox(width: 6),
-                        // Progress %
-                        Text(
-                          '${(progress * 100).toStringAsFixed(1)}%',
-                          style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w600,
                           ),
                         ),
                         // Size
@@ -1067,11 +1047,13 @@ class _TorrentsScreenState extends State<TorrentsScreen>
                         if (ts.downloadSpeed > 512 &&
                             ts.model.totalSize != null &&
                             ts.model.totalSize! > 0 &&
-                            progress < 0.999)
+                            ts.downloaded < ts.model.totalSize!)
                           ...() {
                             final remaining =
-                                (ts.model.totalSize! * (1.0 - progress))
-                                    .round();
+                                (ts.model.totalSize! - ts.downloaded).clamp(
+                                  0,
+                                  ts.model.totalSize!,
+                                );
                             final etaSec = (remaining / ts.downloadSpeed)
                                 .round();
                             String eta;

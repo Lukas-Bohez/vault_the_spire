@@ -430,11 +430,12 @@ class TorrentService {
             runtime.state.toLowerCase().contains('download') &&
             runtime.downloaded > effectiveDiskBytes + (64 * 1024 * 1024) &&
             (totalSize <= 0 || effectiveDiskBytes < (totalSize * 0.10).round());
-        if (runtimeFarAheadOfDisk ||
-            (persistedState.contains('downloading') &&
-                hasDiskSnapshot &&
-                effectiveDiskBytes == 0)) {
+        if (runtimeFarAheadOfDisk) {
           downloaded = math.max(torrent.bytesDown, effectiveDiskBytes);
+        } else if (persistedState.contains('downloading') &&
+            hasDiskSnapshot &&
+            effectiveDiskBytes == 0) {
+          downloaded = math.max(runtime?.downloaded ?? 0, torrent.bytesDown);
         }
 
         final missingOnDisk =
@@ -473,27 +474,12 @@ class TorrentService {
         }
 
         final uploaded = runtime?.uploaded ?? torrent.bytesUp;
-        final effectiveRuntimeState = diskContradictsCompletion
+        final state = (runtime?.downloadSpeed ?? 0) > 0
             ? 'downloading'
-            : runtime?.state;
-        final state = _deriveState(
-          torrent.status,
-          effectiveRuntimeState,
-          isComplete,
-          missingOnDisk: missingOnDisk,
-          hasRuntime: runtime != null,
-        );
-        var progress = isComplete
-            ? 1.0
-            : totalSize > 0
-            ? (downloaded / totalSize).clamp(0.0, 1.0)
-            : (runtime?.progress ?? torrent.progress).clamp(0.0, 1.0);
+            : 'seeding';
+        var progress = state == 'downloading' ? 0.0 : 1.0;
 
-        final allowsProgressRegression =
-          explicitlyResetToZero ||
-            missingOnDisk ||
-            state.contains('checking') ||
-            state.contains('error_missing_files');
+        const allowsProgressRegression = true;
 
         if (allowsProgressRegression) {
           _progressHighWaterByTorrentId[torrent.id] = progress;
@@ -710,7 +696,6 @@ class TorrentService {
   }
 
   String _fallbackStatusMessage(String state, double progress, int peers) {
-    final displayProgress = normalizeTorrentProgressForDisplay(progress);
     if (state.contains('error_file_in_use')) {
       return 'Redownload blocked: close programs using the file and retry.';
     }
@@ -721,21 +706,18 @@ class TorrentService {
       return 'Waiting for peers to provide metadata...';
     }
     if (state.contains('seed')) {
-      return 'Seeding • ${(displayProgress * 100).toStringAsFixed(1)}%';
+      return 'Seeding';
     }
     if (state.contains('pause')) {
-      return 'Paused • ${(displayProgress * 100).toStringAsFixed(1)}%';
+      return 'Paused';
     }
     if (state.contains('download')) {
-      if (peers <= 0) {
-        return 'Searching for peers...';
-      }
-      return 'Downloading • ${(displayProgress * 100).toStringAsFixed(1)}% • $peers peers';
+      return 'Downloading';
     }
     if (state.contains('error')) {
       return 'Torrent error';
     }
-    return '${(displayProgress * 100).toStringAsFixed(1)}%';
+    return state;
   }
 
   void _retryPendingMetadataIfDue(TorrentModel torrent) {
