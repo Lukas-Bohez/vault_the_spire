@@ -499,11 +499,23 @@ class TorrentService {
         final lastActive = _lastDownloadActivityByTorrentId[torrent.id];
         final recentlyDownloading =
           lastActive != null && now.difference(lastActive).inSeconds < 10;
-        final state = (activeDownloadState &&
-                (downloadSpeed > 0 || recentlyDownloading))
-          ? 'downloading'
-          : 'seeding';
-        var progress = state == 'downloading' ? 0.0 : 1.0;
+        final state = _deriveState(
+          persistedState,
+          runtimeState,
+          isComplete,
+          missingOnDisk: missingOnDisk,
+          hasRuntime: runtime != null,
+        );
+
+        final hasKnownTotal = totalSize > 0;
+        final downloadedClamped = hasKnownTotal
+            ? downloaded.clamp(0, totalSize)
+            : downloaded;
+        var progress = state == 'seeding'
+            ? 1.0
+            : (hasKnownTotal && totalSize > 0
+                  ? (downloadedClamped / totalSize).clamp(0.0, 0.9999)
+                  : ((runtime?.progress ?? torrent.progress).clamp(0.0, 0.9999)));
 
         const allowsProgressRegression = true;
 
@@ -877,6 +889,7 @@ class TorrentService {
 
   Future<void> removeTorrent(String id) async {
     await TorrentsDao.instance.deleteTorrent(id);
+    await TorrentEngineService.instance.removeCachedTorrentSource(id);
     _runtimeByTorrentId.remove(id);
     _latestStatesByTorrentId.remove(id);
     _diskSnapshots.remove(id);
@@ -996,17 +1009,29 @@ class TorrentService {
         batch.map((torrent) async {
           try {
             await TorrentEngineService.instance.startTorrent(torrent.id);
+            await TorrentEngineService.instance.forceRefresh(torrent.id);
           } on TimeoutException catch (e, st) {
             debugPrint('Resume metadata timeout for ${torrent.id}: $e');
             debugPrint(st.toString());
             await updateTorrentStatus(torrent.id, 'pending_metadata');
-            _pendingMetadataRetryAfter[torrent.id] = DateTime.now().add(
-              const Duration(seconds: 90),
-            );
+            _scheduleNextMetadataRetry(torrent.id);
           } catch (e, st) {
             debugPrint('Failed to resume torrent ${torrent.id}: $e');
             debugPrint(st.toString());
-            await updateTorrentStatus(torrent.id, 'error_resume_failed');
+            final magnetPresent =
+                (torrent.magnetLink?.trim().isNotEmpty ?? false);
+            if (magnetPresent) {
+              await updateTorrentStatus(torrent.id, 'pending_metadata');
+              _scheduleNextMetadataRetry(torrent.id);
+            } else {
+              // Preserve previous stable state instead of forcing an error status.
+              await updateTorrentStatus(
+                torrent.id,
+                torrent.status?.isNotEmpty == true
+                    ? torrent.status!
+                    : 'queued',
+              );
+            }
           }
         }),
       );
@@ -1303,10 +1328,19 @@ class TorrentService {
     final infoHash = _ensureString(metadata.infoHashV1);
     final torrentName = _ensureString(metadata.name);
 
+    await TorrentEngineService.instance.cacheTorrentSource(infoHash, bytes);
+
     final existing = await TorrentsDao.instance.getTorrentById(infoHash);
     if (existing != null) {
-      await TorrentEngineService.instance.forceRefresh(existing.id);
-      throw TorrentAlreadyExistsException(existing.id);
+      if (SettingsService.instance.autoStartOnAdd &&
+          !TorrentEngineService.instance.isRunning(existing.id)) {
+        await updateTorrentStatus(existing.id, 'downloading');
+        await TorrentEngineService.instance.startTorrent(existing.id);
+      } else {
+        await TorrentEngineService.instance.forceRefresh(existing.id);
+      }
+      _queueStateRefresh(force: true);
+      return;
     }
 
     final totalSize = metadata.files.fold<int>(
