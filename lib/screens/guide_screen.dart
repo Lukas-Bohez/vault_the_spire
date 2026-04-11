@@ -52,7 +52,7 @@ class _GuideScreenState extends State<GuideScreen>
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        'TorrentSpire AI',
+                        'Vault The Spire',
                         style: tt.headlineSmall?.copyWith(
                           fontWeight: FontWeight.w800,
                           color: cs.onPrimaryContainer,
@@ -87,7 +87,7 @@ class _GuideScreenState extends State<GuideScreen>
             icon: Icons.gavel_outlined,
             color: cs.error,
             title: 'Legal Use Only',
-            body: 'TorrentSpire AI is designed exclusively for legal downloading. '
+            body: 'Vault The Spire is designed exclusively for legal downloading. '
                 'This includes:\n\n'
                 '- Open-source software (Linux distros, development tools, games released freely)\n'
                 '- Creative Commons licensed music, video, and books\n'
@@ -154,7 +154,7 @@ class _GuideScreenState extends State<GuideScreen>
             icon: Icons.privacy_tip_outlined,
             color: cs.primary,
             title: 'Privacy & Your Data',
-            body: 'TorrentSpire AI stores all data locally on your device. '
+            body: 'Vault The Spire stores all data locally on your device. '
                 'No torrent history, download statistics, or file names are '
                 'sent to any server.\n\n'
                 'Your IP address is visible to other peers in any torrent swarm '
@@ -169,7 +169,7 @@ class _GuideScreenState extends State<GuideScreen>
             color: cs.tertiary,
             title: android ? 'Android Tips' : 'Desktop Tips',
             body: android
-                ? '- Disable battery optimisation for TorrentSpire in Android '
+                ? '- Disable battery optimisation for Vault The Spire in Android '
                     'Settings -> Apps to prevent the OS from pausing active downloads.\n\n'
                     '- If a torrent shows "File already in use", close any other '
                     'app that has the file open, then tap Redownload.\n\n'

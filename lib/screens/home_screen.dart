@@ -12,7 +12,7 @@ class HomeScreen extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('TorrentSpire AI'),
+        title: const Text('Vault The Spire'),
         centerTitle: true,
         elevation: 0,
       ),
@@ -26,7 +26,7 @@ class HomeScreen extends StatelessWidget {
           children: [
             const SizedBox(height: 8),
             const Text(
-              'TorrentSpire AI',
+              'Vault The Spire',
               style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 2),

@@ -801,9 +801,7 @@ class _AboutScreenState extends State<AboutScreen>
                 ListTile(
                   contentPadding: EdgeInsets.zero,
                   leading: Icon(Icons.info_outline),
-                  title: Text(
-                    _androidTorrentOnly ? 'Vault The Spire' : 'TorrentSpire AI',
-                  ),
+                  title: const Text('Vault The Spire'),
                   subtitle: Text(
                     _androidTorrentOnly
                         ? 'Torrent manager for Android'
@@ -814,7 +812,7 @@ class _AboutScreenState extends State<AboutScreen>
                   contentPadding: EdgeInsets.zero,
                   leading: Icon(Icons.calendar_month),
                   title: Text('App version'),
-                  subtitle: const Text('4.3.1'),
+                  subtitle: const Text('4.3.2'),
                 ),
                 ListTile(
                   contentPadding: EdgeInsets.zero,

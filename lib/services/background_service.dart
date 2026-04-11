@@ -15,7 +15,7 @@ Future<void> initBackgroundService() async {
       autoStart: false,
       isForegroundMode: false,
       notificationChannelId: 'torrent_engine_channel',
-      initialNotificationTitle: 'TorrentSpire AI Torrent Service',
+      initialNotificationTitle: 'Vault The Spire Torrent Service',
       initialNotificationContent: 'Initializing torrent background service...',
       foregroundServiceNotificationId: 888,
     ),
@@ -42,7 +42,7 @@ void onServiceStart(ServiceInstance service) async {
     if (await service.isForegroundService()) {
       await service.setAsForegroundService();
       await service.setForegroundNotificationInfo(
-        title: 'TorrentSpire AI Torrent Service',
+        title: 'Vault The Spire Torrent Service',
         content: 'Service is running',
       );
     }

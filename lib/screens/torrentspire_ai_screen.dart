@@ -664,7 +664,7 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
       {
         'role': 'system',
         'content':
-            'You are TorrentSpire AI, an in-app torrent copilot. '
+        'You are Vault The Spire AI, an in-app torrent copilot. '
             'Always use the provided app context and reference live torrent state.',
       },
       {'role': 'system', 'content': contextBlock},
@@ -851,7 +851,7 @@ class _TorrentSpireAiScreenState extends State<TorrentSpireAiScreen>
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('TorrentSpire AI'),
+        title: const Text('Vault The Spire AI'),
         actions: [
           IconButton(
             tooltip: 'Focus mode',

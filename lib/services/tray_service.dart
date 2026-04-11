@@ -74,7 +74,7 @@ class TrayService with TrayListener, WindowListener {
     }
 
     try {
-      await trayManager.setToolTip('TorrentSpire AI');
+      await trayManager.setToolTip('Vault The Spire');
     } catch (e) {
       debugPrint('TrayService: setToolTip failed: $e');
     }

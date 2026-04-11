@@ -23,7 +23,7 @@ Future<void> setupDesktopWindow({required bool installShutdownListener}) async {
     size: Size(1100, 700),
     minimumSize: Size(800, 600),
     center: true,
-    title: 'TorrentSpire AI',
+    title: 'Vault The Spire',
     titleBarStyle: TitleBarStyle.normal,
   );
 

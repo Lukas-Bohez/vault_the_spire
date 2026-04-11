@@ -1,8 +1,8 @@
-# TorrentSpire AI Privacy Policy
+# Vault The Spire Privacy Policy
 
 Last updated: April 11, 2026
 
-TorrentSpire AI does not collect, transmit, or share any personal data.
+Vault The Spire does not collect, transmit, or share any personal data.
 
 All data (torrent history, download progress, browser history, settings) is stored exclusively on your device and is never sent to any server.
 

@@ -132,7 +132,7 @@ Future<void> main() async {
         try {
           final externalDir = await getExternalStorageDirectory();
           if (externalDir != null) {
-            final downloadsDir = Directory('${externalDir.path}/TorrentSpire');
+            final downloadsDir = Directory('${externalDir.path}/VaultTheSpire');
             if (!await downloadsDir.exists()) {
               await downloadsDir.create(recursive: true);
             }
@@ -341,7 +341,7 @@ class _MainAppState extends State<MainApp> {
     final isAndroid =
         !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
     return MaterialApp.router(
-      title: isAndroid ? 'Vault The Spire' : 'TorrentSpire AI',
+      title: 'Vault The Spire',
       theme: _buildTheme(Brightness.light),
       darkTheme: _buildTheme(Brightness.dark),
       themeMode: themeService.themeMode,

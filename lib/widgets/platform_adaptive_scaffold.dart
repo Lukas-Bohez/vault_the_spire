@@ -151,7 +151,7 @@ class _AppShellState extends State<AppShell> {
             _NavItem(
               icon: Icons.auto_awesome,
               activeIcon: Icons.auto_awesome,
-              label: 'TorrentSpire AI',
+              label: 'Vault AI',
               route: '/copilot',
             ),
             _NavItem(
@@ -286,7 +286,7 @@ class _Sidebar extends StatelessWidget {
                 ),
                 const SizedBox(width: 10),
                 const Text(
-                  'TorrentSpire AI',
+                  'Vault The Spire',
                   style: TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
                 ),
               ],
@@ -298,7 +298,7 @@ class _Sidebar extends StatelessWidget {
             child: Align(
               alignment: Alignment.centerLeft,
               child: Text(
-                'TorrentSpire AI',
+                'Vault The Spire',
                 style: TextStyle(
                   fontSize: 11,
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
