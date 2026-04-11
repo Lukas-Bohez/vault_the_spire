@@ -2927,7 +2927,6 @@ class TorrentEngineService {
     }
     _forceRedownloadInFlight.add(torrentId);
     try {
-      final runningModel = _tasks[torrentId]?.metaInfo;
       await stopTorrent(torrentId);
       await Future.delayed(const Duration(milliseconds: 200));
 
@@ -2942,8 +2941,17 @@ class TorrentEngineService {
                 ? filePath
                 : null);
       final saveDir = await _resolveWritableDownloadDir(preferredPath);
+      final isolatedDir = await _createIsolatedRedownloadDir(
+        saveDir,
+        torrent.name,
+      );
 
-      // Reset visible state immediately so UI drops to 0% without waiting for disk cleanup.
+      _log(
+        torrentId,
+        'Starting non-destructive redownload in isolated directory: $isolatedDir',
+      );
+
+      // Reset visible state immediately so UI drops to 0% before restart.
       await TorrentService.instance.updateTorrent(
         torrent.copyWith(
           status: 'downloading',
@@ -2952,100 +2960,12 @@ class TorrentEngineService {
           completedAt: null,
           seeders: 0,
           leechers: 0,
-          filePath: saveDir,
+          filePath: isolatedDir,
         ),
       );
       TorrentService.instance.resetProgressTracking(torrentId);
       unawaited(TorrentService.instance.refreshTorrentStates());
-
-      await _deleteBtStateFiles(saveDir, torrentId);
-      if (configuredDir.isNotEmpty && configuredDir != saveDir) {
-        await _deleteBtStateFiles(configuredDir, torrentId);
-      }
-
-      final relativePaths = <String>{};
-      if (runningModel != null) {
-        relativePaths.addAll(_relativeFilePathsFromModel(runningModel));
-      }
-
-      if (relativePaths.isEmpty) {
-        final fileModel = await _loadModelFromTorrentFileForRedownload(torrent);
-        if (fileModel != null) {
-          relativePaths.addAll(_relativeFilePathsFromModel(fileModel));
-        }
-      }
-
-      if (relativePaths.isEmpty) {
-        final cachedModel = await _loadCachedModelForRedownload(torrent);
-        if (cachedModel != null) {
-          relativePaths.addAll(_relativeFilePathsFromModel(cachedModel));
-        }
-      }
-
-      if (relativePaths.isEmpty) {
-        // If we cannot resolve target file paths, deleting in-place is unsafe and
-        // can leave old data that immediately re-marks the task complete.
-        // Force a clean redownload into an isolated directory.
-        final isolatedDir = await _createIsolatedRedownloadDir(
-          saveDir,
-          torrent.name,
-        );
-        _log(
-          torrentId,
-          'Redownload fallback: metadata file list unavailable, using isolated directory $isolatedDir',
-        );
-        await TorrentService.instance.updateTorrent(
-          torrent.copyWith(
-            status: 'downloading',
-            bytesDown: 0,
-            bytesUp: 0,
-            completedAt: null,
-            seeders: 0,
-            leechers: 0,
-            filePath: isolatedDir,
-          ),
-        );
-        TorrentService.instance.resetProgressTracking(torrentId);
-        unawaited(TorrentService.instance.refreshTorrentStates());
-        await startTorrent(torrentId, destinationPath: isolatedDir);
-        return;
-      }
-
-      final lockedPaths = await _deleteTorrentContentForRedownload(
-        torrent,
-        saveDir,
-        relativePaths,
-      );
-
-      if (lockedPaths.isNotEmpty) {
-        final sample = lockedPaths.take(3).join(', ');
-        debugPrint(
-          'forceRedownload: files are locked, switching to isolated redownload dir. Files: $sample',
-        );
-
-        final isolatedDir = await _createIsolatedRedownloadDir(
-          saveDir,
-          torrent.name,
-        );
-        await TorrentService.instance.updateTorrent(
-          torrent.copyWith(
-            status: 'downloading',
-            bytesDown: 0,
-            bytesUp: 0,
-            completedAt: null,
-            seeders: 0,
-            leechers: 0,
-            filePath: isolatedDir,
-          ),
-        );
-        TorrentService.instance.resetProgressTracking(torrentId);
-        unawaited(TorrentService.instance.refreshTorrentStates());
-
-        await startTorrent(torrentId, destinationPath: isolatedDir);
-        return;
-      }
-
-      await startTorrent(torrentId, destinationPath: saveDir);
+      await startTorrent(torrentId, destinationPath: isolatedDir);
     } finally {
       _forceRedownloadInFlight.remove(torrentId);
     }

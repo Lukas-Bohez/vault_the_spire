@@ -143,8 +143,9 @@ class _GuideScreenState extends State<GuideScreen>
                 'This re-reads every piece from disk and checks it against the '
                 'original checksums - no data is deleted.\n\n'
                 'If verification finds bad pieces, or if you want to start '
-                'completely fresh, tap "Redownload". This deletes the local '
-                'copy and downloads everything again from peers.\n\n'
+                'completely fresh, tap "Redownload". This starts a fresh copy '
+                'in a new folder and downloads everything again from peers '
+                'without deleting your existing files.\n\n'
                 'Large repacks (multi-part installer archives) sometimes need a '
                 'verify pass after completing because pieces can arrive out of '
                 'order across many files.',

@@ -553,16 +553,28 @@ class TorrentService {
         final seeders = runtime?.seeders ?? torrent.seeders;
         final leechers = runtime?.leechers ?? torrent.leechers;
 
+        final resolvedStatusLabel = _statusLabelForState(
+          state,
+          downloadSpeed: dlSpeed,
+          uploadSpeed: ulSpeed,
+          isComplete: isComplete,
+        );
+
         final mergedState = TorrentViewState(
           model: torrent,
           downloaded: downloaded,
           uploaded: uploaded,
           progress: progress,
           state: state,
-          statusLabel: _statusLabelForState(state),
+          statusLabel: resolvedStatusLabel,
           statusMessage:
               runtime?.statusMessage ??
-              _fallbackStatusMessage(state, progress, peers),
+              _fallbackStatusMessage(
+                state,
+                resolvedStatusLabel,
+                progress,
+                peers,
+              ),
           connectionMessage: runtime?.connectionMessage ?? '',
           peers: peers,
           seeders: seeders,
@@ -719,43 +731,70 @@ class TorrentService {
     return persisted.isEmpty ? 'queued' : persisted;
   }
 
-  String _statusLabelForState(String state) {
-    if (state.contains('seed')) return 'Seeding';
+  String _statusLabelForState(
+    String state, {
+    required double downloadSpeed,
+    required double uploadSpeed,
+    required bool isComplete,
+  }) {
+    final normalized = state.toLowerCase();
+    if (normalized.contains('error_file_in_use')) return 'File In Use';
+    if (normalized.contains('error_missing_files')) return 'Missing Files';
+    if (normalized.contains('pending_metadata')) return 'Pending Metadata';
     if (state == 'checking') return 'Checking';
-    if (state.contains('checking')) return 'Checking';
-    if (state.contains('download')) return 'Downloading';
-    if (state.contains('pause')) return 'Paused';
-    if (state.contains('error_file_in_use')) return 'File In Use';
-    if (state.contains('error_missing_files')) return 'Missing Files';
-    if (state.contains('pending_metadata')) return 'Pending Metadata';
-    if (state.contains('queue')) return 'Queued';
-    if (state.contains('error')) return 'Error';
+    if (normalized.contains('checking')) return 'Checking';
+    if (normalized.contains('pause')) return 'Paused';
+    if (normalized.contains('queue')) return 'Queued';
+    if (normalized.contains('error')) return 'Error';
+
+    if (normalized.contains('download')) {
+      if (downloadSpeed > 0 || uploadSpeed > 0) return 'Downloading';
+      return 'Stalled';
+    }
+
+    if (isComplete || normalized.contains('seed')) {
+      return 'Seeding';
+    }
+
+    if (downloadSpeed > 0) {
+      return 'Downloading';
+    }
+
     return state;
   }
 
-  String _fallbackStatusMessage(String state, double progress, int peers) {
-    if (state.contains('error_file_in_use')) {
+  String _fallbackStatusMessage(
+    String state,
+    String statusLabel,
+    double progress,
+    int peers,
+  ) {
+    final normalized = state.toLowerCase();
+    if (normalized.contains('error_file_in_use')) {
       return 'Redownload blocked: close programs using the file and retry.';
     }
-    if (state.contains('error_missing_files')) {
+    if (normalized.contains('error_missing_files')) {
       return 'Downloaded files are missing from disk. Recheck save path or redownload.';
     }
-    if (state.contains('pending_metadata')) {
+    if (normalized.contains('pending_metadata')) {
       return 'Waiting for peers to provide metadata...';
     }
-    if (state.contains('seed')) {
+    if (statusLabel == 'Stalled') {
+      return 'No download/upload activity detected. Keeping peer discovery active.';
+    }
+    if (normalized.contains('seed')) {
       return 'Seeding';
     }
-    if (state.contains('pause')) {
+    if (normalized.contains('pause')) {
       return 'Paused';
     }
-    if (state.contains('download')) {
+    if (normalized.contains('download')) {
       if (peers <= 0) {
         return 'No peers discovered yet. Continuing DHT/tracker search...';
       }
       return 'Downloading';
     }
-    if (state.contains('error')) {
+    if (normalized.contains('error')) {
       return 'Torrent error';
     }
     return state;

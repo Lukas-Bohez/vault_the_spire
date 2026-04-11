@@ -249,8 +249,10 @@ class _TorrentsScreenState extends State<TorrentsScreen>
     return '${(bps / (1024 * 1024)).toStringAsFixed(1)} MB/s';
   }
 
-  Color _stateColor(BuildContext ctx, String state) {
+  Color _stateColor(BuildContext ctx, String state, String statusLabel) {
     final cs = Theme.of(ctx).colorScheme;
+    final label = statusLabel.toLowerCase();
+    if (label.contains('stalled')) return cs.error;
     if (state.contains('seed')) return cs.tertiary;
     if (state.contains('download')) return cs.primary;
     if (state.contains('error') || state.contains('stall')) return cs.error;
@@ -324,8 +326,8 @@ class _TorrentsScreenState extends State<TorrentsScreen>
       builder: (ctx) => AlertDialog(
         title: const Text('Redownload from scratch?'),
         content: Text(
-          '"${ts.model.name}" will be deleted and re-downloaded from 0%. '
-          'The .torrent source file is preserved.',
+          '"${ts.model.name}" will start a fresh re-download from 0% in a '
+          'new folder. Existing downloaded files are preserved.',
         ),
         actions: [
           TextButton(
@@ -933,7 +935,7 @@ class _TorrentsScreenState extends State<TorrentsScreen>
 
   Widget _buildTorrentCard(BuildContext context, TorrentViewState ts) {
     final torrent = ts.model;
-    final stateColor = _stateColor(context, ts.state);
+    final stateColor = _stateColor(context, ts.state, ts.statusLabel);
     final cs = Theme.of(context).colorScheme;
 
     void copyMagnetLink() {

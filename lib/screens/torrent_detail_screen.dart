@@ -424,8 +424,8 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
       builder: (ctx) => AlertDialog(
         title: const Text('Redownload from scratch?'),
         content: Text(
-          '"${torrent.name}" will be deleted and re-downloaded '
-          'from 0%. The .torrent source file is kept.',
+          '"${torrent.name}" will start a fresh re-download from 0% '
+          'in a new folder. Existing downloaded files are kept intact.',
         ),
         actions: [
           TextButton(
