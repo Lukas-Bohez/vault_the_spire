@@ -1,7 +1,7 @@
 name: vault_the_spire
 description: "Vault The Spire - torrent manager with AI copilot"
 publish_to: 'none'
-version: 4.3.2+432
+version: 4.3.1+1
 
 environment:
   sdk: ^3.11.0

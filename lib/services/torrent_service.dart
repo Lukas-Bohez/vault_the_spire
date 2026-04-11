@@ -1315,7 +1315,7 @@ class TorrentService {
   }
 
   Future<MagnetAddOutcome> addTorrentFromMagnetLink(dynamic uri) async {
-    final magnetUri = _ensureString(uri);
+    final magnetUri = _normalizeMagnetUri(_ensureString(uri));
 
     final magnet = MagnetLink.parse(magnetUri);
     final infoHash = magnet.infoHashV1 ?? magnet.infoHashV2;
@@ -1387,6 +1387,32 @@ class TorrentService {
     }
 
     return 'magnet:?${pieces.join('&')}';
+  }
+
+  static String _normalizeMagnetUri(String value) {
+    var magnet = value.trim();
+    if (magnet.isEmpty) return '';
+
+    if ((magnet.startsWith('"') && magnet.endsWith('"')) ||
+        (magnet.startsWith("'") && magnet.endsWith("'"))) {
+      magnet = magnet.substring(1, magnet.length - 1).trim();
+    }
+
+    final lowered = magnet.toLowerCase();
+    if (lowered.startsWith('magnet%3a') || lowered.startsWith('magnet%3a%3f')) {
+      try {
+        magnet = Uri.decodeFull(magnet).trim();
+      } catch (_) {
+        // Keep original when decode fails.
+      }
+    }
+
+    if (!magnet.toLowerCase().startsWith('magnet:') &&
+        magnet.contains('xt=urn:')) {
+      magnet = magnet.startsWith('?') ? 'magnet:$magnet' : 'magnet:?$magnet';
+    }
+
+    return magnet;
   }
 
   Future<void> addTorrentFromPath(

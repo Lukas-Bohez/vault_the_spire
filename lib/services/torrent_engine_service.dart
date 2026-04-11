@@ -64,19 +64,28 @@ class TorrentEngineService {
     'dht.transmissionbt.com:6881',
     'router.utorrent.com:6881',
     'dht.aelitis.com:6881',
+    'router.bitcomet.com:6881',
+    'dht.libtorrent.org:25401',
   ];
 
   static const List<String> _fallbackTrackers = [
-    'udp://tracker.openbittorrent.com:80/announce',
     'udp://tracker.opentrackr.org:1337/announce',
-    'udp://tracker.coppersurfer.tk:6969/announce',
-    'udp://tracker.leechers-paradise.org:6969/announce',
-    'udp://tracker.internetwarriors.net:1337/announce',
+    'udp://open.stealth.si:80/announce',
+    'udp://tracker.torrent.eu.org:451/announce',
+    'udp://tracker.openbittorrent.com:6969/announce',
+    'udp://open.demonii.com:1337/announce',
+    'udp://tracker.tiny-vps.com:6969/announce',
+    'udp://retracker.lanta-net.ru:2710/announce',
+    'udp://tracker.moeking.me:6969/announce',
     'udp://exodus.desync.com:6969/announce',
-    'http://tracker.openbittorrent.com:80/announce',
-    'http://tracker.opentrackr.org:1337/announce',
+    'udp://tracker.dler.com:6969/announce',
+    'udp://tracker.altrosky.cc:451/announce',
+    'udp://tracker.leechshack.com:6969/announce',
     'https://tracker.opentrackr.org:443/announce',
+    'http://tracker.openbittorrent.com:80/announce',
     'https://opentracker.i2p.rocks:443/announce',
+    'http://tracker.gbitt.info:80/announce',
+    'https://tracker.tamersunion.org:443/announce',
   ];
 
   final Map<String, dt.TorrentTask> _tasks = {};
@@ -295,7 +304,16 @@ class TorrentEngineService {
     ];
 
     if (paths.any((p) => videoExts.any(p.endsWith))) {
-      return SequentialConfig.forVideoStreaming();
+      return const SequentialConfig(
+        lookAheadSize: 40,
+        criticalZoneSize: 512 * 1024,
+        adaptiveStrategy: false,
+        minSpeedForSequential: 0,
+        autoDetectMoovAtom: true,
+        seekLatencyTolerance: 3,
+        enablePeerPriority: true,
+        enableFastResumption: true,
+      );
     }
     if (paths.any((p) => audioExts.any(p.endsWith))) {
       return SequentialConfig.forAudioStreaming();
@@ -633,12 +651,14 @@ class TorrentEngineService {
             torrentId,
             'No peers for interval, peerless count ${_peerlessCounters[torrentId]}',
           );
-          if (_peerlessCounters[torrentId]! >= 8) {
+          if (_peerlessCounters[torrentId]! >= 2) {
             _peerlessCounters[torrentId] = 0;
             _log(
               torrentId,
-              'Peerless intervals reached: requesting DHT peers only (auto-refresh disabled).',
+              'Peerless intervals reached: forcing full tracker + DHT refresh.',
             );
+            await _refreshConnection(torrentId, task);
+            _announceTrackers(torrentId, task);
             _addDhtBootstrapNodes(task);
             try {
               task.requestPeersFromDHT();
@@ -661,13 +681,13 @@ class TorrentEngineService {
             }
 
             final stagnantCount = _stagnantDownloadIntervals[torrentId] ?? 0;
-            if (stagnantCount >= 8 && task.currentDownloadSpeed <= 0.5) {
+            if (stagnantCount >= 6 && task.currentDownloadSpeed <= 0.5) {
               _stagnantDownloadIntervals[torrentId] = 0;
               _stallRecoveryCycles[torrentId] =
                   (_stallRecoveryCycles[torrentId] ?? 0) + 1;
               _log(
                 torrentId,
-                'Triggering stall recovery after stagnant download intervals (auto-refresh disabled).',
+                'Triggering stall recovery after stagnant intervals with DHT + tracker refresh.',
               );
               _addDhtBootstrapNodes(task);
               try {
@@ -675,6 +695,14 @@ class TorrentEngineService {
               } catch (_) {
                 // Best-effort only.
               }
+              unawaited(
+                _refreshConnectionIfDue(
+                  torrentId,
+                  task,
+                  minInterval: const Duration(seconds: 45),
+                  reason: 'stagnant_download_refresh',
+                ),
+              );
               unawaited(_forceStateRecovery(torrentId, task));
               _requestMissingPieces(task);
             }
@@ -723,6 +751,14 @@ class TorrentEngineService {
               try {
                 task.requestPeersFromDHT();
               } catch (_) {}
+              unawaited(
+                _refreshConnectionIfDue(
+                  torrentId,
+                  task,
+                  minInterval: const Duration(seconds: 30),
+                  reason: 'near_complete_cycle1_refresh',
+                ),
+              );
               unawaited(_forceStateRecovery(torrentId, task));
               _requestMissingPieces(task);
             } else if (cycle == 2) {
@@ -730,6 +766,14 @@ class TorrentEngineService {
               try {
                 task.requestPeersFromDHT();
               } catch (_) {}
+              unawaited(
+                _refreshConnectionIfDue(
+                  torrentId,
+                  task,
+                  minInterval: const Duration(seconds: 30),
+                  reason: 'near_complete_cycle2_refresh',
+                ),
+              );
               _requestMissingPieces(task);
               unawaited(_forceStateRecovery(torrentId, task));
             } else if (cycle >= 3) {
@@ -742,6 +786,14 @@ class TorrentEngineService {
               try {
                 task.requestPeersFromDHT();
               } catch (_) {}
+              unawaited(
+                _refreshConnectionIfDue(
+                  torrentId,
+                  task,
+                  minInterval: const Duration(seconds: 30),
+                  reason: 'near_complete_cycle3_refresh',
+                ),
+              );
               _requestMissingPieces(task);
               unawaited(_forceStateRecovery(torrentId, task));
             }
@@ -1018,9 +1070,25 @@ class TorrentEngineService {
       }
     } catch (_) {}
 
-    final startup = await task.start();
+    late final Map<dynamic, dynamic> startup;
+    try {
+      startup = await task.start();
+    } catch (e, st) {
+      _log(
+        torrent.id,
+        'task.start() failed: $e\n${st.toString().split('\n').take(5).join('\n')}',
+      );
+      debugPrint('[TorrentEngine] startFromFile failed for ${torrent.id}: $e');
+      _cleanup(torrent.id);
+      await TorrentService.instance.updateTorrentStatus(
+        torrent.id,
+        'error_start_failed',
+      );
+      rethrow;
+    }
     _forceAllFilesNormalPriority(task);
     unawaited(_hideBtStateFilesOnWindows(saveDir, torrentId: torrent.id));
+    _announceTrackers(torrent.id, task);
     // After starting the task, attempt recovery using the task's piece list
     try {
       final savePath = saveDir;
@@ -1064,25 +1132,12 @@ class TorrentEngineService {
 
     // Use all announce URLs and fallback public trackers in parallel
     final seenUrls = <String>{};
-    const fallbackTrackers = [
-      'udp://tracker.openbittorrent.com:80/announce',
-      'udp://tracker.opentrackr.org:1337/announce',
-      'udp://tracker.coppersurfer.tk:6969/announce',
-      'udp://tracker.leechers-paradise.org:6969/announce',
-      'udp://tracker.internetwarriors.net:1337/announce',
-      'udp://exodus.desync.com:6969/announce',
-      'http://tracker.openbittorrent.com:80/announce',
-      'http://tracker.opentrackr.org:1337/announce',
-      'https://tracker.opentrackr.org:443/announce',
-      'https://opentracker.i2p.rocks:443/announce',
-    ];
-
     final announceUrls = <Uri>[];
     for (final u in dtModel.announces) {
       final s = u.toString();
       if (seenUrls.add(s)) announceUrls.add(Uri.parse(s));
     }
-    for (final s in fallbackTrackers) {
+    for (final s in _fallbackTrackers) {
       if (seenUrls.add(s)) announceUrls.add(Uri.parse(s));
     }
 
@@ -1120,13 +1175,29 @@ class TorrentEngineService {
     TorrentModel torrent, {
     String? destinationPath,
   }) async {
-    final sourceMagnet = torrent.magnetLink?.trim() ?? '';
+    final sourceMagnet = _resolveMagnetLinkForStart(torrent);
     if (sourceMagnet.isEmpty) {
       throw FormatException('Invalid magnet link');
     }
-    final effectiveMagnet = _augmentMagnetWithFallbackTrackers(sourceMagnet);
-    final magnet = dt.MagnetParser.parse(effectiveMagnet);
-    if (magnet == null) throw FormatException('Invalid magnet link');
+    if ((torrent.magnetLink?.trim() ?? '') != sourceMagnet) {
+      // Self-heal malformed persisted magnet links for future resumes.
+      await TorrentService.instance.updateTorrent(
+        torrent.copyWith(magnetLink: sourceMagnet),
+      );
+    }
+    final parserMagnet = _canonicalMagnetForDtParser(sourceMagnet, torrent.id);
+    final effectiveMagnet = _augmentMagnetWithFallbackTrackers(parserMagnet);
+    final magnet =
+        dt.MagnetParser.parse(parserMagnet) ??
+        dt.MagnetParser.parse(effectiveMagnet);
+    if (magnet == null) {
+      String clip(String input) =>
+          input.length <= 180 ? input : '${input.substring(0, 180)}...';
+      throw FormatException(
+        'Invalid magnet link '
+        '[id=${torrent.id}, source=${clip(sourceMagnet)}, parser=${clip(parserMagnet)}, effective=${clip(effectiveMagnet)}]',
+      );
+    }
 
     // Step 1: fetch metadata from the swarm with caching and retry logic.
     dt.TorrentModel? dtModel;
@@ -1307,12 +1378,22 @@ class TorrentEngineService {
       final startup = await task.start();
       _forceAllFilesNormalPriority(task);
       unawaited(_hideBtStateFilesOnWindows(saveDir, torrentId: torrent.id));
+      _announceTrackers(torrent.id, task);
       final startupUploaded = startup['uploaded'] as int?;
       if (startupUploaded != null && startupUploaded >= 0) {
         _uploadedBytesByTorrent[torrent.id] = startupUploaded;
       }
-    } catch (_) {
+    } catch (e, st) {
+      _log(
+        torrent.id,
+        'task.start() failed: $e\n${st.toString().split('\n').take(5).join('\n')}',
+      );
+      debugPrint('[TorrentEngine] startFromMagnet failed for ${torrent.id}: $e');
       _cleanup(torrent.id);
+      await TorrentService.instance.updateTorrentStatus(
+        torrent.id,
+        'error_start_failed',
+      );
       rethrow;
     }
 
@@ -1561,8 +1642,9 @@ class TorrentEngineService {
       }
       return true;
     } catch (_) {
-      // Fallback to task-level completion heuristics when piece map is unavailable.
-      return _isTaskComplete(task);
+      // Treat unknown/errored inspection as incomplete to avoid recursive
+      // completion checks that can break startup flow.
+      return false;
     }
   }
 
@@ -1687,11 +1769,16 @@ class TorrentEngineService {
       );
 
       if (_tasks[torrentId] == task && _hasAllPiecesComplete(task)) {
+        _log(torrentId, 'Verification finished: all pieces complete, entering seeding mode.');
+        await TorrentService.instance.updateTorrentStatus(torrentId, 'seeding');
+      } else if (_tasks[torrentId] == task) {
         _log(
           torrentId,
-          'Verification finished with all pieces complete; stopping task to release file handles.',
+          'Verification found missing/corrupt pieces; continuing download and requesting missing pieces.',
         );
-        await stopTorrent(torrentId);
+        _requestMissingPieces(task);
+        _ensureTaskRunningMode(torrentId, task);
+        await TorrentService.instance.updateTorrentStatus(torrentId, 'downloading');
       }
 
       _log(torrentId, 'Deferred verification complete.');
@@ -2694,10 +2781,6 @@ class TorrentEngineService {
   }
 
   bool _isTaskComplete(dt.TorrentTask task) {
-    if (_hasAllPiecesComplete(task)) {
-      return true;
-    }
-
     try {
       final dynamicTask = task as dynamic;
       final isAllComplete = dynamicTask.fileManager?.isAllComplete as bool?;
@@ -2705,6 +2788,11 @@ class TorrentEngineService {
     } catch (_) {
       // Fall through to conservative incomplete result below.
     }
+
+    if (_hasAllPiecesComplete(task)) {
+      return true;
+    }
+
     // Do NOT mark complete from downloaded/progress counters alone.
     // Those counters can temporarily reach 100% while piece validity is still pending,
     // which can surface as videos that play the beginning then skip large gaps.
@@ -2863,6 +2951,121 @@ class TorrentEngineService {
       return uri.replace(queryParameters: params).toString();
     } catch (_) {
       return magnetLink;
+    }
+  }
+
+  String _resolveMagnetLinkForStart(TorrentModel torrent) {
+    final normalizedStored = _normalizeMagnetUri(torrent.magnetLink ?? '');
+    if (_canParseMagnet(normalizedStored)) {
+      return normalizedStored;
+    }
+
+    // Recovery path for legacy/dirty DB entries: extract btih from either the
+    // torrent id or the stored magnet text and rebuild a canonical magnet URI.
+    final candidate =
+        _extractBtihCandidate(torrent.id) ??
+        _extractBtihCandidate(normalizedStored) ??
+        _extractBtihCandidate(torrent.magnetLink ?? '');
+    if (candidate != null) {
+      final dn = Uri.encodeComponent(torrent.name.trim());
+      final fallback =
+          'magnet:?xt=urn:btih:$candidate${dn.isEmpty ? '' : '&dn=$dn'}';
+      return fallback;
+    }
+    return '';
+  }
+
+  String _canonicalMagnetForDtParser(String sourceMagnet, String fallbackId) {
+    final candidate =
+        _extractBtihCandidate(sourceMagnet) ?? _extractBtihCandidate(fallbackId);
+    if (candidate == null) {
+      return sourceMagnet;
+    }
+    return 'magnet:?xt=urn:btih:$candidate';
+  }
+
+  String _normalizeMagnetUri(String value) {
+    var magnet = value.trim();
+    if (magnet.isEmpty) return '';
+
+    if ((magnet.startsWith('"') && magnet.endsWith('"')) ||
+        (magnet.startsWith("'") && magnet.endsWith("'"))) {
+      magnet = magnet.substring(1, magnet.length - 1).trim();
+    }
+
+    // Handle encoded clipboard payloads like magnet%3A%3Fxt%3D...
+    final loweredEncoded = magnet.toLowerCase();
+    if (loweredEncoded.startsWith('magnet%3a') ||
+        loweredEncoded.startsWith('magnet%3a%3f')) {
+      try {
+        magnet = Uri.decodeFull(magnet).trim();
+      } catch (_) {
+        // Keep original if decoding fails.
+      }
+    }
+
+    // Handle links copied without the scheme.
+    if (!magnet.toLowerCase().startsWith('magnet:') &&
+        magnet.contains('xt=urn:')) {
+      magnet = magnet.startsWith('?') ? 'magnet:$magnet' : 'magnet:?$magnet';
+    }
+
+    // Canonicalize scheme casing for strict parsers.
+    final lowered = magnet.toLowerCase();
+    if (lowered.startsWith('magnet:?') && !magnet.startsWith('magnet:?')) {
+      magnet = 'magnet:?${magnet.substring(8)}';
+    }
+
+    return magnet;
+  }
+
+  String? _extractBtihCandidate(String value) {
+    final source = value.trim();
+    if (source.isEmpty) return null;
+
+    final exactHex = RegExp(r'^[a-fA-F0-9]{40}$').firstMatch(source);
+    if (exactHex != null) {
+      return source.toLowerCase();
+    }
+
+    final exactBase32 = RegExp(r'^[A-Za-z2-7]{32}$').firstMatch(source);
+    if (exactBase32 != null) {
+      return source.toUpperCase();
+    }
+
+    final urnMatch = RegExp(
+      r'urn:btih:([A-Za-z0-9]{32}|[A-Fa-f0-9]{40})',
+      caseSensitive: false,
+    ).firstMatch(source);
+    if (urnMatch != null) {
+      final token = urnMatch.group(1)!;
+      if (RegExp(r'^[A-Fa-f0-9]{40}$').hasMatch(token)) {
+        return token.toLowerCase();
+      }
+      if (RegExp(r'^[A-Za-z2-7]{32}$').hasMatch(token)) {
+        return token.toUpperCase();
+      }
+    }
+
+    final hexInText = RegExp(r'([A-Fa-f0-9]{40})').firstMatch(source);
+    if (hexInText != null) {
+      return hexInText.group(1)!.toLowerCase();
+    }
+
+    final base32InText = RegExp(r'([A-Za-z2-7]{32})').firstMatch(source);
+    if (base32InText != null) {
+      return base32InText.group(1)!.toUpperCase();
+    }
+
+    return null;
+  }
+
+  bool _canParseMagnet(String magnet) {
+    if (magnet.isEmpty) return false;
+    try {
+      return dt.MagnetParser.parse(magnet) != null;
+    } catch (_) {
+      return false;
     }
   }
 
