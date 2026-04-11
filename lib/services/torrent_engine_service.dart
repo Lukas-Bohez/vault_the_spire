@@ -113,6 +113,9 @@ class TorrentEngineService {
   final Map<String, DateTime> _lastUploadedSampleByTorrent = {};
   final Map<String, int> _scrapedSeedersByTorrent = {};
   final Map<String, int> _scrapedLeechersByTorrent = {};
+  final Map<String, DateTime> _lastAnnounceAtByTorrent = {};
+  final Map<String, Map<String, int>> _trackerFailureStreakByTorrent = {};
+  final Map<String, Map<String, DateTime>> _trackerBackoffUntilByTorrent = {};
   final Set<String> _refreshInFlight = <String>{};
   final Set<String> _forceRedownloadInFlight = <String>{};
   DateTime _lastPeerLogTime = DateTime.fromMillisecondsSinceEpoch(0);
@@ -235,6 +238,8 @@ class TorrentEngineService {
     return List.unmodifiable(_connectionLogs[torrentId] ?? []);
   }
 
+  DateTime? lastAnnounceAt(String torrentId) => _lastAnnounceAtByTorrent[torrentId];
+
   void clearLogs(String torrentId) {
     _connectionLogs[torrentId]?.clear();
   }
@@ -333,21 +338,26 @@ class TorrentEngineService {
     );
   }
 
-  void _announceTrackers(String torrentId, dt.TorrentTask task) {
+  void _announceTrackers(String torrentId, dt.TorrentTask task, {bool force = false}) {
     // Run tracker announcements in background without blocking UI
     unawaited(
       Future(() async {
         try {
           final configuredTrackers = _torrentTrackers[torrentId] ?? [];
           final seen = <String>{};
-          final trackers = <Uri>[
+          final allTrackers = <Uri>[
             ...configuredTrackers.where((u) => seen.add(u.toString())),
             ..._fallbackTrackers
                 .map(Uri.parse)
                 .where((u) => seen.add(u.toString())),
           ];
+          final trackers = _eligibleTrackersForAnnounce(
+            torrentId,
+            allTrackers,
+            force: force,
+          );
           if (trackers.isEmpty) {
-            debugPrint('[Trackers] No trackers found for $torrentId');
+            debugPrint('[Trackers] No eligible trackers found for $torrentId');
             return;
           }
 
@@ -381,6 +391,7 @@ class TorrentEngineService {
                     task,
                     trackerUri,
                     infoHashBytes,
+                    torrentId: torrentId,
                   ).catchError((e) {
                     _log(
                       torrentId,
@@ -400,26 +411,70 @@ class TorrentEngineService {
     dt.TorrentTask task,
     Uri url,
     Uint8List infoHash, {
+    String? torrentId,
     int retries = 3,
     Duration delay = const Duration(seconds: 2),
   }) async {
+    final effectiveTorrentId = (torrentId?.isNotEmpty == true)
+        ? torrentId!
+        : taskIdFromTask(task);
     for (var attempt = 1; attempt <= retries; attempt++) {
       try {
         await (task as dynamic).startAnnounceUrl(url, infoHash);
+        _markTrackerAnnounceSuccess(effectiveTorrentId, url);
         return;
       } catch (e) {
         final msg = 'Announce URL attempt $attempt failed: $url $e';
-        final taskId = taskIdFromTask(task);
-        if (taskId.isNotEmpty) _log(taskId, msg);
+        if (effectiveTorrentId.isNotEmpty) _log(effectiveTorrentId, msg);
         if (attempt < retries) {
           await Future.delayed(delay);
         }
       }
     }
+    _markTrackerAnnounceFailure(effectiveTorrentId, url);
     final finalMsg = 'All announce attempts failed for $url';
-    final taskId = taskIdFromTask(task);
-    if (taskId.isNotEmpty) _log(taskId, finalMsg);
+    if (effectiveTorrentId.isNotEmpty) _log(effectiveTorrentId, finalMsg);
     throw StateError(finalMsg);
+  }
+
+  List<Uri> _eligibleTrackersForAnnounce(
+    String torrentId,
+    List<Uri> trackers, {
+    required bool force,
+  }) {
+    if (force) return trackers;
+    final now = DateTime.now();
+    final backoffs = _trackerBackoffUntilByTorrent[torrentId] ?? {};
+    return trackers.where((tracker) {
+      final until = backoffs[tracker.toString()];
+      return until == null || now.isAfter(until);
+    }).toList();
+  }
+
+  void _markTrackerAnnounceSuccess(String torrentId, Uri tracker) {
+    if (torrentId.isEmpty) return;
+    final key = tracker.toString();
+    _lastAnnounceAtByTorrent[torrentId] = DateTime.now();
+    _trackerFailureStreakByTorrent[torrentId]?.remove(key);
+    _trackerBackoffUntilByTorrent[torrentId]?.remove(key);
+  }
+
+  void _markTrackerAnnounceFailure(String torrentId, Uri tracker) {
+    if (torrentId.isEmpty) return;
+    final key = tracker.toString();
+    final streaks = _trackerFailureStreakByTorrent.putIfAbsent(
+      torrentId,
+      () => <String, int>{},
+    );
+    final backoffs = _trackerBackoffUntilByTorrent.putIfAbsent(
+      torrentId,
+      () => <String, DateTime>{},
+    );
+    final streak = (streaks[key] ?? 0) + 1;
+    streaks[key] = streak;
+
+    final backoffSeconds = (20 * (1 << (streak - 1))).clamp(20, 20 * 60);
+    backoffs[key] = DateTime.now().add(Duration(seconds: backoffSeconds));
   }
 
   Future<void> announceTrackerUri(Uri uri, Uint8List infoHash) async {
@@ -522,9 +577,19 @@ class TorrentEngineService {
 
     int trackerSuccesses = 0;
     if (infoHash != null) {
-      for (final url in trackers) {
+      final eligibleTrackers = _eligibleTrackersForAnnounce(
+        torrentId,
+        trackers,
+        force: true,
+      );
+      for (final url in eligibleTrackers) {
         try {
-          await _announceUrlWithRetry(task, url, infoHash);
+          await _announceUrlWithRetry(
+            task,
+            url,
+            infoHash,
+            torrentId: torrentId,
+          );
           trackerSuccesses++;
         } catch (e) {
           _log(torrentId, 'Tracker $url failed: $e');
@@ -823,6 +888,27 @@ class TorrentEngineService {
       minInterval: const Duration(seconds: 20),
       reason: 'manual_force_refresh',
     );
+  }
+
+  Future<void> forceTrackerReannounce(String torrentId) async {
+    final task = _tasks[torrentId];
+    if (task == null) {
+      throw StateError('Torrent not active: $torrentId');
+    }
+    _announceTrackers(torrentId, task, force: true);
+  }
+
+  Future<void> forceDhtRefresh(String torrentId) async {
+    final task = _tasks[torrentId];
+    if (task == null) {
+      throw StateError('Torrent not active: $torrentId');
+    }
+    _addDhtBootstrapNodes(task);
+    try {
+      task.requestPeersFromDHT();
+    } catch (_) {
+      // Best-effort only.
+    }
   }
 
   /// Verifies all downloaded pieces against their SHA-1 hashes.
@@ -1143,7 +1229,12 @@ class TorrentEngineService {
 
     await Future.wait(
       announceUrls.map(
-        (uri) => _announceUrlWithRetry(task, uri, dtModel.infoHashBuffer)
+        (uri) => _announceUrlWithRetry(
+              task,
+              uri,
+              dtModel.infoHashBuffer,
+              torrentId: torrent.id,
+            )
             .catchError((e) {
               debugPrint('Tracker announce failed for $uri: $e');
             }),
@@ -1971,18 +2062,18 @@ class TorrentEngineService {
       // ignore if unavailable
     }
 
-    if (peers > 0) {
+        if (peers > 0) {
       connectionMsg =
           'Connected to $peers peers (DHT: $dhtNodes, Trackers: $trackers)';
     } else if (dhtNodes == 0) {
       connectionMsg =
-          'No DHT nodes found. Check firewall/network or try later.';
+          'No DHT nodes yet. Continuing bootstrap and tracker retries.';
     } else if (trackers == 0) {
       connectionMsg =
-          'DHT active but no trackers responding. Try force refresh.';
+          'DHT active, trackers quiet. Continuing long-lived peer discovery.';
     } else {
       connectionMsg =
-          'Trackers responding but no peers found. Torrent may be dead.';
+          'No peers discovered yet. Continuing DHT/tracker discovery.';
     }
 
     _statusController.add(
@@ -2204,12 +2295,19 @@ class TorrentEngineService {
     if (restartCount >= 3) {
       _log(
         torrentId,
-        'Max hard restarts reached. Marking torrent as error_stalled.',
+        'Max hard restarts reached. Keeping torrent active and falling back to discovery refresh only.',
       );
-      await TorrentService.instance.updateTorrentStatus(
-        torrentId,
-        'error_stalled',
-      );
+      final task = _tasks[torrentId];
+      if (task != null) {
+        unawaited(
+          _refreshConnectionIfDue(
+            torrentId,
+            task,
+            minInterval: const Duration(seconds: 45),
+            reason: 'hard_restart_limit_reached',
+          ),
+        );
+      }
       return;
     }
 
@@ -2936,22 +3034,31 @@ class TorrentEngineService {
   }
 
   String _augmentMagnetWithFallbackTrackers(String magnetLink) {
-    try {
-      final uri = Uri.parse(magnetLink);
-      if (uri.scheme.toLowerCase() != 'magnet') return magnetLink;
-
-      final params = Map<String, List<String>>.from(uri.queryParametersAll);
-      final existing = <String>{...(params['tr'] ?? const <String>[])};
-      for (final tracker in _fallbackTrackers) {
-        if (existing.add(tracker)) {
-          params.putIfAbsent('tr', () => <String>[]).add(tracker);
-        }
-      }
-
-      return uri.replace(queryParameters: params).toString();
-    } catch (_) {
+    if (!magnetLink.toLowerCase().startsWith('magnet:')) {
       return magnetLink;
     }
+
+    final existing = RegExp(r'[?&]tr=([^&]+)', caseSensitive: false)
+        .allMatches(magnetLink)
+        .map((m) {
+          try {
+            return Uri.decodeComponent(m.group(1)!);
+          } catch (_) {
+            return m.group(1)!;
+          }
+        })
+        .toSet();
+
+    final additions = <String>[];
+    for (final tracker in _fallbackTrackers) {
+      if (existing.add(tracker)) {
+        additions.add('tr=${Uri.encodeComponent(tracker)}');
+      }
+    }
+    if (additions.isEmpty) return magnetLink;
+
+    final separator = magnetLink.contains('?') ? '&' : '?';
+    return '$magnetLink$separator${additions.join('&')}';
   }
 
   String _resolveMagnetLinkForStart(TorrentModel torrent) {
@@ -2963,25 +3070,36 @@ class TorrentEngineService {
     // Recovery path for legacy/dirty DB entries: extract btih from either the
     // torrent id or the stored magnet text and rebuild a canonical magnet URI.
     final candidate =
-        _extractBtihCandidate(torrent.id) ??
-        _extractBtihCandidate(normalizedStored) ??
-        _extractBtihCandidate(torrent.magnetLink ?? '');
+        _extractInfoHashCandidate(torrent.id) ??
+        _extractInfoHashCandidate(normalizedStored) ??
+        _extractInfoHashCandidate(torrent.magnetLink ?? '');
     if (candidate != null) {
       final dn = Uri.encodeComponent(torrent.name.trim());
+      final isBtmh = RegExp(r'^[A-Fa-f0-9]{62}$|^[A-Fa-f0-9]{64}$').hasMatch(
+        candidate,
+      );
+      final xt = isBtmh
+          ? 'xt=urn:btmh:1220${candidate.toLowerCase()}'
+          : 'xt=urn:btih:$candidate';
       final fallback =
-          'magnet:?xt=urn:btih:$candidate${dn.isEmpty ? '' : '&dn=$dn'}';
+          'magnet:?$xt${dn.isEmpty ? '' : '&dn=$dn'}';
       return fallback;
     }
     return '';
   }
 
   String _canonicalMagnetForDtParser(String sourceMagnet, String fallbackId) {
-    final candidate =
+    final btih =
         _extractBtihCandidate(sourceMagnet) ?? _extractBtihCandidate(fallbackId);
-    if (candidate == null) {
-      return sourceMagnet;
+    if (btih != null) {
+      return 'magnet:?xt=urn:btih:$btih';
     }
-    return 'magnet:?xt=urn:btih:$candidate';
+    final btmh =
+        _extractBtmhCandidate(sourceMagnet) ?? _extractBtmhCandidate(fallbackId);
+    if (btmh != null) {
+      return 'magnet:?xt=urn:btmh:1220$btmh';
+    }
+    return sourceMagnet;
   }
 
   String _normalizeMagnetUri(String value) {
@@ -3060,6 +3178,38 @@ class TorrentEngineService {
     }
 
     return null;
+  }
+
+  String? _extractBtmhCandidate(String value) {
+    final source = value.trim();
+    if (source.isEmpty) return null;
+
+    final exactHex = RegExp(
+      r'^[A-Fa-f0-9]{62}$|^[A-Fa-f0-9]{64}$',
+    ).firstMatch(source);
+    if (exactHex != null) {
+      return source.toLowerCase();
+    }
+
+    final urnMatch = RegExp(
+      r'urn:btmh:(?:1220)?([A-Fa-f0-9]{62}|[A-Fa-f0-9]{64})',
+      caseSensitive: false,
+    ).firstMatch(source);
+    if (urnMatch != null) {
+      return urnMatch.group(1)!.toLowerCase();
+    }
+
+    final hexInText = RegExp(r'([A-Fa-f0-9]{62}|[A-Fa-f0-9]{64})').firstMatch(
+      source,
+    );
+    if (hexInText != null) {
+      return hexInText.group(1)!.toLowerCase();
+    }
+    return null;
+  }
+
+  String? _extractInfoHashCandidate(String value) {
+    return _extractBtihCandidate(value) ?? _extractBtmhCandidate(value);
   }
 
   bool _canParseMagnet(String magnet) {

@@ -456,7 +456,9 @@ class _TorrentsScreenState extends State<TorrentsScreen>
         } catch (_) {
           if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Failed to open folder.')),
+            SnackBar(
+              content: Text('Failed to open folder: $directoryPath'),
+            ),
           );
         }
         return;
@@ -467,7 +469,9 @@ class _TorrentsScreenState extends State<TorrentsScreen>
         if (!mounted) return;
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text('Failed to open folder.')));
+        ).showSnackBar(
+          SnackBar(content: Text('Failed to open folder: $directoryPath')),
+        );
       }
     } catch (e) {
       if (!mounted) return;

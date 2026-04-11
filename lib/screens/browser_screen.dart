@@ -375,13 +375,25 @@ class _BrowserScreenState extends State<BrowserScreen>
 
     if (Platform.isWindows) {
       try {
-        await Process.start(
-          'explorer.exe',
-          <String>[filePath],
-          mode: ProcessStartMode.detached,
-        );
+        await Process.start('cmd', <String>[
+          '/c',
+          'start',
+          '',
+          filePath,
+        ], mode: ProcessStartMode.detached);
       } catch (e) {
-        debugPrint('Failed to open local file externally: $e');
+        debugPrint('Windows native file launch failed for $filePath: $e');
+        try {
+          await Process.start(
+            'explorer.exe',
+            <String>[filePath],
+            mode: ProcessStartMode.detached,
+          );
+        } catch (fallbackError) {
+          debugPrint(
+            'Explorer fallback failed for $filePath: $fallbackError',
+          );
+        }
       }
       return;
     }

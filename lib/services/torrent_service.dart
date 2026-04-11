@@ -305,11 +305,12 @@ class TorrentService {
       <String, TorrentViewState>{};
   final Map<String, _DiskReconcileSnapshot> _diskSnapshots =
       <String, _DiskReconcileSnapshot>{};
-    final Map<String, DateTime> _lastDownloadActivityByTorrentId =
+  final Map<String, DateTime> _lastDownloadActivityByTorrentId =
       <String, DateTime>{};
   final Map<String, double> _progressHighWaterByTorrentId = <String, double>{};
   final Map<String, int> _downloadedHighWaterByTorrentId = <String, int>{};
   final Map<String, DateTime> _pendingMetadataRetryAfter = <String, DateTime>{};
+  final Map<String, int> _pendingMetadataRetryAttempts = <String, int>{};
   final Set<String> _pendingMetadataRetryInFlight = <String>{};
   bool _stateSyncStarted = false;
   DateTime _lastSnapshotTime = DateTime.fromMillisecondsSinceEpoch(0);
@@ -338,6 +339,14 @@ class TorrentService {
   TorrentViewState? latestTorrentState(String torrentId) {
     _ensureStateSyncStarted();
     return _latestStatesByTorrentId[torrentId];
+  }
+
+  Duration? metadataRetryRemaining(String torrentId) {
+    final next = _pendingMetadataRetryAfter[torrentId];
+    if (next == null) return null;
+    final remaining = next.difference(DateTime.now());
+    if (remaining.isNegative) return Duration.zero;
+    return remaining;
   }
 
   Future<void> refreshTorrentStates() async {
@@ -729,6 +738,9 @@ class TorrentService {
       return 'Paused';
     }
     if (state.contains('download')) {
+      if (peers <= 0) {
+        return 'No peers discovered yet. Continuing DHT/tracker search...';
+      }
       return 'Downloading';
     }
     if (state.contains('error')) {
@@ -746,23 +758,49 @@ class TorrentService {
     final now = DateTime.now();
     final nextTry = _pendingMetadataRetryAfter[torrent.id];
     if (nextTry != null && now.isBefore(nextTry)) return;
-    _pendingMetadataRetryAfter[torrent.id] = now.add(
-      const Duration(seconds: 90),
-    );
+    _scheduleNextMetadataRetry(torrent.id);
     _pendingMetadataRetryInFlight.add(torrent.id);
 
     unawaited(() async {
       try {
         await TorrentEngineService.instance.startTorrent(torrent.id);
         await updateTorrentStatus(torrent.id, 'downloading');
+        _resetMetadataRetry(torrent.id);
       } on TimeoutException {
         await updateTorrentStatus(torrent.id, 'pending_metadata');
+        _scheduleNextMetadataRetry(torrent.id);
       } catch (_) {
-        // Keep pending state; retry later.
+        _scheduleNextMetadataRetry(torrent.id);
       } finally {
         _pendingMetadataRetryInFlight.remove(torrent.id);
       }
     }());
+  }
+
+  void _scheduleNextMetadataRetry(String torrentId) {
+    final attempts = (_pendingMetadataRetryAttempts[torrentId] ?? 0) + 1;
+    _pendingMetadataRetryAttempts[torrentId] = attempts;
+    final baseSeconds = 30;
+    final backoffSeconds = baseSeconds * (1 << (attempts - 1));
+    final clampedSeconds = backoffSeconds.clamp(30, 15 * 60);
+    _pendingMetadataRetryAfter[torrentId] = DateTime.now().add(
+      Duration(seconds: clampedSeconds),
+    );
+  }
+
+  void _resetMetadataRetry(String torrentId) {
+    _pendingMetadataRetryAfter.remove(torrentId);
+    _pendingMetadataRetryAttempts.remove(torrentId);
+    _pendingMetadataRetryInFlight.remove(torrentId);
+  }
+
+  Future<void> retryMetadataNow(String torrentId) async {
+    final torrent = await TorrentsDao.instance.getTorrentById(torrentId);
+    if (torrent == null) return;
+    _pendingMetadataRetryAfter.remove(torrentId);
+    _pendingMetadataRetryInFlight.remove(torrentId);
+    _retryPendingMetadataIfDue(torrent);
+    _queueStateRefresh(force: true);
   }
 
   static String _ensureString(dynamic value) {
@@ -845,8 +883,7 @@ class TorrentService {
     _lastDownloadActivityByTorrentId.remove(id);
     _progressHighWaterByTorrentId.remove(id);
     _downloadedHighWaterByTorrentId.remove(id);
-    _pendingMetadataRetryAfter.remove(id);
-    _pendingMetadataRetryInFlight.remove(id);
+    _resetMetadataRetry(id);
     _snapshotPending = true;
     unawaited(_takeSnapshot(force: true));
   }
@@ -1331,7 +1368,7 @@ class TorrentService {
       infoHash = magnet.infoHashV1 ?? magnet.infoHashV2;
       displayName = magnet.displayName;
     } catch (_) {
-      infoHash = _extractBtihCandidate(magnetUri);
+      infoHash = _extractInfoHashCandidate(magnetUri);
       displayName = _extractDisplayNameFromMagnet(magnetUri);
     }
     if (infoHash == null || infoHash.isEmpty) {
@@ -1375,13 +1412,12 @@ class TorrentService {
       await updateTorrent(torrent.copyWith(status: 'downloading'));
       try {
         await TorrentEngineService.instance.startTorrent(infoHash);
+        _resetMetadataRetry(infoHash);
         _queueStateRefresh(force: true);
         return MagnetAddOutcome.started;
       } on TimeoutException {
         await updateTorrentStatus(infoHash, 'pending_metadata');
-        _pendingMetadataRetryAfter[infoHash] = DateTime.now().add(
-          const Duration(seconds: 90),
-        );
+        _scheduleNextMetadataRetry(infoHash);
         _queueStateRefresh(force: true);
         return MagnetAddOutcome.pendingMetadata;
       }
@@ -1461,13 +1497,42 @@ class TorrentService {
     return null;
   }
 
+  static String? _extractBtmhCandidate(String source) {
+    final urnMatch = RegExp(
+      r'urn:btmh:(?:1220)?([A-Fa-f0-9]{62}|[A-Fa-f0-9]{64})',
+      caseSensitive: false,
+    ).firstMatch(source);
+    if (urnMatch != null) {
+      return urnMatch.group(1)!.toLowerCase();
+    }
+
+    final exactHex = RegExp(
+      r'^[A-Fa-f0-9]{62}$|^[A-Fa-f0-9]{64}$',
+    ).firstMatch(source.trim());
+    if (exactHex != null) return source.trim().toLowerCase();
+    return null;
+  }
+
+  static String? _extractInfoHashCandidate(String source) {
+    return _extractBtihCandidate(source) ?? _extractBtmhCandidate(source);
+  }
+
   static String? _extractDisplayNameFromMagnet(String source) {
     final match = RegExp(r'[?&]dn=([^&]+)', caseSensitive: false).firstMatch(
       source,
     );
     if (match == null) return null;
     try {
-      return Uri.decodeComponent(match.group(1)!);
+      var decoded = Uri.decodeComponent(match.group(1)!);
+      if (decoded.length >= 2) {
+        final first = decoded[0];
+        final last = decoded[decoded.length - 1];
+        if ((first == '"' && last == '"') ||
+            (first == "'" && last == "'")) {
+          decoded = decoded.substring(1, decoded.length - 1).trim();
+        }
+      }
+      return decoded;
     } catch (_) {
       return null;
     }
@@ -1478,9 +1543,14 @@ class TorrentService {
     String infoHash,
     String? displayName,
   ) {
-    final normalizedHash = RegExp(r'^[A-Fa-f0-9]{40}$').hasMatch(infoHash)
-        ? infoHash.toLowerCase()
-        : infoHash;
+    final isBtih = RegExp(r'^[A-Fa-f0-9]{40}$').hasMatch(infoHash) ||
+      RegExp(r'^[A-Za-z2-7]{32}$').hasMatch(infoHash);
+    final isBtmh = RegExp(r'^[A-Fa-f0-9]{62}$|^[A-Fa-f0-9]{64}$').hasMatch(
+      infoHash,
+    );
+    final normalizedHash = RegExp(r'^[A-Fa-f0-9]+$').hasMatch(infoHash)
+      ? infoHash.toLowerCase()
+      : infoHash;
     final dnPart =
         (displayName == null || displayName.isEmpty)
         ? ''
@@ -1496,7 +1566,21 @@ class TorrentService {
         ? ''
         : trackers.map((t) => '&tr=$t').join();
 
-    return 'magnet:?xt=urn:btih:$normalizedHash$dnPart$trackerPart';
+    final peers = RegExp(r'[?&]x\.pe=([^&]+)', caseSensitive: false)
+        .allMatches(source)
+        .map((m) => m.group(1))
+        .whereType<String>()
+        .toList();
+    final peersPart = peers.isEmpty ? '' : peers.map((p) => '&x.pe=$p').join();
+
+    if (isBtih) {
+      return 'magnet:?xt=urn:btih:$normalizedHash$dnPart$trackerPart$peersPart';
+    }
+    if (isBtmh) {
+      return 'magnet:?xt=urn:btmh:1220$normalizedHash$dnPart$trackerPart$peersPart';
+    }
+
+    return 'magnet:?xt=urn:btih:$normalizedHash$dnPart$trackerPart$peersPart';
   }
 
   Future<void> addTorrentFromPath(

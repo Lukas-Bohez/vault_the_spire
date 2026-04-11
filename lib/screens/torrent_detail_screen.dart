@@ -18,6 +18,22 @@ String _fmtBytes(int bytes) {
   return '${v.toStringAsFixed(i == 0 ? 0 : 1)} ${u[i]}';
 }
 
+String _fmtDuration(Duration duration) {
+  final total = duration.inSeconds;
+  final mins = (total ~/ 60).toString().padLeft(2, '0');
+  final secs = (total % 60).toString().padLeft(2, '0');
+  return '$mins:$secs';
+}
+
+String _fmtLastEvent(DateTime? at) {
+  if (at == null) return 'Never';
+  final diff = DateTime.now().difference(at);
+  if (diff.inSeconds < 5) return 'Just now';
+  if (diff.inMinutes < 1) return '${diff.inSeconds}s ago';
+  if (diff.inHours < 1) return '${diff.inMinutes}m ago';
+  return '${diff.inHours}h ago';
+}
+
 class _StatPill extends StatelessWidget {
   final IconData icon;
   final String value;
@@ -119,6 +135,10 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
         final torrent = view?.model ?? widget.torrent;
         final statusLabel =
             view?.statusLabel ?? (torrent.status ?? 'Unknown');
+        final retryCountdown =
+          TorrentService.instance.metadataRetryRemaining(torrent.id);
+        final lastAnnounce =
+          TorrentEngineService.instance.lastAnnounceAt(torrent.id);
         final cs = Theme.of(context).colorScheme;
 
         return Scaffold(
@@ -235,6 +255,66 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
                       },
                     ),
                     OutlinedButton.icon(
+                      icon: const Icon(Icons.radar_outlined, size: 16),
+                      label: const Text('Force reannounce'),
+                      onPressed: () async {
+                        try {
+                          await TorrentEngineService.instance
+                              .forceTrackerReannounce(torrent.id);
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Tracker reannounce triggered'),
+                            ),
+                          );
+                        } catch (e) {
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Reannounce failed: $e')),
+                          );
+                        }
+                      },
+                    ),
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.hub_outlined, size: 16),
+                      label: const Text('Force DHT refresh'),
+                      onPressed: () async {
+                        try {
+                          await TorrentEngineService.instance
+                              .forceDhtRefresh(torrent.id);
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('DHT refresh triggered'),
+                            ),
+                          );
+                        } catch (e) {
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('DHT refresh failed: $e')),
+                          );
+                        }
+                      },
+                    ),
+                    if ((torrent.status ?? '').toLowerCase().contains(
+                      'pending_metadata',
+                    ))
+                      OutlinedButton.icon(
+                        icon: const Icon(Icons.replay_circle_filled_outlined, size: 16),
+                        label: const Text('Retry metadata now'),
+                        onPressed: () async {
+                          await TorrentService.instance.retryMetadataNow(
+                            torrent.id,
+                          );
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Metadata retry queued'),
+                            ),
+                          );
+                        },
+                      ),
+                    OutlinedButton.icon(
                       icon: const Icon(Icons.replay, size: 16),
                       label: const Text('Redownload'),
                       style: OutlinedButton.styleFrom(
@@ -316,6 +396,13 @@ class _TorrentDetailScreenState extends State<TorrentDetailScreen> {
                     if (view.connectionMessage.isNotEmpty)
                       _InfoRow(
                           'Connection', view.connectionMessage),
+                    _InfoRow('Last announce', _fmtLastEvent(lastAnnounce)),
+                    _InfoRow(
+                      'Metadata retry',
+                      retryCountdown == null
+                          ? 'n/a'
+                          : _fmtDuration(retryCountdown),
+                    ),
                   ],
                   if (torrent.filePath != null &&
                       torrent.filePath!.isNotEmpty)
