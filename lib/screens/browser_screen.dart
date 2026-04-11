@@ -162,6 +162,10 @@ class _BrowserScreenState extends State<BrowserScreen>
               _handleTorrentOrMagnetUrl(request.url);
               return NavigationDecision.prevent;
             }
+            if (_isLocalFileUrl(request.url)) {
+              unawaited(_openLocalFileExternally(request.url));
+              return NavigationDecision.prevent;
+            }
             return NavigationDecision.navigate;
           },
           onWebResourceError: (error) {
@@ -172,6 +176,10 @@ class _BrowserScreenState extends State<BrowserScreen>
             final failingUrl = error.url ?? '';
             if (failingUrl.isNotEmpty && _isTorrentOrMagnetUrl(failingUrl)) {
               unawaited(_handleTorrentOrMagnetUrl(failingUrl));
+              return;
+            }
+            if (failingUrl.isNotEmpty && _isLocalFileUrl(failingUrl)) {
+              unawaited(_openLocalFileExternally(failingUrl));
               return;
             }
 
@@ -214,6 +222,11 @@ class _BrowserScreenState extends State<BrowserScreen>
         if (_isTorrentOrMagnetUrl(url)) {
           await controller.stop();
           await _handleTorrentOrMagnetUrl(url);
+          return;
+        }
+        if (_isLocalFileUrl(url)) {
+          await controller.stop();
+          await _openLocalFileExternally(url);
           return;
         }
         setState(() {
@@ -351,6 +364,30 @@ class _BrowserScreenState extends State<BrowserScreen>
 
   bool _isTorrentOrMagnetUrl(String url) =>
       TorrentService.isTorrentOrMagnetUrl(url);
+
+  bool _isLocalFileUrl(String url) => url.trim().toLowerCase().startsWith('file://');
+
+  Future<void> _openLocalFileExternally(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null || uri.scheme.toLowerCase() != 'file') return;
+    final filePath = uri.toFilePath();
+    if (filePath.isEmpty) return;
+
+    if (Platform.isWindows) {
+      try {
+        await Process.start(
+          'explorer.exe',
+          <String>[filePath],
+          mode: ProcessStartMode.detached,
+        );
+      } catch (e) {
+        debugPrint('Failed to open local file externally: $e');
+      }
+      return;
+    }
+
+    await launchUrl(Uri.file(filePath), mode: LaunchMode.externalApplication);
+  }
 
   bool _shouldBlockUrl(String url) {
     if (_isTorrentOrMagnetUrl(url)) return false;
@@ -534,7 +571,12 @@ class _BrowserScreenState extends State<BrowserScreen>
     final url = _addressController.text.trim();
     if (url.isEmpty) return;
     final uri = Uri.tryParse(url);
-    if (uri != null && await canLaunchUrl(uri)) {
+    if (uri == null) return;
+    if (uri.scheme.toLowerCase() == 'file') {
+      await _openLocalFileExternally(url);
+      return;
+    }
+    if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
     }
   }
