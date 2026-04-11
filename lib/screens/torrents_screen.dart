@@ -942,6 +942,55 @@ class _TorrentsScreenState extends State<TorrentsScreen>
       }
     }
 
+    void showLongPressActions() {
+      final magnet = torrent.magnetLink;
+      final path = torrent.filePath ?? '';
+      showModalBottomSheet<void>(
+        context: context,
+        builder: (ctx) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.link),
+                title: const Text('Copy magnet link'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  if (magnet != null && magnet.isNotEmpty) {
+                    Clipboard.setData(ClipboardData(text: magnet));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Magnet link copied')),
+                    );
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('No magnet link available')),
+                    );
+                  }
+                },
+              ),
+              if (path.isNotEmpty)
+                ListTile(
+                  leading: const Icon(Icons.folder_outlined),
+                  title: const Text('Copy file path'),
+                  subtitle: Text(
+                    path,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    Clipboard.setData(ClipboardData(text: path));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('File path copied')),
+                    );
+                  },
+                ),
+            ],
+          ),
+        ),
+      );
+    }
+
     return Card(
       key: ValueKey(ts.id),
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
@@ -952,7 +1001,7 @@ class _TorrentsScreenState extends State<TorrentsScreen>
             builder: (_) => TorrentDetailScreen(torrent: torrent),
           ),
         ),
-        onLongPress: copyMagnetLink,
+        onLongPress: showLongPressActions,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(14, 10, 4, 10),
           child: Row(
@@ -1063,6 +1112,18 @@ class _TorrentsScreenState extends State<TorrentsScreen>
                                   color: cs.onSurfaceVariant,
                                 ),
                               ),
+                              if (ts.model.totalSize != null &&
+                                  ts.model.totalSize! > 0 &&
+                                  ts.progress < 0.999) ...[
+                                const SizedBox(width: 4),
+                                Text(
+                                  '${_fmtSize((ts.model.totalSize! * (1 - ts.progress)).round())} left',
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: cs.onSurfaceVariant,
+                                  ),
+                                ),
+                              ],
                             ];
                           }(),
                         // Peers

@@ -1107,6 +1107,11 @@ class _BrowserScreenState extends State<BrowserScreen>
 
     if (widget.inTab) return column;
 
-    return Scaffold(body: column);
+    return Scaffold(
+      body: SafeArea(
+        bottom: false,
+        child: column,
+      ),
+    );
   }
 }

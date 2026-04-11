@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart'
   show kDebugMode, kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:dtorrent_task_v2/dtorrent_task_v2.dart' as dt;
@@ -103,6 +104,16 @@ Future<void> main() async {
   await runZonedGuarded(
     () async {
       WidgetsFlutterBinding.ensureInitialized();
+      if (!kIsWeb && Platform.isAndroid) {
+        SystemChrome.setSystemUIOverlayStyle(
+          const SystemUiOverlayStyle(
+            statusBarColor: Colors.transparent,
+            statusBarIconBrightness: Brightness.dark,
+            systemNavigationBarColor: Colors.transparent,
+            systemNavigationBarIconBrightness: Brightness.dark,
+          ),
+        );
+      }
       await setupServiceLocator();
       await _initializeMetadataCache();
       await initSqlCipherOnAndroid();
@@ -292,6 +303,7 @@ class _MainAppState extends State<MainApp> {
   void initState() {
     super.initState();
     themeService.addListener(_onThemeChanged);
+    _updateAndroidSystemUiOverlay();
   }
 
   @override
@@ -301,7 +313,27 @@ class _MainAppState extends State<MainApp> {
   }
 
   void _onThemeChanged() {
+    _updateAndroidSystemUiOverlay();
     setState(() {});
+  }
+
+  void _updateAndroidSystemUiOverlay() {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) {
+      return;
+    }
+    final isDark = themeService.themeMode == ThemeMode.dark ||
+        (themeService.themeMode == ThemeMode.system &&
+            WidgetsBinding.instance.platformDispatcher.platformBrightness ==
+                Brightness.dark);
+    SystemChrome.setSystemUIOverlayStyle(
+      SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarIconBrightness:
+            isDark ? Brightness.light : Brightness.dark,
+      ),
+    );
   }
 
   @override

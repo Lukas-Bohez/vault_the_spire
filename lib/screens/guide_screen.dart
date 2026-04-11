@@ -1,5 +1,5 @@
-import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 
 class GuideScreen extends StatefulWidget {
   const GuideScreen({super.key});
@@ -13,7 +13,7 @@ class _GuideScreenState extends State<GuideScreen>
   @override
   bool get wantKeepAlive => true;
 
-  bool get _isAndroidOnlyBuild =>
+  bool get _isAndroid =>
       !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
 
   @override
@@ -21,22 +21,19 @@ class _GuideScreenState extends State<GuideScreen>
     super.build(context);
     final cs = Theme.of(context).colorScheme;
     final tt = Theme.of(context).textTheme;
-    final android = _isAndroidOnlyBuild;
+    final android = _isAndroid;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Guide')),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
         children: [
           Container(
-            padding: const EdgeInsets.all(18),
+            padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(18),
               gradient: LinearGradient(
-                colors: [
-                  cs.primaryContainer,
-                  cs.tertiaryContainer,
-                ],
+                colors: [cs.primaryContainer, cs.tertiaryContainer],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
@@ -45,133 +42,179 @@ class _GuideScreenState extends State<GuideScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  android
-                      ? 'Android Torrent Guide'
-                      : 'Desktop TorrentSpire Guide',
-                  style: tt.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    color: cs.onPrimaryContainer,
-                  ),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.download_for_offline_outlined,
+                      color: cs.onPrimaryContainer,
+                      size: 28,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        'TorrentSpire AI',
+                        style: tt.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          color: cs.onPrimaryContainer,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 10),
                 Text(
-                  android
-                      ? 'This guide is for the Android app: managing torrents you have already imported, checking progress, choosing storage, and handling the common mobile quirks that come with long downloads.'
-                      : 'This guide is for the desktop app: search workflows, AI-assisted checks, stable long-running sessions, and safer seeding.',
-                  style: tt.bodyMedium?.copyWith(
-                    color: cs.onPrimaryContainer,
-                  ),
+                  'A fast, private BitTorrent client for downloading '
+                  'freely distributed files - open-source software, '
+                  'Creative Commons media, public domain content, and '
+                  'files you own the rights to.',
+                  style: tt.bodyMedium?.copyWith(color: cs.onPrimaryContainer),
                 ),
-                const SizedBox(height: 12),
-                Wrap(
+                const SizedBox(height: 14),
+                const Wrap(
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    _GuideChip(
-                      label: android ? 'Android focused' : 'Desktop focused',
-                      icon: Icons.devices,
-                    ),
-                    _GuideChip(
-                      label: android
-                          ? 'Storage-safe workflow'
-                          : 'AI-assisted decisions',
-                      icon: android
-                          ? Icons.folder_open_outlined
-                          : Icons.smart_toy_outlined,
-                    ),
-                    const _GuideChip(
-                      label: 'Safer download workflow',
-                      icon: Icons.health_and_safety_outlined,
-                    ),
+                    _Chip(label: 'Open Source', icon: Icons.code_outlined),
+                    _Chip(label: 'Privacy First', icon: Icons.lock_outline),
+                    _Chip(label: 'No Ads', icon: Icons.block_outlined),
                   ],
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 14),
-          _GuideCard(
-            icon: Icons.flag_outlined,
-            title: 'Quick Start Flow',
-            bullets: android
-                ? const [
-                    'Open Torrents to manage downloads that have already been added to the app.',
-                    'Set your default download folder in Settings before long downloads.',
-                    'Watch status in Torrents and use the row actions menu for play/pause/remove.',
-                    'Once complete, keep seeding if you want to share back to the swarm.',
-                  ]
-                : const [
-                    'Open TorrentSpire AI and search or paste a magnet link.',
-                    'Confirm destination folder in Settings before long downloads.',
-                    'Track progress in Torrents and use Open folder to inspect output.',
-                    'Once complete, leave seeding active to contribute back to swarm health.',
-                  ],
+          const SizedBox(height: 16),
+          _Section(
+            icon: Icons.gavel_outlined,
+            color: cs.error,
+            title: 'Legal Use Only',
+            body: 'TorrentSpire AI is designed exclusively for legal downloading. '
+                'This includes:\n\n'
+                '- Open-source software (Linux distros, development tools, games released freely)\n'
+                '- Creative Commons licensed music, video, and books\n'
+                '- Public domain content (old films, historical recordings, classic literature)\n'
+                '- Files you own and have backed up yourself\n'
+                '- Content explicitly shared by creators for free distribution\n\n'
+                    'Downloading or sharing copyrighted material without permission '
+                    'is illegal in most countries. The developers of this app do not '
+                    'condone or support unauthorized copyright violations.',
           ),
-          const SizedBox(height: 12),
-          _GuideCard(
-            icon: Icons.shield_outlined,
-            title: 'Trust and Safety Signals',
-            bullets: android
-                ? const [
-                    'Prefer torrents with stable seed counts rather than single-source links.',
-                    'Treat unknown uploaders and very old listings as higher risk.',
-                    'Avoid installing APKs from untrusted sources.',
-                    'Scan downloaded archives before opening on any device.',
-                  ]
-                : const [
-                    'Prefer strong seed counts and balanced swarm ratios over single-source listings.',
-                    'Treat unknown uploaders and extremely old listings as higher risk.',
-                    'Use AI context cards for second-pass sanity checks before opening files.',
-                    'Always scan executables and archives with trusted security tools.',
-                  ],
-          ),
-          const SizedBox(height: 12),
-          _GuideCard(
-            icon: android ? Icons.android : Icons.desktop_windows_outlined,
-            title: android ? 'Android Usage' : 'Desktop Workflow',
-            bullets: android
-                ? const [
-                    'Use app-managed storage paths for best Android compatibility.',
-                    'If folder opening is restricted by Android, use the shown saved path in Files app.',
-                    'Disable battery optimization for long-running downloads when possible.',
-                    'Use the compact row actions menu on smaller screens.',
-                  ]
-                : const [
-                    'Use browser and AI tabs for triage before starting large downloads.',
-                    'Keep long-running sessions on stable network/power for best seeding uptime.',
-                    'Use Open Folder directly from torrent row to verify output quickly.',
-                    'Close stale duplicate app instances before rebuilding/rerunning on Windows.',
-                  ],
-          ),
-          const SizedBox(height: 12),
-          _GuideCard(
+          const SizedBox(height: 10),
+          _Section(
             icon: Icons.rocket_launch_outlined,
-            title: 'Performance and Reliability',
-            bullets: android
-                ? const [
-                    'Metadata fetching can be slower on mobile networks; allow time for peer discovery.',
-                    'If metadata stalls repeatedly, remove and re-add with a healthier magnet/trackers.',
-                    'Avoid aggressive battery/data saver modes during active downloads.',
-                  ]
-                : const [
-                    'Keep at least one reliable tracker and allow enough time for peer discovery.',
-                    'If metadata resolution stalls, retry with a healthy magnet and known trackers.',
-                    'For stable desktop sessions, avoid running multiple heavy browser tabs in parallel.',
-                  ],
+            color: cs.primary,
+            title: 'Getting Started',
+            body: android
+                ? 'Tap the + button to paste a magnet link, or open a .torrent '
+                    'file from your Files app to begin a download.\n\n'
+                    'Set your download folder in Settings before starting large '
+                    'downloads to make sure files go where you expect.\n\n'
+                    'Watch progress in the Torrents tab. Tap any torrent to see '
+                    'detailed speed, peers, and size information.'
+                : 'Drag a .torrent file onto the window, or paste a magnet link '
+                    'using the + button in the Torrents tab.\n\n'
+                    'Set your download folder in Settings. For large downloads, '
+                    'choose a drive with plenty of free space.\n\n'
+                    'The app continues downloading in the system tray when you '
+                    'close the window - use the tray icon to monitor progress.',
+          ),
+          const SizedBox(height: 10),
+          _Section(
+            icon: Icons.bar_chart_outlined,
+            color: cs.tertiary,
+            title: 'Understanding Download Progress',
+            body: 'Downloading: Pieces are being received from peers across the '
+                'internet. Larger torrents (10 GB+) can take hours on a typical '
+                'home connection.\n\n'
+                'Stalled / Searching for peers: The app is looking for other '
+                'users sharing this file. Rarer files may take longer to find peers. '
+                'Try Force Refresh in the torrent details.\n\n'
+                'Seeding: Download is complete. The app is sharing your copy with '
+                'others - this is good for the community and is how BitTorrent works.\n\n'
+                'Checking: After a redownload or app restart, pieces are being '
+                'verified against their checksums. This ensures file integrity.',
+          ),
+          const SizedBox(height: 10),
+          _Section(
+            icon: Icons.fact_check_outlined,
+            color: cs.secondary,
+            title: 'Verifying & Redownloading',
+            body: 'If a downloaded file seems corrupt or won\'t open, tap the '
+                'torrent to open its detail view, then tap "Verify files". '
+                'This re-reads every piece from disk and checks it against the '
+                'original checksums - no data is deleted.\n\n'
+                'If verification finds bad pieces, or if you want to start '
+                'completely fresh, tap "Redownload". This deletes the local '
+                'copy and downloads everything again from peers.\n\n'
+                'Large repacks (multi-part installer archives) sometimes need a '
+                'verify pass after completing because pieces can arrive out of '
+                'order across many files.',
+          ),
+          const SizedBox(height: 10),
+          _Section(
+            icon: Icons.privacy_tip_outlined,
+            color: cs.primary,
+            title: 'Privacy & Your Data',
+            body: 'TorrentSpire AI stores all data locally on your device. '
+                'No torrent history, download statistics, or file names are '
+                'sent to any server.\n\n'
+                'Your IP address is visible to other peers in any torrent swarm '
+                'you join - this is how BitTorrent works. A VPN will mask your '
+                'IP if privacy from other peers is important to you.\n\n'
+                'The built-in browser does not sync history to any cloud. '
+                'History is stored only on-device and can be cleared in Settings.',
+          ),
+          const SizedBox(height: 10),
+          _Section(
+            icon: Icons.tips_and_updates_outlined,
+            color: cs.tertiary,
+            title: android ? 'Android Tips' : 'Desktop Tips',
+            body: android
+                ? '- Disable battery optimisation for TorrentSpire in Android '
+                    'Settings -> Apps to prevent the OS from pausing active downloads.\n\n'
+                    '- If a torrent shows "File already in use", close any other '
+                    'app that has the file open, then tap Redownload.\n\n'
+                    '- Pull down on the Torrents list to force a refresh if '
+                    'progress looks frozen.\n\n'
+                    '- For best results on Android 12+, grant the app storage '
+                    'permission when prompted at first launch.'
+                : '- The app keeps downloading when minimised to the system tray. '
+                    'Right-click the tray icon to pause all or quit cleanly.\n\n'
+                    '- If Windows shows a file as "in use" after a download '
+                    'completes, wait a few seconds for the app to release the '
+                    'write handle - it does this automatically on completion.\n\n'
+                    '- Use the browser tab to find magnet links without leaving '
+                    'the app. Detected magnets are highlighted automatically.\n\n'
+                    '- For very large torrents (20 GB+), make sure your drive '
+                    'has at least 10% free space beyond the download size.',
           ),
           const SizedBox(height: 16),
           Container(
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: cs.surfaceContainerHighest,
-              borderRadius: BorderRadius.circular(12),
+              color: cs.primaryContainer.withValues(alpha: 0.4),
+              borderRadius: BorderRadius.circular(14),
               border: Border.all(color: cs.outlineVariant),
             ),
-            child: Text(
-              android
-                  ? 'Pro tip: If the list feels slow right after launch, pull to refresh once. On Android, torrents can take a moment to sync after add/remove actions.'
-                  : 'Pro tip: If a torrent reaches 100% but files are hard to locate, open its folder directly from the torrent row and verify destination settings before re-adding.',
-              style: Theme.of(context).textTheme.bodyMedium,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.lightbulb_outline, color: cs.primary, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    android
+                        ? 'Pro tip: Seed ratio matters. Keeping a torrent '
+                            'seeding after download helps other users get '
+                            'the same file. A ratio of 1.0 means you\'ve '
+                            'shared back as much as you downloaded.'
+                        : 'Pro tip: The BitTorrent protocol is peer-to-peer - '
+                            'every downloader also uploads to others. Leaving '
+                            'seeding on after your download benefits the whole '
+                            'community and keeps rare files alive.',
+                    style: tt.bodyMedium,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -180,72 +223,121 @@ class _GuideScreenState extends State<GuideScreen>
   }
 }
 
-class _GuideChip extends StatelessWidget {
+class _Chip extends StatelessWidget {
   final String label;
   final IconData icon;
 
-  const _GuideChip({required this.label, required this.icon});
+  const _Chip({required this.label, required this.icon});
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(999),
-        color: cs.surface.withValues(alpha: 0.45),
+        color: cs.surface.withValues(alpha: 0.5),
         border: Border.all(color: cs.outlineVariant),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: cs.onSurface),
-          const SizedBox(width: 6),
-          Text(label),
+          Icon(icon, size: 13, color: cs.onSurface),
+          const SizedBox(width: 5),
+          Text(label, style: Theme.of(context).textTheme.bodySmall),
         ],
       ),
     );
   }
 }
 
-class _GuideCard extends StatelessWidget {
+class _Section extends StatefulWidget {
   final IconData icon;
+  final Color color;
   final String title;
-  final List<String> bullets;
+  final String body;
 
-  const _GuideCard({
+  const _Section({
     required this.icon,
+    required this.color,
     required this.title,
-    required this.bullets,
+    required this.body,
   });
+
+  @override
+  State<_Section> createState() => _SectionState();
+}
+
+class _SectionState extends State<_Section> {
+  bool _expanded = false;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.all(14),
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
       decoration: BoxDecoration(
         color: cs.surface,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(14),
         border: Border.all(color: cs.outlineVariant),
+        boxShadow: _expanded
+            ? [
+                BoxShadow(
+                  color: cs.shadow.withValues(alpha: 0.05),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ]
+            : [],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => setState(() => _expanded = !_expanded),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(icon, color: cs.primary),
-              const SizedBox(width: 8),
-              Text(title, style: Theme.of(context).textTheme.titleMedium),
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(6),
+                    decoration: BoxDecoration(
+                      color: widget.color.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(widget.icon, color: widget.color, size: 18),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      widget.title,
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                    ),
+                  ),
+                  Icon(
+                    _expanded ? Icons.expand_less : Icons.expand_more,
+                    color: cs.onSurfaceVariant,
+                    size: 20,
+                  ),
+                ],
+              ),
+              if (_expanded) ...[
+                const SizedBox(height: 10),
+                const Divider(height: 1),
+                const SizedBox(height: 10),
+                Text(
+                  widget.body,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(height: 1.55),
+                ),
+              ],
             ],
           ),
-          const SizedBox(height: 8),
-          for (final line in bullets)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Text('• $line'),
-            ),
-        ],
+        ),
       ),
     );
   }

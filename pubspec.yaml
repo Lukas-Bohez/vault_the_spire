@@ -1,7 +1,7 @@
 name: vault_the_spire
 description: "TorrentSpire AI - torrent manager with AI copilot"
 publish_to: 'none'
-version: 4.3.0+430
+version: 4.3.1+431
 
 environment:
   sdk: ^3.11.0
@@ -80,3 +80,4 @@ flutter:
     - assets/sounds/click.mp3
     - assets/sounds/send.mp3
     - assets/sounds/notification.mp3
+    - assets/privacy_policy.md
