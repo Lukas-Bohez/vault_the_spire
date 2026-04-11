@@ -71,23 +71,27 @@ class TorrentEngineService {
   ];
 
   static const List<String> _fallbackTrackers = [
+    // Tier 1: highest-reliability UDP trackers
     'udp://tracker.opentrackr.org:1337/announce',
     'udp://open.stealth.si:80/announce',
     'udp://tracker.torrent.eu.org:451/announce',
     'udp://tracker.openbittorrent.com:6969/announce',
-    'udp://open.demonii.com:1337/announce',
-    'udp://tracker.tiny-vps.com:6969/announce',
-    'udp://retracker.lanta-net.ru:2710/announce',
-    'udp://tracker.moeking.me:6969/announce',
     'udp://exodus.desync.com:6969/announce',
+    'udp://tracker.moeking.me:6969/announce',
     'udp://tracker.dler.com:6969/announce',
+    'udp://tracker.tiny-vps.com:6969/announce',
     'udp://tracker.altrosky.cc:451/announce',
+    'udp://tracker-udp.gbitt.info:80/announce',
+    'udp://uploads.gamecoast.net:6969/announce',
     'udp://tracker.leechshack.com:6969/announce',
+    // Tier 2: HTTP/HTTPS fallbacks for restrictive networks
     'https://tracker.opentrackr.org:443/announce',
-    'http://tracker.openbittorrent.com:80/announce',
-    'https://opentracker.i2p.rocks:443/announce',
-    'http://tracker.gbitt.info:80/announce',
     'https://tracker.tamersunion.org:443/announce',
+    'https://opentracker.i2p.rocks:443/announce',
+    'http://tracker.openbittorrent.com:80/announce',
+    'http://tracker.gbitt.info:80/announce',
+    'https://tracker1.520.jp:443/announce',
+    'https://tracker2.ctix.cn:443/announce',
   ];
 
   static const String _managedTorrentSourceDirName = 'torrent_sources';
@@ -123,6 +127,7 @@ class TorrentEngineService {
   final Map<String, Map<String, DateTime>> _trackerBackoffUntilByTorrent = {};
   final Set<String> _refreshInFlight = <String>{};
   final Set<String> _forceRedownloadInFlight = <String>{};
+  DateTime _lastPollingRestartAt = DateTime.fromMillisecondsSinceEpoch(0);
   DateTime _lastPeerLogTime = DateTime.fromMillisecondsSinceEpoch(0);
   int _peerEventsSinceLastLog = 0;
   DateTime _lastDhtLogTime = DateTime.fromMillisecondsSinceEpoch(0);
@@ -375,6 +380,10 @@ class TorrentEngineService {
             } catch (_) {
               runtimeType = 'unknown';
             }
+            _log(
+              torrentId,
+              'WARNING: Could not extract announce info-hash for $torrentId. Info-hash mismatch may prevent tracker peers from being returned. Try redownloading to fix the stored torrent ID.',
+            );
             debugPrint(
               '[Trackers] Could not extract infoHash for $torrentId (runtimeType=$runtimeType)',
             );
@@ -474,7 +483,7 @@ class TorrentEngineService {
     final streak = (streaks[key] ?? 0) + 1;
     streaks[key] = streak;
 
-    final backoffSeconds = (20 * (1 << (streak - 1))).clamp(20, 20 * 60);
+    final backoffSeconds = (30 * streak).clamp(30, 5 * 60);
     backoffs[key] = DateTime.now().add(Duration(seconds: backoffSeconds));
   }
 
@@ -757,7 +766,7 @@ class TorrentEngineService {
               'Peerless intervals reached: forcing full tracker + DHT refresh.',
             );
             await _refreshConnection(torrentId, task);
-            _announceTrackers(torrentId, task);
+            _announceTrackers(torrentId, task, force: true);
             _addDhtBootstrapNodes(task);
             try {
               task.requestPeersFromDHT();
@@ -876,11 +885,19 @@ class TorrentEngineService {
               _requestMissingPieces(task);
               unawaited(_forceStateRecovery(torrentId, task));
             } else if (cycle >= 3) {
-              // Cycle 3+: keep torrent active and continue piece recovery.
-              _stallRecoveryCycles[torrentId] = 0;
+              if (stalledFor >= const Duration(minutes: 5)) {
+                _stallRecoveryCycles[torrentId] = 0;
+                _log(
+                  torrentId,
+                  'Near-complete stall unresolved after ${stalledFor.inSeconds}s - attempting hard restart to reset piece selector state.',
+                );
+                unawaited(_hardRestartTorrent(torrentId));
+                return;
+              }
+
               _log(
                 torrentId,
-                'Near-complete stall persists; continuing piece recovery without auto-refresh/hard-restart.',
+                'Near-complete stall persists; continuing piece recovery before hard restart threshold.',
               );
               try {
                 task.requestPeersFromDHT();
@@ -1391,7 +1408,7 @@ class TorrentEngineService {
     }
     _forceAllFilesNormalPriority(task);
     unawaited(_hideBtStateFilesOnWindows(saveDir, torrentId: torrent.id));
-    _announceTrackers(torrent.id, task);
+    _announceTrackers(torrent.id, task, force: true);
     _kickoffPeerDiscovery(torrent.id, task);
     // After starting the task, attempt recovery using the task's piece list
     try {
@@ -1694,7 +1711,7 @@ class TorrentEngineService {
       final startup = await task.start();
       _forceAllFilesNormalPriority(task);
       unawaited(_hideBtStateFilesOnWindows(saveDir, torrentId: torrent.id));
-      _announceTrackers(torrent.id, task);
+      _announceTrackers(torrent.id, task, force: true);
       final startupUploaded = startup['uploaded'] as int?;
       if (startupUploaded != null && startupUploaded >= 0) {
         _uploadedBytesByTorrent[torrent.id] = startupUploaded;
@@ -1730,7 +1747,7 @@ class TorrentEngineService {
     });
 
     // Announce to trackers in background without blocking UI
-    _announceTrackers(torrent.id, task);
+    _announceTrackers(torrent.id, task, force: true);
     _kickoffPeerDiscovery(torrent.id, task);
 
     // Hand off peers from metadata fetch so download starts immediately (if downloader exists).
@@ -2240,10 +2257,15 @@ class TorrentEngineService {
   /// Restart the poll loop for all active tasks.
   /// Called after window restore to fix frozen progress displays.
   void restartAllPolling() {
+    final now = DateTime.now();
+    if (now.difference(_lastPollingRestartAt).inSeconds < 10) {
+      return;
+    }
+    _lastPollingRestartAt = now;
+
     for (final entry in _tasks.entries.toList()) {
       _pollTimers[entry.key]?.cancel();
       _startPollTimer(entry.key, entry.value);
-      _log(entry.key, 'Poll loop restarted after window restore.');
     }
     unawaited(TorrentService.instance.refreshTorrentStates());
   }
@@ -2544,6 +2566,44 @@ class TorrentEngineService {
       } else if (total > 0) {
         final missing = total - completed;
         _log(torrentId, '$missing pieces still missing  -  continuing download.');
+
+        var requeued = 0;
+        try {
+          final piecesMap = t.pieceManager?.pieces as Map?;
+          if (piecesMap != null && piecesMap.isNotEmpty) {
+            for (final entry in piecesMap.entries) {
+              final piece = entry.value;
+              final isComplete = (piece.isCompletelyWritten as bool?) ?? false;
+              final isDownloading =
+                  (piece.isCompletelyDownloaded as bool?) ?? false;
+              if (!isComplete && !isDownloading) {
+                try {
+                  t.processPieceRejected(entry.key);
+                  requeued++;
+                } catch (_) {
+                  // Best-effort per-piece requeue.
+                }
+              }
+            }
+          }
+        } catch (e) {
+          _log(torrentId, 'Could not re-queue missing pieces (non-fatal): $e');
+        }
+
+        if (requeued > 0) {
+          _log(torrentId, 'Explicitly re-queued $requeued missing piece(s) for download.');
+        }
+
+        if (missing > 0 && missing <= 3) {
+          _log(torrentId, 'Last $missing piece(s) missing  -  force-announcing all trackers.');
+          _announceTrackers(torrentId, task, force: true);
+          try {
+            task.requestPeersFromDHT();
+          } catch (_) {
+            // Best-effort only.
+          }
+        }
+
         _requestMissingPieces(task);
         _ensureTaskRunningMode(torrentId, task);
         await TorrentService.instance.updateTorrentStatus(

@@ -818,7 +818,7 @@ class _AboutScreenState extends State<AboutScreen>
                   contentPadding: EdgeInsets.zero,
                   leading: Icon(Icons.calendar_month),
                   title: Text('App version'),
-                  subtitle: const Text('4.3.1'),
+                  subtitle: const Text('4.3.5'),
                 ),
                 ListTile(
                   contentPadding: EdgeInsets.zero,

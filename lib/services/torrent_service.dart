@@ -748,7 +748,8 @@ class TorrentService {
     if (normalized.contains('error')) return 'Error';
 
     if (normalized.contains('download')) {
-      if (downloadSpeed > 0 || uploadSpeed > 0) return 'Downloading';
+      if (downloadSpeed > 512) return 'Downloading';
+      if (uploadSpeed > 512) return 'Seeding partial';
       return 'Stalled';
     }
 
@@ -791,6 +792,9 @@ class TorrentService {
     if (normalized.contains('download')) {
       if (peers <= 0) {
         return 'No peers discovered yet. Continuing DHT/tracker search...';
+      }
+      if (statusLabel == 'Stalled') {
+        return 'Connected to $peers peer${peers == 1 ? '' : 's'} but no data received. Peers may be choked or missing the needed pieces.';
       }
       return 'Downloading';
     }

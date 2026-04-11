@@ -141,7 +141,7 @@ class TrayService with TrayListener, WindowListener {
 
   @override
   void onWindowFocus() {
-    TorrentEngineService.instance.restartAllPolling();
+    _restartPollingDebounced();
   }
 
   static const _kWindowX = 'window_x';
@@ -149,6 +149,16 @@ class TrayService with TrayListener, WindowListener {
   static const _kWindowW = 'window_w';
   static const _kWindowH = 'window_h';
   Timer? _geometryDebounce;
+  DateTime _lastPollingRestart = DateTime.fromMillisecondsSinceEpoch(0);
+
+  void _restartPollingDebounced() {
+    final now = DateTime.now();
+    if (now.difference(_lastPollingRestart).inSeconds < 10) {
+      return;
+    }
+    _lastPollingRestart = now;
+    TorrentEngineService.instance.restartAllPolling();
+  }
 
   Future<void> _saveWindowGeometry() async {
     try {
@@ -200,7 +210,7 @@ class TrayService with TrayListener, WindowListener {
     }
     await windowManager.show();
     await windowManager.focus();
-    TorrentEngineService.instance.restartAllPolling();
+    _restartPollingDebounced();
   }
 
   Future<void> destroy() async {
