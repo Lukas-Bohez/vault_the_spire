@@ -326,8 +326,8 @@ class _TorrentsScreenState extends State<TorrentsScreen>
       builder: (ctx) => AlertDialog(
         title: const Text('Redownload from scratch?'),
         content: Text(
-          '"${ts.model.name}" will start a fresh re-download from 0% in a '
-          'new folder. Existing downloaded files are preserved.',
+          '"${ts.model.name}" will be deleted from disk and downloaded again '
+          'from 0%. The .torrent source file is preserved.',
         ),
         actions: [
           TextButton(

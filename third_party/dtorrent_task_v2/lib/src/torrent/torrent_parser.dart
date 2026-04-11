@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 import 'dart:typed_data';
 import 'package:b_encode_decode/b_encode_decode.dart';
 import 'package:crypto/crypto.dart';
@@ -343,7 +344,7 @@ class TorrentParser {
       final pathList = fileData['path'] as List?;
       String path;
       if (pathList != null && pathList.isNotEmpty) {
-        path = pathList.map((p) => p.toString()).join('/');
+        path = pathList.map(_decodePathComponent).join('/');
         if (basePath.isNotEmpty) {
           path = '$basePath/$path';
         }
@@ -377,6 +378,28 @@ class TorrentParser {
     }
 
     return pieces;
+  }
+
+  static String _decodePathComponent(dynamic component) {
+    if (component is String) return component;
+    if (component is Uint8List) {
+      return utf8.decode(component, allowMalformed: true);
+    }
+    if (component is List<int>) {
+      return utf8.decode(component, allowMalformed: true);
+    }
+    if (component is List) {
+      final bytes = <int>[];
+      for (final item in component) {
+        if (item is int) {
+          bytes.add(item);
+        } else {
+          return component.toString();
+        }
+      }
+      return utf8.decode(bytes, allowMalformed: true);
+    }
+    return component.toString();
   }
 
   /// Parse piece layers from bencoded data

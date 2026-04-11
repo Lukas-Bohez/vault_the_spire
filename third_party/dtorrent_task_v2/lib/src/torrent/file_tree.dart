@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:typed_data';
 
 /// Represents a file in v2 file tree structure (BEP 52)
@@ -63,7 +64,7 @@ class FileTreeHelper {
     final result = <String, FileTreeEntry>{};
 
     for (var entry in treeData.entries) {
-      final key = entry.key as String;
+      final key = _decodeTreeKey(entry.key);
       final value = entry.value;
 
       if (value is Map) {
@@ -89,6 +90,28 @@ class FileTreeHelper {
     }
 
     return result.isEmpty ? null : result;
+  }
+
+  static String _decodeTreeKey(dynamic key) {
+    if (key is String) return key;
+    if (key is Uint8List) {
+      return utf8.decode(key, allowMalformed: true);
+    }
+    if (key is List<int>) {
+      return utf8.decode(key, allowMalformed: true);
+    }
+    if (key is List) {
+      final bytes = <int>[];
+      for (final item in key) {
+        if (item is int) {
+          bytes.add(item);
+        } else {
+          return key.toString();
+        }
+      }
+      return utf8.decode(bytes, allowMalformed: true);
+    }
+    return key.toString();
   }
 
   /// Extract all files from file tree with their paths
