@@ -447,10 +447,14 @@ class _TorrentsScreenState extends State<TorrentsScreen>
 
     try {
       if (Platform.isWindows) {
-        final result = await Process.run('explorer.exe', <String>[
-          directoryPath,
-        ]);
-        if (result.exitCode != 0 && mounted) {
+        try {
+          await Process.start(
+            'explorer.exe',
+            <String>[directoryPath],
+            mode: ProcessStartMode.detached,
+          );
+        } catch (_) {
+          if (!mounted) return;
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Failed to open folder.')),
           );

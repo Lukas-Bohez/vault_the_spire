@@ -959,6 +959,13 @@ class TorrentService {
         batch.map((torrent) async {
           try {
             await TorrentEngineService.instance.startTorrent(torrent.id);
+          } on TimeoutException catch (e, st) {
+            debugPrint('Resume metadata timeout for ${torrent.id}: $e');
+            debugPrint(st.toString());
+            await updateTorrentStatus(torrent.id, 'pending_metadata');
+            _pendingMetadataRetryAfter[torrent.id] = DateTime.now().add(
+              const Duration(seconds: 90),
+            );
           } catch (e, st) {
             debugPrint('Failed to resume torrent ${torrent.id}: $e');
             debugPrint(st.toString());
@@ -1317,11 +1324,25 @@ class TorrentService {
   Future<MagnetAddOutcome> addTorrentFromMagnetLink(dynamic uri) async {
     final magnetUri = _normalizeMagnetUri(_ensureString(uri));
 
-    final magnet = MagnetLink.parse(magnetUri);
-    final infoHash = magnet.infoHashV1 ?? magnet.infoHashV2;
+    String? infoHash;
+    String? displayName;
+    try {
+      final magnet = MagnetLink.parse(magnetUri);
+      infoHash = magnet.infoHashV1 ?? magnet.infoHashV2;
+      displayName = magnet.displayName;
+    } catch (_) {
+      infoHash = _extractBtihCandidate(magnetUri);
+      displayName = _extractDisplayNameFromMagnet(magnetUri);
+    }
     if (infoHash == null || infoHash.isEmpty) {
       throw FormatException('Magnet link must contain btih or btmh infohash');
     }
+
+    final canonicalMagnet = _canonicalMagnetForStorage(
+      magnetUri,
+      infoHash,
+      displayName,
+    );
 
     final existing = await TorrentsDao.instance.getTorrentById(infoHash);
     if (existing != null) {
@@ -1331,7 +1352,9 @@ class TorrentService {
 
     final torrent = TorrentModel(
       id: infoHash,
-      name: magnet.displayName ?? 'Magnet $infoHash',
+        name: (displayName == null || displayName.isEmpty)
+          ? 'Magnet $infoHash'
+          : displayName,
       type: 'magnet_link',
       totalSize: null,
       totalPieces: null,
@@ -1340,7 +1363,7 @@ class TorrentService {
       status: 'queued',
       filePath: null,
       vaultLink: null,
-      magnetLink: magnetUri,
+      magnetLink: canonicalMagnet,
       bytesDown: 0,
       bytesUp: 0,
       addedAt: DateTime.now().millisecondsSinceEpoch,
@@ -1393,6 +1416,8 @@ class TorrentService {
     var magnet = value.trim();
     if (magnet.isEmpty) return '';
 
+    magnet = magnet.replaceAll('&amp;', '&');
+
     if ((magnet.startsWith('"') && magnet.endsWith('"')) ||
         (magnet.startsWith("'") && magnet.endsWith("'"))) {
       magnet = magnet.substring(1, magnet.length - 1).trim();
@@ -1413,6 +1438,65 @@ class TorrentService {
     }
 
     return magnet;
+  }
+
+  static String? _extractBtihCandidate(String source) {
+    final urnMatch = RegExp(
+      r'urn:btih:([A-Za-z0-9]{32}|[A-Fa-f0-9]{40})',
+      caseSensitive: false,
+    ).firstMatch(source);
+    if (urnMatch != null) {
+      final token = urnMatch.group(1)!;
+      if (RegExp(r'^[A-Fa-f0-9]{40}$').hasMatch(token)) {
+        return token.toLowerCase();
+      }
+      if (RegExp(r'^[A-Za-z2-7]{32}$').hasMatch(token)) {
+        return token.toUpperCase();
+      }
+    }
+
+    final exactHex = RegExp(r'^[A-Fa-f0-9]{40}$').firstMatch(source.trim());
+    if (exactHex != null) return source.trim().toLowerCase();
+
+    return null;
+  }
+
+  static String? _extractDisplayNameFromMagnet(String source) {
+    final match = RegExp(r'[?&]dn=([^&]+)', caseSensitive: false).firstMatch(
+      source,
+    );
+    if (match == null) return null;
+    try {
+      return Uri.decodeComponent(match.group(1)!);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static String _canonicalMagnetForStorage(
+    String source,
+    String infoHash,
+    String? displayName,
+  ) {
+    final normalizedHash = RegExp(r'^[A-Fa-f0-9]{40}$').hasMatch(infoHash)
+        ? infoHash.toLowerCase()
+        : infoHash;
+    final dnPart =
+        (displayName == null || displayName.isEmpty)
+        ? ''
+        : '&dn=${Uri.encodeComponent(displayName)}';
+
+    // Preserve tracker params from original string when present.
+    final trackers = RegExp(r'[?&]tr=([^&]+)', caseSensitive: false)
+        .allMatches(source)
+        .map((m) => m.group(1))
+        .whereType<String>()
+        .toList();
+    final trackerPart = trackers.isEmpty
+        ? ''
+        : trackers.map((t) => '&tr=$t').join();
+
+    return 'magnet:?xt=urn:btih:$normalizedHash$dnPart$trackerPart';
   }
 
   Future<void> addTorrentFromPath(

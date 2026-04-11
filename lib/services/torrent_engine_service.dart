@@ -2988,6 +2988,8 @@ class TorrentEngineService {
     var magnet = value.trim();
     if (magnet.isEmpty) return '';
 
+    magnet = magnet.replaceAll('&amp;', '&');
+
     if ((magnet.startsWith('"') && magnet.endsWith('"')) ||
         (magnet.startsWith("'") && magnet.endsWith("'"))) {
       magnet = magnet.substring(1, magnet.length - 1).trim();
